@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "install": "abcdef"
+    "install": "npm i && npm run build && npm prune --production"
   },
   "repository": {
     "type": "git",
