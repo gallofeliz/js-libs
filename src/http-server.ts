@@ -24,6 +24,7 @@ export interface HttpServerConfig {
             handler: (req: express.Request, res: express.Response, next?: express.NextFunction) => any
         }>
     }
+    logger: Logger
 }
 
 export default class HttpServer {
@@ -33,9 +34,9 @@ export default class HttpServer {
     protected connections: Record<string, Socket> = {}
     protected config: HttpServerConfig
 
-    constructor(config: HttpServerConfig, logger: Logger) {
+    constructor(config: HttpServerConfig) {
         this.config = config
-        this.logger = logger
+        this.logger = config.logger
 
         this.app = express()
 
