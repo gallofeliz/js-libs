@@ -2,6 +2,9 @@ import { Process } from '../src/process'
 import { once } from 'events'
 import createLogger from '../src/logger'
 import HttpServer from '../src/http-server'
+import loadConfig from '../src/config'
+
+console.log(loadConfig({filename: __dirname + '/config.yml', envPrefix: 'app', defaultValues: { 'machin2.port': 443 }}))
 
 const server = new HttpServer({
     logger: createLogger('info'),

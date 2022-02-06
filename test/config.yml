@@ -1,0 +1,6 @@
+machin:
+  truc:
+    bidule: true
+
+envShell: ${SHELL}
+
