@@ -4,13 +4,16 @@ import envsubst from '@tuplo/envsubst'
 import _ from 'lodash'
 import {hostname} from 'os'
 import {extname} from 'path'
+import {Logger} from './logger'
 
 interface ConfigOpts<Config> {
+    mandatoryFile?: boolean
     filename?: string
     envPrefix?: string
     envDelimiter?: string
     defaultValues?: {[key: string]: any} // ex { 'api.port': 80 }
     finalizer?: (config: Config) => Config
+    //logger: Logger
     // dockerSecrets
 }
 
@@ -18,26 +21,32 @@ export default function loadConfig<Config extends object>(opts: ConfigOpts<Confi
     let config: Config = {} as Config
 
     if (opts.filename) {
-        switch(extname(opts.filename)) {
-            case '.yml':
-            case '.yaml':
-                config = YAML.parse(
-                    envsubst(
-                        fs.readFileSync(opts.filename, 'utf8')
+        try {
+            switch(extname(opts.filename)) {
+                case '.yml':
+                case '.yaml':
+                    config = YAML.parse(
+                        envsubst(
+                            fs.readFileSync(opts.filename, 'utf8')
+                        )
                     )
-                )
-                break
-            case '.json':
-                config = JSON.parse(
-                    envsubst(
-                        fs.readFileSync(opts.filename, 'utf8')
+                    break
+                case '.json':
+                    config = JSON.parse(
+                        envsubst(
+                            fs.readFileSync(opts.filename, 'utf8')
+                        )
                     )
-                )
-                break
-            case '.env':
-                // Sorry, but I always use Docker, and it does it for me
-            default:
-                throw new Error('Unhandled file type')
+                    break
+                case '.env':
+                    // Sorry, but I always use Docker, and it does it for me
+                default:
+                    throw new Error('Unhandled file type')
+            }
+        } catch (e: any) {
+            if (!(e.code === 'ENOENT' && opts.mandatoryFile === false)) {
+                throw e
+            }
         }
     }
 

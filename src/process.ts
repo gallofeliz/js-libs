@@ -13,6 +13,10 @@ interface ProcessConfig {
     killSignal?: NodeJS.Signals
 }
 
+export default function runProcess(config: ProcessConfig) {
+    return new Process(config)
+}
+
 export class Process extends EventEmitter {
     protected config: ProcessConfig
     protected logger: Logger
@@ -22,17 +26,19 @@ export class Process extends EventEmitter {
         super()
         this.config = config
         this.logger = config.logger
+
+        this.run()
     }
 
-    public run() {
-        if (this.process) {
-            throw new Error('Already run')
+    public abort() {
+        if (!this.process || this.process.exitCode !== null) {
+            return
         }
-
-        setImmediate(() => this._run())
+        this.logger.info('Killing')
+        this.process.kill('SIGINT')
     }
 
-    protected async _run() {
+    protected async run() {
         this.logger.info('Starting process', {
             cmd: this.config.cmd,
             args: this.config.args || [],
@@ -100,13 +106,5 @@ export class Process extends EventEmitter {
         }
 
         return JSON.parse(output.trim())
-    }
-
-    public abort() {
-        if (!this.process || this.process.exitCode !== null) {
-            return
-        }
-        this.logger.info('Killing')
-        this.process.kill('SIGINT')
     }
 }

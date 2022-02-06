@@ -1,4 +1,4 @@
-import { Process } from '../src/process'
+import runProcess from '../src/process'
 import { once } from 'events'
 import createLogger from '../src/logger'
 import HttpServer from '../src/http-server'
@@ -26,14 +26,12 @@ const server = new HttpServer({
                     const url = req.query.url as string
                     const type = req.query.type || 'video'
 
-                    const process = new Process({
+                    const process = runProcess({
                         cmd: 'youtube-dl',
                         args: type === 'audio' ? ['-j', '-x', url] : ['-j', url],
                         logger: createLogger('info'),
                         outputType: 'json'
                     })
-
-                    process.run()
 
                     const [result] = await once(process, 'finish')
 
@@ -51,14 +49,13 @@ const server = new HttpServer({
                         res.header('Content-Length', result.filesize.toString())
                     }
 
-                    const process2 = new Process({
+                    const process2 = runProcess({
                         cmd: 'youtube-dl',
                         args:  type === 'audio' ? ['-f', result.format_id, url, '-o', '-'] : [url, '-o', '-'],
                         logger: createLogger('info'),
                         outputStream: res
                     })
 
-                    process2.run()
                     await once(process2, 'finish')
 
                     res.end()
