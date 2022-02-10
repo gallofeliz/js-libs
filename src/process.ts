@@ -53,6 +53,7 @@ export class Process extends EventEmitter {
                 ...this.config.env && {env: this.config.env }
             }
         )
+        this.process = process
 
         let stdout: string = ''
         if (this.config.outputStream) {

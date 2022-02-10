@@ -90,10 +90,6 @@ export default class HttpServer {
             return
         }
 
-        if (this.config.webUiFilesPath && !this.config.api.prefix) {
-            throw new Error('Api needs prefix if webUiFilesPath is not empty')
-        }
-
         const apiRouter = express.Router()
         this.app.use('/' + (this.config.api.prefix ? this.config.api.prefix.replace(/^\//, '') : ''), apiRouter)
 
