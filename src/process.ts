@@ -9,7 +9,7 @@ interface ProcessConfig {
     args?: string[]
     env?: {[k: string]: string}
     outputStream?: NodeJS.WritableStream
-    outputType?: 'text' | 'json' | 'multilineJson'
+    outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     killSignal?: NodeJS.Signals
 }
 
@@ -98,6 +98,10 @@ export class Process extends EventEmitter {
     }
 
     protected getOutputData(output: string) {
+        if (this.config.outputType === 'multilineText') {
+            return output.trim().split('\n')
+        }
+
         if (['text'].includes(this.config.outputType || 'text')) {
             return output
         }
