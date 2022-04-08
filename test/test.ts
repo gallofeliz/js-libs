@@ -65,4 +65,5 @@ const server = new HttpServer({
     }
 })
 
-server.start()
+
+server.start().then(() => console.log('Go Go Go'))

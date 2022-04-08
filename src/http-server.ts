@@ -6,6 +6,7 @@ import { json as jsonParser } from 'body-parser'
 import { basename } from 'path'
 import { Socket } from 'net'
 import HtpasswdValidator from 'htpasswd-verify'
+import { once } from 'events'
 
 export interface HttpServerConfig {
     port: number
@@ -57,7 +58,7 @@ export default class HttpServer {
 
     }
 
-    public start() {
+    public async start() {
         if (this.server) {
             return
         }
@@ -70,8 +71,9 @@ export default class HttpServer {
                 delete this.connections[key];
             });
         });
-    }
 
+        await once(this.server, 'listening')
+    }
 
     public stop() {
         if (!this.server) {
