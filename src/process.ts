@@ -7,6 +7,7 @@ interface ProcessConfig {
     logger: Logger
     cmd: string
     args?: string[]
+    cwd?: string
     env?: {[k: string]: string}
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
@@ -27,6 +28,10 @@ export class Process extends EventEmitter {
         this.config = config
         this.logger = config.logger
 
+        if (this.config.outputStream && this.config.outputType) {
+            throw new Error('Incompatible both outputType and outputStream')
+        }
+
         this.run()
     }
 
@@ -42,7 +47,8 @@ export class Process extends EventEmitter {
         this.logger.info('Starting process', {
             cmd: this.config.cmd,
             args: this.config.args || [],
-            env: this.config.env
+            env: this.config.env,
+            cwd: this.config.cwd
         })
 
         const process = spawn(
@@ -50,12 +56,14 @@ export class Process extends EventEmitter {
             this.config.args || [],
             {
                 ...this.config.killSignal && { killSignal: this.config.killSignal },
-                ...this.config.env && {env: this.config.env }
+                ...this.config.env && { env: this.config.env },
+                ...this.config.cwd && { cwd: this.config.cwd }
             }
         )
         this.process = process
 
         let stdout: string = ''
+
         if (this.config.outputStream) {
             this.logger.info('Redirecting outputStream')
             process.stdout.pipe(this.config.outputStream)
@@ -63,7 +71,7 @@ export class Process extends EventEmitter {
             process.stdout.on('data', (data) => {
                 const strData = data.toString()
                 this.logger.info('STDOUT', { data: strData })
-                if (!this.config.outputStream) {
+                if (!this.config.outputStream && this.config.outputType) {
                     stdout += strData
                 }
             })
@@ -98,6 +106,10 @@ export class Process extends EventEmitter {
     }
 
     protected getOutputData(output: string) {
+        if (!this.config.outputType) {
+            return
+        }
+
         if (this.config.outputType === 'multilineText') {
             return output.trim().split('\n')
         }
