@@ -5,6 +5,7 @@ import _ from 'lodash'
 import {hostname} from 'os'
 import {extname} from 'path'
 import {Logger} from './logger'
+import {SchemaObject, default as Ajv} from 'ajv'
 
 interface ConfigOpts<Config> {
     mandatoryFile?: boolean
@@ -13,6 +14,7 @@ interface ConfigOpts<Config> {
     envDelimiter?: string
     defaultValues?: {[key: string]: any} // ex { 'api.port': 80 }
     finalizer?: (config: Config) => Config
+    schema?: SchemaObject
     //logger: Logger
     // dockerSecrets
 }
@@ -59,6 +61,18 @@ export default function loadConfig<Config extends object>(opts: ConfigOpts<Confi
         const goodCaseKey = key.toUpperCase() === key ? key.toLowerCase() : key
         _.set(config, goodCaseKey.substr(fullPrefix ? fullPrefix.length : 0).split(envDelimiter).join('.'), value)
     })
+
+    if (opts.schema) {
+        const ajv = new Ajv({coerceTypes: true})
+        if (!ajv.validate(opts.schema, config)) {
+            const firstError = ajv.errors![0]
+            const message2 = 'Configuration '
+                + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
+                + firstError.message
+
+            throw new Error(message2)
+        }
+    }
 
     if (opts.defaultValues) {
         _.each(opts.defaultValues, (value, key) => {
