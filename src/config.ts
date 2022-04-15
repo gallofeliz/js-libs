@@ -63,8 +63,12 @@ export default function loadConfig<Config extends object>(opts: ConfigOpts<Confi
     })
 
     if (opts.schema) {
-        const ajv = new Ajv({coerceTypes: true})
-        if (!ajv.validate(opts.schema, config)) {
+        if (opts.schema.type !== 'object') {
+            throw new Error('Expected Object schema type for config')
+        }
+
+        const ajv = new Ajv({coerceTypes: true, removeAdditional: true, useDefaults: true})
+        if (!ajv.validate({...opts.schema, additionalProperties: false}, config)) {
             const firstError = ajv.errors![0]
             const message2 = 'Configuration '
                 + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
