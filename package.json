@@ -30,9 +30,13 @@
     "express-basic-auth": "^1.2.1",
     "htpasswd-verify": "github:gallofeliz/htpasswd-verify",
     "lodash": "^4.17.21",
+    "morgan": "^1.10.0",
     "typescript": "^4.5.5",
     "uuid": "^8.3.2",
     "winston": "^3.5.1",
     "yaml": "^1.10.2"
+  },
+  "devDependencies": {
+    "@types/morgan": "^1.9.3"
   }
 }

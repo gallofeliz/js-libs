@@ -7,6 +7,7 @@ import { basename } from 'path'
 import { Socket } from 'net'
 import HtpasswdValidator from 'htpasswd-verify'
 import { once } from 'events'
+import morgan from 'morgan'
 
 export interface HttpServerConfig {
     port: number
@@ -44,6 +45,10 @@ export default class HttpServer {
         this.configureAuth()
 
         this.app.use(jsonParser())
+
+        this.app.use(morgan('tiny', {stream: {
+            write: (message: string) => this.logger.info(message.trim())
+        }}))
 
         this.configureApi()
 
