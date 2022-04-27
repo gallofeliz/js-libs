@@ -1,0 +1,31 @@
+{
+    "type": "object",
+    "properties": {
+        "machin": {
+            "type": "object",
+            "properties": {
+                "truc": {
+                    "type": "object",
+                    "properties": {
+                        "bidule": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "bidule"
+                    ]
+                }
+            },
+            "required": [
+                "truc"
+            ]
+        },
+        "envShell": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "machin"
+    ],
+    "$schema": "http://json-schema.org/draft-07/schema#"
+}

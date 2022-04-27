@@ -3,13 +3,33 @@ import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
 
+type JobState = 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' | 'canceled'
+type SemanticPriority =     'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
+const semanticPriorities = ['immediate' , 'next' , 'superior' , 'normal' , 'inferior' , 'on-idle']
+
+interface SearchJobsCriteria {
+    operation?: string
+    someSubjects?: Record<string, string>
+    jobManagerState?: 'queue' | 'running' | 'archived'
+    state?: JobState
+}
+
+interface JobOpts {
+    trigger: string | null,
+    operation: string,
+    subjects: Record<string, string>,
+    fn: (job: Job) => Promise<any>,
+    logger: Logger,
+    priority?: string
+}
+
 export class Job extends EventEmitter {
     protected trigger: string | null
     protected operation: string
     protected subjects: Record<string, string>
-    protected priority: string | number
+    protected priority: SemanticPriority | number
     protected fn: (job: Job) => Promise<any>
-    protected state: 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' | 'canceled' = 'new'
+    protected state: JobState = 'new'
     protected result: Promise<any>
     protected uuid: string = uuid4()
     protected createdAt: Date = new Date
@@ -21,27 +41,17 @@ export class Job extends EventEmitter {
     protected runLogs: object[] = []
     protected warnings: object[] = []
 
-    constructor(
-        { trigger, operation, subjects, fn, priority = 'normal', logger }:
-        {
-            trigger: string | null,
-            operation: string,
-            subjects: Record<string, string>,
-            fn: (job: Job) => Promise<any>,
-            logger: Logger,
-            priority?: string
-        }
-    ) {
+    constructor({ trigger, operation, subjects, fn, priority = 'normal', logger }: JobOpts) {
         super()
 
-        if (!['immediate', 'next', 'superior', 'normal', 'inferior', 'on-idle'].includes(priority) && !Number.isFinite(priority)) {
+        if (!semanticPriorities.includes(priority) && !Number.isFinite(priority)) {
             throw new Error('Invalid priority')
         }
 
         this.trigger = trigger
         this.operation = operation
         this.subjects = subjects
-        this.priority = priority
+        this.priority = priority as SemanticPriority | number
         this.fn = fn
         this.result = new Promise((resolve, reject) => {
             this.resolve = resolve
@@ -252,22 +262,56 @@ export class JobsManager {
         this.running.forEach(job => job.abort())
     }
 
-    public getJobs() {
-        return {
-            queue: this.queue,
-            running: this.running,
-            archived: this.archived.filter(job => job)
+    public getJobs(byStateCat?: true): {queue: Job[], running: Job[], archived: Job[]}
+    public getJobs(byStateCat: false): Job[]
+
+    public getJobs(byStateCat: boolean = true) {
+        return byStateCat // Fix Typescript boolean != true|false but not as I would like
+            ? this.searchJobs({} as SearchJobsCriteria, true)
+            : this.searchJobs({} as SearchJobsCriteria, false)
+    }
+
+    public searchJobs(criteria: SearchJobsCriteria, byStateCat?: true): {queue: Job[], running: Job[], archived: Job[]}
+    public searchJobs(criteria: SearchJobsCriteria, byStateCat: false): Job[]
+
+    public searchJobs(criteria: SearchJobsCriteria, byStateCat: boolean = true) {
+        function filterJobs(jobs: Job[]): Job[] {
+            if (Object.keys(_.omit(criteria, 'jobManagerState')).length === 0) {
+                return jobs
+            }
+
+            return jobs.filter(job => {
+                if (criteria.operation && job.getOperation() !== criteria.operation) {
+                    return false
+                }
+                if (criteria.someSubjects && !_.isEqual(criteria.someSubjects, _.pick(job.getSubjects(), Object.keys(criteria.someSubjects)))) {
+                    return false
+                }
+                if (criteria.state && job.getState() !== criteria.state) {
+                    return false
+                }
+
+                return true
+            })
         }
+
+        const byStateCatJobs = {
+            queue: criteria.jobManagerState && criteria.jobManagerState !== 'queue' ? [] : filterJobs(this.queue),
+            running: criteria.jobManagerState && criteria.jobManagerState !== 'running' ? [] : filterJobs(this.running),
+            archived: criteria.jobManagerState && criteria.jobManagerState !== 'archived' ? [] : filterJobs(this.archived.filter(job => job))
+        }
+
+        return byStateCat ? byStateCatJobs : _.flatten(Object.values(byStateCatJobs))
     }
 
     public getJob(uuid: string) {
-        for (const repo of [this.queue, this.running, this.archived.filter(job => job)]) {
-            const repoJob = repo.find(job => job.getUuid() === uuid)
-            if (repoJob) {
-                return repoJob
-            }
+        const job = this.getJobs(false).find(job => job.getUuid() === uuid)
+
+        if (!job) {
+            throw new Error('Unknow job ' + uuid)
         }
-        throw new Error('Unknow job ' + uuid)
+
+        return job
     }
 
     public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
