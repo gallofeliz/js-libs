@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "clean": "pwd | grep js-libs && rm *.d.ts *.js",
     "build": "tsc && mv dist/src/* . && rm -R dist",
     "install": "npm run build"
   },
