@@ -3,9 +3,10 @@ import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
 
-type JobState = 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' | 'canceled'
-type SemanticPriority =     'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
-const semanticPriorities = ['immediate' , 'next' , 'superior' , 'normal' , 'inferior' , 'on-idle']
+export type JobState = 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' | 'canceled'
+export type SemanticPriority =     'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
+export type OrderedPriority = number
+export type Priority = SemanticPriority | number
 
 interface SearchJobsCriteria {
     operation?: string
@@ -20,14 +21,14 @@ interface JobOpts {
     subjects: Record<string, string>,
     fn: (job: Job) => Promise<any>,
     logger: Logger,
-    priority?: string
+    priority?: Priority
 }
 
 export class Job extends EventEmitter {
     protected trigger: string | null
     protected operation: string
     protected subjects: Record<string, string>
-    protected priority: SemanticPriority | number
+    protected priority: Priority
     protected fn: (job: Job) => Promise<any>
     protected state: JobState = 'new'
     protected result: Promise<any>
@@ -44,14 +45,10 @@ export class Job extends EventEmitter {
     constructor({ trigger, operation, subjects, fn, priority = 'normal', logger }: JobOpts) {
         super()
 
-        if (!semanticPriorities.includes(priority) && !Number.isFinite(priority)) {
-            throw new Error('Invalid priority')
-        }
-
         this.trigger = trigger
         this.operation = operation
         this.subjects = subjects
-        this.priority = priority as SemanticPriority | number
+        this.priority = priority
         this.fn = fn
         this.result = new Promise((resolve, reject) => {
             this.resolve = resolve
