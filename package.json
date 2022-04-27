@@ -8,6 +8,9 @@
     "build": "tsc && mv dist/src/* . && rm -R dist",
     "install": "npm run build"
   },
+  "bin": {
+    "generate-json-schema-from-ts": "./bin/generate-json-schema-from-ts.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gallofeliz/js-libs.git"

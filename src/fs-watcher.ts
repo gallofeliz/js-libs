@@ -1,4 +1,4 @@
-import { durationToSeconds } from './utils'
+import { durationToSeconds, Duration } from './utils'
 import chokidar from 'chokidar'
 import { Logger } from './logger'
 
@@ -17,7 +17,7 @@ export default class FsWatcher {
     protected waitPending: WaitPending | null = null
     protected logger: Logger
 
-    constructor(fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: string, waitMax?: string) {
+    constructor(fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration) {
         this.fn = fn
         this.paths = paths
         this.logger = logger
