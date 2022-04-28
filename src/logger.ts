@@ -10,6 +10,8 @@ interface EventEmittedLogsLogger {
 
 export type Logger = WinstonLogger & EventEmittedLogsLogger
 
+export type LogLevel = 'emerg' | 'alert' | 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
+
 const secrets = ['password', 'key', 'secret', 'auth', 'token', 'credential']
 
 function sanitize(variable: any): any {
@@ -38,7 +40,7 @@ function sanitize(variable: any): any {
     return variable
 }
 
-export default function createLogger(level: string): Logger {
+export default function createLogger(level: LogLevel): Logger {
     const stream = new Writable({objectMode: true})
 
     const logger = createWinstonLogger({
