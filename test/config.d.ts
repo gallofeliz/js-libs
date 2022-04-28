@@ -7,4 +7,4 @@ interface Config {
     envShell?: string
 }
 
-// bin/generate-json-schema-from-ts.js test/config.d.ts Config > test/config.schema.json
+// See "ts-json-schema-generator"

@@ -8,9 +8,6 @@
     "build": "tsc && mv dist/src/* . && rm -R dist",
     "install": "npm run build"
   },
-  "bin": {
-    "generate-json-schema-from-ts": "./bin/generate-json-schema-from-ts.js"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gallofeliz/js-libs.git"
@@ -39,7 +36,6 @@
     "morgan": "^1.10.0",
     "tsconfig-loader": "^1.1.0",
     "typescript": "^4.5.5",
-    "typescript-json-schema": "^0.53.0",
     "uuid": "^8.3.2",
     "winston": "^3.5.1",
     "yaml": "^1.10.2"
