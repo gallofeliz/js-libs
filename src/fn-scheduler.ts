@@ -2,7 +2,7 @@ import { durationToSeconds, Duration } from './utils'
 import cron from 'cron-parser'
 import { Logger } from './logger'
 
-/** @pattern ^((((\d+,)+\d+|(\d+(\/|-)\d+)|\d+|\*) ?){5,7})$ */
+/** @pattern ^[0-9* \-,/]{9,}$ */
 export type Cron = string
 
 export type Schedule = Duration | Cron
