@@ -7,34 +7,34 @@ import {extname} from 'path'
 import {Logger} from './logger'
 import {SchemaObject, default as Ajv} from 'ajv'
 
-interface ConfigOpts<Config> {
+interface ConfigOpts<UserProvidedConfig, Config> {
     mandatoryFile?: boolean
     filename?: string
     envPrefix?: string
     envDelimiter?: string
     defaultValues?: {[key: string]: any} // ex { 'api.port': 80 }
-    finalizer?: (config: Config) => Config
-    schema?: SchemaObject
+    finalizer?: (userProvidedConfig: UserProvidedConfig) => Config
+    userProvidedConfigSchema?: SchemaObject
     //logger: Logger
     // dockerSecrets
 }
 
-export default function loadConfig<Config extends object>(opts: ConfigOpts<Config>): Config {
-    let config: Config = {} as Config
+export default function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Config {
+    let userProvidedConfig: UserProvidedConfig = {} as UserProvidedConfig
 
     if (opts.filename) {
         try {
             switch(extname(opts.filename)) {
                 case '.yml':
                 case '.yaml':
-                    config = YAML.parse(
+                    userProvidedConfig = YAML.parse(
                         envsubst(
                             fs.readFileSync(opts.filename, 'utf8')
                         )
                     )
                     break
                 case '.json':
-                    config = JSON.parse(
+                    userProvidedConfig = JSON.parse(
                         envsubst(
                             fs.readFileSync(opts.filename, 'utf8')
                         )
@@ -59,16 +59,16 @@ export default function loadConfig<Config extends object>(opts: ConfigOpts<Confi
 
     _.each(envs, (value, key) => {
         const goodCaseKey = key.toUpperCase() === key ? key.toLowerCase() : key
-        _.set(config, goodCaseKey.substr(fullPrefix ? fullPrefix.length : 0).split(envDelimiter).join('.'), value)
+        _.set(userProvidedConfig, goodCaseKey.substr(fullPrefix ? fullPrefix.length : 0).split(envDelimiter).join('.'), value)
     })
 
-    if (opts.schema) {
-        if (opts.schema.type !== 'object') {
-            throw new Error('Expected Object schema type for config')
+    if (opts.userProvidedConfigSchema) {
+        if (opts.userProvidedConfigSchema.type !== 'object') {
+            throw new Error('Expected Object userProvidedConfigSchema type for config')
         }
 
         const ajv = new Ajv({coerceTypes: true, removeAdditional: true, useDefaults: true})
-        if (!ajv.validate({...opts.schema, additionalProperties: false}, config)) {
+        if (!ajv.validate({...opts.userProvidedConfigSchema, additionalProperties: false}, userProvidedConfig)) {
             const firstError = ajv.errors![0]
             const message2 = 'Configuration '
                 + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
@@ -80,16 +80,16 @@ export default function loadConfig<Config extends object>(opts: ConfigOpts<Confi
 
     if (opts.defaultValues) {
         _.each(opts.defaultValues, (value, key) => {
-            if (!_.has(config, key)) {
-                _.set(config, key, value)
+            if (!_.has(userProvidedConfig, key)) {
+                _.set(userProvidedConfig, key, value)
             }
         })
     }
 
-    if (opts.finalizer) {
-        config = opts.finalizer(config)
+    if (!opts.finalizer) {
+        return userProvidedConfig as any as Config
     }
 
-    return config
+    return opts.finalizer(userProvidedConfig)
 }
 
