@@ -14,14 +14,29 @@ interface ProcessConfig {
     killSignal?: NodeJS.Signals
 }
 
+interface ProcessPromise<T> extends Promise<T> {
+    abort: () => void
+}
+
 export default function runProcess(config: ProcessConfig) {
     return new Process(config)
+}
+
+export function runPromisedProcess<Output>(config: ProcessConfig) {
+    const process = new Process(config)
+
+    const promis: ProcessPromise<Output> = once(process, 'finish').then(r => r[0]) as any as ProcessPromise<Output>
+
+    promis.abort = () => process.abort()
+
+    return promis
 }
 
 export class Process extends EventEmitter {
     protected config: ProcessConfig
     protected logger: Logger
     protected process?: ChildProcess
+    protected abortController = new AbortController
 
     constructor(config: ProcessConfig) {
         super()
@@ -40,7 +55,8 @@ export class Process extends EventEmitter {
             return
         }
         this.logger.info('Killing')
-        this.process.kill('SIGINT')
+        //this.process.kill('SIGINT')
+        this.abortController.abort()
     }
 
     protected async run() {
@@ -55,9 +71,10 @@ export class Process extends EventEmitter {
             this.config.cmd,
             this.config.args || [],
             {
-                ...this.config.killSignal && { killSignal: this.config.killSignal },
+                killSignal: this.config.killSignal || 'SIGINT',
                 ...this.config.env && { env: this.config.env },
-                ...this.config.cwd && { cwd: this.config.cwd }
+                ...this.config.cwd && { cwd: this.config.cwd },
+                signal: this.abortController.signal
             }
         )
         this.process = process
