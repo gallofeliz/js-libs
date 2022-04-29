@@ -14,7 +14,7 @@ interface ProcessConfig {
     killSignal?: NodeJS.Signals
 }
 
-interface ProcessPromise<T> extends Promise<T> {
+export interface ProcessPromise<T> extends Promise<T> {
     abort: () => void
 }
 
