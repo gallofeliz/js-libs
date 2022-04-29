@@ -63,10 +63,6 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
     })
 
     if (opts.userProvidedConfigSchema) {
-        if (opts.userProvidedConfigSchema.type !== 'object') {
-            throw new Error('Expected Object userProvidedConfigSchema type for config')
-        }
-
         const ajv = new Ajv({coerceTypes: true, removeAdditional: true, useDefaults: true})
         if (!ajv.validate({...opts.userProvidedConfigSchema, additionalProperties: false}, userProvidedConfig)) {
             const firstError = ajv.errors![0]
