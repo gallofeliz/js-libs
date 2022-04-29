@@ -1,17 +1,22 @@
-import { durationToSeconds } from './utils'
+import { durationToSeconds, Duration } from './utils'
 import cron from 'cron-parser'
 import { Logger } from './logger'
+
+/** @pattern ^((((\d+,)+\d+|(\d+(\/|-)\d+)|\d+|\*) ?){5,7})$ */
+export type Cron = string
+
+export type Schedule = Duration | Cron
 
 export default class FnScheduler {
     protected fn: Function
     protected id: any
-    protected schedules: string[]
+    protected schedules: Schedule[]
     protected runOnStart: boolean
     protected timeoutId: NodeJS.Timeout | null = null
     protected timeoutNextDate: Date | null = null
     protected logger: Logger
 
-    constructor(id: any, fn: Function, logger: Logger, schedules: string[], runOnStart: boolean) {
+    constructor(id: any, fn: Function, logger: Logger, schedules: Schedule[], runOnStart: boolean) {
         this.id = id
         this.fn = fn
         this.schedules = schedules
@@ -48,7 +53,7 @@ export default class FnScheduler {
         const now = (new Date).getTime()
 
         const nextTimes = this.schedules.map(schedule => {
-            if (schedule.includes(' ')) {
+            if (schedule.includes(' ')) { // Todo : Change to check cron or duration
                 return cron.parseExpression(schedule).next().getTime() - now
             }
 
