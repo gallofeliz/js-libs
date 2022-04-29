@@ -1,12 +1,15 @@
-/** @pattern ^[0-9]+[smhdw]$ */
+/** @pattern ^[0-9]+[smhdwSMHDW]$ */
 export type Duration = string
 
+// 5 weeks 7 days maybe later
 export function durationToSeconds(duration: Duration): number {
     const mapping = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400, 'w': 604800}
     return parseInt(duration.substring(0, duration.length - 1), 10) * mapping[duration.substr(-1).toLowerCase() as 's' | 'm' | 'h' | 'd' | 'w']
 }
 
-/** @pattern ^[0-9]+[kmg]$ */
+
+
+/** @pattern ^[0-9]+[kmgKMG]$ */
 export type Size = string
 
 export function sizeToKiB(size: Size): number {
