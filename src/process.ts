@@ -3,7 +3,7 @@ import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
 import { sizeToKiB } from './utils'
 
-interface ProcessConfig {
+export interface ProcessConfig {
     logger: Logger
     cmd: string
     args?: string[]
