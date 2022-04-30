@@ -139,6 +139,7 @@ export class Job extends EventEmitter {
         this.emit('running')
 
         try {
+            // TODO inject logger instead and abortSignal, no all this, and use global object to add futur keys
             const result = await this.fn(this)
 
             // Stupid Typescript ...

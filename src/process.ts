@@ -12,25 +12,23 @@ interface ProcessConfig {
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     killSignal?: NodeJS.Signals
+    abortSignal?: AbortSignal
 }
 
-export interface ProcessPromise<T> extends Promise<T> {
-    abort: () => void
+// I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
+function runProcess(config: ProcessConfig, asPromise: true): Promise<any>
+function runProcess(config: ProcessConfig, asPromise?: false): Process
+function runProcess(config: ProcessConfig, asPromise: boolean = false): Process | Promise<any> {
+    const proc = new Process(config)
+
+    if (!asPromise) {
+        return proc
+    }
+
+    return once(proc, 'finish').then(args => args[0])
 }
 
-export default function runProcess(config: ProcessConfig) {
-    return new Process(config)
-}
-
-export function runPromisedProcess<Output>(config: ProcessConfig) {
-    const process = new Process(config)
-
-    const promis: ProcessPromise<Output> = once(process, 'finish').then(r => r[0]) as any as ProcessPromise<Output>
-
-    promis.abort = () => process.abort()
-
-    return promis
-}
+export default runProcess
 
 export class Process extends EventEmitter {
     protected config: ProcessConfig
@@ -51,10 +49,10 @@ export class Process extends EventEmitter {
     }
 
     public abort() {
-        if (!this.process || this.process.exitCode !== null) {
+        if (!this.process || this.process.exitCode !== null || this.process.killed) {
             return
         }
-        this.logger.info('Killing')
+        this.logger.info('Abort Killing')
         //this.process.kill('SIGINT')
         this.abortController.abort()
     }
@@ -66,6 +64,12 @@ export class Process extends EventEmitter {
             env: this.config.env,
             cwd: this.config.cwd
         })
+
+        const onSignalAbort = () => this.abort()
+
+        if (this.config.abortSignal) {
+            this.config.abortSignal.addEventListener('abort', onSignalAbort, {once: true})
+        }
 
         const process = spawn(
             this.config.cmd,
@@ -109,17 +113,17 @@ export class Process extends EventEmitter {
             const [exitCode]: [number] = await once(process, 'exit') as [number]
             this.logger.info('exitCode ' + exitCode)
             if (exitCode > 0) {
-                return this.emit('error', new Error('Process error : ' + stderr))
+                throw new Error('Process error : ' + stderr)
             }
         } catch (e) {
             return this.emit('error', e)
+        } finally {
+            if (this.config.abortSignal) {
+                this.config.abortSignal.removeEventListener('abort', onSignalAbort)
+            }
         }
 
-        if (this.config.outputStream) {
-            return this.emit('finish')
-        }
-
-        this.emit('finish', this.getOutputData(stdout))
+        return this.emit('finish', !this.config.outputStream ? this.getOutputData(stdout) : undefined)
     }
 
     protected getOutputData(output: string) {
