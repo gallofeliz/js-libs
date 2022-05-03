@@ -1,37 +1,40 @@
-import { EventEmitter } from 'events'
+import { EventEmitter, once } from 'events'
 import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
 
-export type JobState = 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' | 'canceled'
+export type JobState = 'new' | 'running' | 'aborting' | ('done' | 'failed' | 'aborted' | 'canceled' /* = ended */)
+export type JobRunState = 'ready' | 'running' | 'ended'
+const runStateMapping: Record<JobState, JobRunState> = {
+    'new': 'ready',
+    'running': 'running',
+    'aborting': 'running',
+    'done': 'ended',
+    'failed': 'ended',
+    'aborted': 'ended',
+    'canceled': 'ended'
+}
 export type SemanticPriority =     'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
 export type OrderedPriority = number
 export type Priority = SemanticPriority | number
 
-interface SearchJobsCriteria {
-    operation?: string
-    someSubjects?: Record<string, string>
-    jobManagerState?: 'queue' | 'running' | 'archived'
-    state?: JobState
-}
-
-interface JobOpts {
-    trigger: string | null,
-    operation: string,
-    subjects: Record<string, string>,
-    fn: (job: Job) => Promise<any>,
-    logger: Logger,
+interface JobOpts<Identity> {
+    trigger?: string | null
+    identity: Identity
+    fn: JobFn
+    logger: Logger
     priority?: Priority
 }
 
-export class Job extends EventEmitter {
-    protected trigger: string | null
-    protected operation: string
-    protected subjects: Record<string, string>
+type JobFn = (args: {logger: Logger, abortSignal: AbortSignal}) => Promise<any>
+
+export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter {
+    protected identity: Identity
     protected priority: Priority
-    protected fn: (job: Job) => Promise<any>
+    protected fn: JobFn
     protected state: JobState = 'new'
-    protected result: Promise<any>
+    protected result?: Result
+    protected error?: Error
     protected uuid: string = uuid4()
     protected createdAt: Date = new Date
     protected startedAt?: Date
@@ -41,30 +44,20 @@ export class Job extends EventEmitter {
     protected logger: Logger
     protected runLogs: object[] = []
     protected warnings: object[] = []
+    protected abortController: AbortController = new AbortController
 
-    constructor({ trigger, operation, subjects, fn, priority = 'normal', logger }: JobOpts) {
+    constructor({ trigger, identity, fn, priority = 'normal', logger }: JobOpts<Identity>) {
         super()
 
-        this.trigger = trigger
-        this.operation = operation
-        this.subjects = subjects
+        this.identity = identity
         this.priority = priority
         this.fn = fn
-        this.result = new Promise((resolve, reject) => {
-            this.resolve = resolve
-            this.reject = reject
-        })
 
         this.logger = logger.child({
             job: {
                 uuid: this.uuid,
-                operation: this.operation,
-                subjects: this.subjects
+                identity: this.identity
             }
-        })
-
-        this.logger.info('Job creation', {
-            jobState: this.state
         })
     }
 
@@ -72,28 +65,20 @@ export class Job extends EventEmitter {
         return this.state
     }
 
+    public getRunState(): JobRunState {
+        return runStateMapping[this.state]
+    }
+
     public getPriority() {
         return this.priority
-    }
-
-    public getTrigger() {
-        return this.trigger
-    }
-
-    public getLogger() {
-        return this.logger
     }
 
     public getUuid() {
         return this.uuid
     }
 
-    public getOperation() {
-        return this.operation
-    }
-
-    public getSubjects() {
-        return this.subjects
+    public getIdentity() {
+        return this.identity
     }
 
     public getCreatedAt() {
@@ -106,6 +91,26 @@ export class Job extends EventEmitter {
 
     public getEndedAt() {
         return this.endedAt
+    }
+
+    public getWarnings() {
+        return this.warnings
+    }
+
+    public getResult(): Result {
+        if (this.state !== 'done') {
+            throw new Error('Result only available on done job')
+        }
+
+        return this.result!
+    }
+
+    public getError(): Error {
+        if (this.state !== 'failed') {
+            throw new Error('Error only available on failed job')
+        }
+
+        return this.error!
     }
 
     public async run() {
@@ -138,111 +143,102 @@ export class Job extends EventEmitter {
         })
         this.emit('running')
 
+        let result: any = undefined
+        let error: Error | undefined = undefined
+
         try {
-            // TODO inject logger instead and abortSignal, no all this, and use global object to add futur keys
-            const result = await this.fn(this)
-
-            // Stupid Typescript ...
-            if ((this.state as string) === 'aborting') {
-                throw new Error('Aborted')
-            }
-
-            this.resolve!(result)
-            this.state = 'success'
-            this.logger.info('Success :)', {
-                jobState: this.state
+            result = await this.fn({
+                logger: this.logger,
+                abortSignal: this.abortController.signal
             })
-            this.emit('success')
         } catch (e) {
-            this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
-            this.logger.error('failure', {
-                jobState: this.state,
-                error: e
-            })
-            this.reject!(e as Error)
-            this.emit(this.state)
+            error = e as Error
+        } finally {
+            this.logger.off('log', runningLoggerListener)
+            this.endedAt = new Date
         }
 
-        this.logger.off('log', runningLoggerListener)
-
-        this.endedAt = new Date
+        if ((this.state as JobState) === 'aborting') {
+            error = error || new Error('Aborted')
+            this.state = 'aborted'
+            this.logger.error('Aborted', {
+                jobState: this.state
+            })
+            this.emit('aborted')
+            this.emit('error', error)
+        } else if (error) {
+            this.state = 'failed'
+            this.error = error
+            this.logger.error('Failed (error)', {
+                jobState: this.state,
+                error
+            })
+            this.emit('failed', error)
+            this.emit('error', error)
+        } else {
+            this.result = result
+            this.state = 'done'
+            this.logger.info('Done :)', {
+                jobState: this.state
+            })
+            this.emit('done', this.result)
+        }
 
         this.emit('ended')
-
-        this.removeAllListeners()
-
-        return this.getResult()
-    }
-
-    public async getResult() {
-        return this.result
     }
 
     public getRunLogs() {
         return this.runLogs
     }
 
-    public abort() {
-        if (this.state !== 'running') {
-            return
+    public abort(): void {
+        // Convenience
+        if (this.state === 'new') {
+            return this.cancel()
         }
 
-        if (this.listenerCount('abort') === 0) {
-            throw new Error('Abort not handled')
+        if (this.state !== 'running') {
+            return
         }
 
         this.state = 'aborting'
         this.logger.info('Requested abort', {
             jobState: this.state
         })
+
         this.emit('abort')
+        this.abortController.abort()
     }
 
-    public cancel() {
+    public cancel(): void {
+        // Convenience
+        if (this.state === 'running') {
+            return this.abort()
+        }
+
         if (this.state !== 'new') {
-            throw new Error('Unable to cancel a non-new job')
+            return
         }
 
         this.state = 'canceled'
         this.logger.info('Requested cancel', {
             jobState: this.state
         })
-        // Avoid crashing node !
-        this.getResult().catch(e => {})
-        this.reject!(new Error('Canceled'))
-        this.emit('canceled')
-        this.removeAllListeners()
-    }
 
-    public async getSummary({withRunLogs = false, withSuccessResult = false, withWarnings = false} = {}) {
-        return {
-            uuid: this.getUuid(),
-            createdAt: this.getCreatedAt(),
-            startedAt: this.getStartedAt(),
-            endedAt: this.getEndedAt(),
-            state: this.getState(),
-            priority: this.getPriority(),
-            trigger: this.getTrigger(),
-            operation: this.getOperation(),
-            subjects: this.getSubjects(),
-            warnings: withWarnings ? this.warnings : this.warnings.length,
-            ...this.getState() === 'failure' && { error: await (this.getResult().catch(e => e.toString())) },
-            ...this.getState() === 'success' && withSuccessResult && { result: await this.getResult() },
-            ...withRunLogs && { runLogs: this.getRunLogs() }
-        }
+        this.emit('canceled')
+        this.emit('ended')
+        this.emit('error', new Error('Canceled'))
     }
 }
 
-export class JobsManager {
-    protected queue: Job[] = []
-    protected running: Job[] = []
-    protected archived: Job[]
+export class JobsRunner {
+    protected queue: Job<any, any>[] = []
+    protected running: Job<any, any>[] = []
     protected started = false
     protected logger: Logger
 
-    public constructor(logger: Logger, archivedCount: number = 100) {
+    public constructor(logger: Logger) {
         this.logger = logger
-        this.archived = new Array(archivedCount)
     }
 
     public start() {
@@ -251,141 +247,120 @@ export class JobsManager {
         }
 
         this.started = true
-        this.runNext()
+        this.runNexts()
     }
 
-    public stop() {
+    public stop(clearRunning = true, clearQueue = false) {
         this.started = false
-        this.queue.forEach(job => job.cancel())
-        this.running.forEach(job => job.abort())
-    }
 
-    public getJobs(byStateCat?: true): {queue: Job[], running: Job[], archived: Job[]}
-    public getJobs(byStateCat: false): Job[]
-
-    public getJobs(byStateCat: boolean = true) {
-        return byStateCat // Fix Typescript boolean != true|false but not as I would like
-            ? this.searchJobs({} as SearchJobsCriteria, true)
-            : this.searchJobs({} as SearchJobsCriteria, false)
-    }
-
-    public searchJobs(criteria: SearchJobsCriteria, byStateCat?: true): {queue: Job[], running: Job[], archived: Job[]}
-    public searchJobs(criteria: SearchJobsCriteria, byStateCat: false): Job[]
-
-    public searchJobs(criteria: SearchJobsCriteria, byStateCat: boolean = true) {
-        function filterJobs(jobs: Job[]): Job[] {
-            if (Object.keys(_.omit(criteria, 'jobManagerState')).length === 0) {
-                return jobs
-            }
-
-            return jobs.filter(job => {
-                if (criteria.operation && job.getOperation() !== criteria.operation) {
-                    return false
-                }
-                if (criteria.someSubjects && !_.isEqual(criteria.someSubjects, _.pick(job.getSubjects(), Object.keys(criteria.someSubjects)))) {
-                    return false
-                }
-                if (criteria.state && job.getState() !== criteria.state) {
-                    return false
-                }
-
-                return true
-            })
+        if (clearQueue) {
+            this.clearQueue()
         }
 
-        const byStateCatJobs = {
-            queue: criteria.jobManagerState && criteria.jobManagerState !== 'queue' ? [] : filterJobs(this.queue),
-            running: criteria.jobManagerState && criteria.jobManagerState !== 'running' ? [] : filterJobs(this.running),
-            archived: criteria.jobManagerState && criteria.jobManagerState !== 'archived' ? [] : filterJobs(this.archived.filter(job => job))
+        if (clearRunning) {
+            this.clearRunning()
         }
-
-        return byStateCat ? byStateCatJobs : _.flatten(Object.values(byStateCatJobs))
     }
 
-    public getJob(uuid: string) {
-        const job = this.getJobs(false).find(job => job.getUuid() === uuid)
-
-        if (!job) {
-            throw new Error('Unknow job ' + uuid)
-        }
-
-        return job
+    public clearQueue() {
+        ;[...this.queue].forEach(job => job.cancel())
     }
 
-    public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
+    public clearRunning() {
+        ;[...this.running].forEach(job => job.abort())
+    }
+
+    public getQueuingJobs() {
+        return this.queue
+    }
+
+    public getRunningJobs() {
+        return this.running
+    }
+
+    public run(job: Job<any, any>, getResult?: false): void
+    public run<Result>(job: Job<any, Result>, getResult: true): Promise<Result>
+
+    public run<Result>(job: Job<any, Result>, getResult: boolean = false) {
         if (job.getState() !== 'new') {
             throw new Error('Job already started')
         }
 
         if (this.queue.includes(job)) {
-            return
-        }
-
-        if (!canBeDuplicate) {
-            const equalJob = this.queue.find(inQueueJob => {
-                return inQueueJob.getOperation() === job.getOperation()
-                    && _.isEqual(inQueueJob.getSubjects(), job.getSubjects())
-            })
-
-            if (equalJob) {
-                if (equalJob.getPriority() === job.getPriority()) {
-                    this.logger.info('Not queueing job because of duplicate', { job: job.getUuid() })
-                    job.cancel()
-                    //this.archive(job) Don't archive because has never been added ! Avoid pollution in archived
-                    return
-                }
-                this.queue.splice(this.queue.indexOf(equalJob), 1)
-                this.logger.info('Canceling previous job on duplicate', { job: job.getUuid(), previousJob: job.getUuid() })
-                equalJob.cancel()
-                this.archive(equalJob)
-            }
+            throw new Error('Job already in queue')
         }
 
         this.logger.info('Queueing job', { job: job.getUuid() })
 
-        job.once('running', () => {
-            this.queue.splice(this.queue.indexOf(job), 1)
-            this.running.push(job)
-        })
+        this.queue.splice(this.computeJobQueuePosition(job), 0, job)
 
-        job.once('canceled', () => {
-            this.queue.splice(this.queue.indexOf(job), 1)
-            this.archive(job)
-        })
+        const onRunning = () => {
+            // In case of job is run outside this runner
+            if (this.queue.includes(job)) {
+                this.queue.splice(this.queue.indexOf(job), 1)
+                this.running.push(job)
+            }
+        }
+
+        job.once('running', onRunning)
 
         job.once('ended', () => {
-            this.running.splice(this.running.indexOf(job), 1)
-            this.archive(job)
-        })
+            job.off('running', onRunning)
 
-        if (this.started && job.getPriority() === 'immediate' && this.queue.length > 0) {
-            this.run(job)
-        } else {
-            let index = 0
-            for (const jjob of this.queue) {
-                if (this.isPrioSup(job, jjob)) {
-                    break
-                }
-                index++
+            // Don't listen others events, we only want to remove the job
+            if (this.queue.includes(job)) {
+                this.queue.splice(this.queue.indexOf(job), 1)
+            } else {
+                this.running.splice(this.running.indexOf(job), 1)
             }
 
-            this.queue.splice(index, 0, job)
-            this.runNext()
-        }
+            this.runNexts()
+        })
+
+        this.runNexts()
 
         if (getResult) {
-            return job.getResult()
+            return once(job, 'done').then(eventArgs => eventArgs[0])
+        }
+    }
+
+    protected computeJobQueuePosition(job: Job<any, any>) {
+        let index = 0
+        for (const jjob of this.queue) {
+            if (this.isPrioSup(job, jjob)) {
+                break
+            }
+            index++
         }
 
-        job.getResult().catch(() => {})
+        return index
     }
 
-    protected archive(job: Job) {
-        this.archived.pop()
-        this.archived.unshift(job)
+    protected runNexts() {
+        if (!this.started) {
+            return
+        }
+
+        for (const job of [...this.queue]) {
+            if (job.getPriority() === 'immediate') {
+                this._run(job)
+            } else {
+                if (this.running.length === 0) {
+                    this._run(job)
+                }
+                break
+            }
+        }
     }
 
-    protected isPrioSup(jobA: Job, jobB: Job): boolean {
+    protected _run(job: Job<any, any>) {
+        // Slot reservation
+        this.queue.splice(this.queue.indexOf(job), 1)
+        this.running.push(job)
+        job.run()
+    }
+
+    protected isPrioSup(jobA: Job<any, any>, jobB: Job<any, any>): boolean {
         let priorityA = jobA.getPriority()
         let priorityB = jobB.getPriority()
 
@@ -434,29 +409,5 @@ export class JobsManager {
         }
 
         return priorityA > priorityB
-    }
-
-    protected runNext() {
-        if (!this.started) {
-            return
-        }
-
-        if (this.queue.length === 0) {
-            return
-        }
-
-        if (this.running.length > 0) {
-            return
-        }
-
-        this.run(this.queue[0] as Job)
-    }
-
-    protected async run(job: Job) {
-        try {
-            await job.run()
-        } catch(e) {}
-
-        this.runNext()
     }
 }

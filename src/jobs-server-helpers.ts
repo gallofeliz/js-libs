@@ -1,7 +1,7 @@
 import { Job } from './jobs'
 import { Request, Response } from 'express'
 
-export function realtimeLogs({job, req, res, fromBeginning = true}: {job: Job, req: Request, res: Response, fromBeginning?: boolean}) {
+export function realtimeLogs({job, req, res, fromBeginning = true}: {job: Job<any, any>, req: Request, res: Response, fromBeginning?: boolean}) {
     res.set('Content-Type', 'application/x-ndjson')
 
     if (fromBeginning) {
