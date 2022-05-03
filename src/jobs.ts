@@ -31,7 +31,6 @@ interface JobOpts {
 type JobFn = (args: {logger: Logger, abortSignal: AbortSignal}) => Promise<any>
 
 export class Job<Result> extends EventEmitter {
-    protected trigger: string | null
     protected identity: JobIdentity
     protected priority: Priority
     protected fn: JobFn
@@ -52,7 +51,6 @@ export class Job<Result> extends EventEmitter {
     constructor({ trigger, identity, fn, priority = 'normal', logger }: JobOpts) {
         super()
 
-        this.trigger = trigger || null
         this.identity = identity
         this.priority = priority
         this.fn = fn
@@ -62,10 +60,6 @@ export class Job<Result> extends EventEmitter {
                 uuid: this.uuid,
                 identity: this.identity
             }
-        })
-
-        this.logger.info('Job creation', {
-            jobState: this.state
         })
     }
 
@@ -79,10 +73,6 @@ export class Job<Result> extends EventEmitter {
 
     public getPriority() {
         return this.priority
-    }
-
-    public getTrigger() {
-        return this.trigger
     }
 
     public getUuid() {
@@ -193,6 +183,7 @@ export class Job<Result> extends EventEmitter {
             this.logger.info('Done :)', {
                 jobState: this.state
             })
+            this.emit('done', this.result)
         }
 
         this.emit('ended')
@@ -237,6 +228,7 @@ export class Job<Result> extends EventEmitter {
         })
 
         this.emit('canceled')
+        this.emit('ended')
         this.emit('error', new Error('Canceled'))
     }
 }
@@ -257,13 +249,27 @@ export class JobsRunner {
         }
 
         this.started = true
-        this.runNext()
+        this.runNexts()
     }
 
-    public stop() {
+    public stop(clearRunning = true, clearQueue = false) {
         this.started = false
-        this.queue.forEach(job => job.cancel())
-        this.running.forEach(job => job.abort())
+
+        if (clearQueue) {
+            this.clearQueue()
+        }
+
+        if (clearRunning) {
+            this.clearRunning()
+        }
+    }
+
+    public clearQueue() {
+        ;[...this.queue].forEach(job => job.cancel())
+    }
+
+    public clearRunning() {
+        ;[...this.running].forEach(job => job.abort())
     }
 
     public getQueuingJobs() {
@@ -288,11 +294,35 @@ export class JobsRunner {
 
         this.logger.info('Queueing job', { job: job.getUuid() })
 
+        this.queue.splice(this.computeJobQueuePosition(job), 0, job)
 
+        const onRunning = () => {
+            // In case of job is run outside this runner
+            if (this.queue.includes(job)) {
+                this.queue.splice(this.queue.indexOf(job), 1)
+                this.running.push(job)
+            }
+        }
 
+        job.once('running', onRunning)
+
+        job.once('ended', () => {
+            job.off('running', onRunning)
+
+            // Don't listen others events, we only want to remove the job
+            if (this.queue.includes(job)) {
+                this.queue.splice(this.queue.indexOf(job), 1)
+            } else {
+                this.running.splice(this.running.indexOf(job), 1)
+            }
+
+            this.runNexts()
+        })
+
+        this.runNexts()
 
         if (getResult) {
-            return once(job, 'done')
+            return once(job, 'done').then(eventArgs => eventArgs[0])
         }
     }
 
@@ -308,48 +338,31 @@ export class JobsRunner {
         return index
     }
 
-    public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
-
-
-
-
-        job.once('running', () => {
-            this.queue.splice(this.queue.indexOf(job), 1)
-            this.running.push(job)
-        })
-
-        job.once('canceled', () => {
-            this.queue.splice(this.queue.indexOf(job), 1)
-            this.archive(job)
-        })
-
-        job.once('ended', () => {
-            this.running.splice(this.running.indexOf(job), 1)
-            this.archive(job)
-        })
-
-        if (this.started && job.getPriority() === 'immediate' && this.queue.length > 0) {
-            this.run(job)
-        } else {
-
-
-            this.queue.splice(index, 0, job)
-            this.runNext()
+    protected runNexts() {
+        if (!this.started) {
+            return
         }
 
-        if (getResult) {
-            return job.getResult()
+        for (const job of [...this.queue]) {
+            if (job.getPriority() === 'immediate') {
+                this._run(job)
+            } else {
+                if (this.running.length === 0) {
+                    this._run(job)
+                }
+                break
+            }
         }
-
-        job.getResult().catch(() => {})
     }
 
-    protected archive(job: Job) {
-        this.archived.pop()
-        this.archived.unshift(job)
+    protected _run(job: Job<any>) {
+        // Slot reservation
+        this.queue.splice(this.queue.indexOf(job), 1)
+        this.running.push(job)
+        job.run()
     }
 
-    protected isPrioSup(jobA: Job, jobB: Job): boolean {
+    protected isPrioSup(jobA: Job<any>, jobB: Job<any>): boolean {
         let priorityA = jobA.getPriority()
         let priorityB = jobB.getPriority()
 
@@ -398,29 +411,5 @@ export class JobsRunner {
         }
 
         return priorityA > priorityB
-    }
-
-    protected runNext() {
-        if (!this.started) {
-            return
-        }
-
-        if (this.queue.length === 0) {
-            return
-        }
-
-        if (this.running.length > 0) {
-            return
-        }
-
-        this._run(this.queue[0] as Job)
-    }
-
-    protected async _run(job: Job) {
-        try {
-            await job.run()
-        } catch(e) {}
-
-        this.runNext()
     }
 }
