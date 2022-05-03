@@ -18,11 +18,9 @@ export type SemanticPriority =     'immediate' | 'next' | 'superior' | 'normal' 
 export type OrderedPriority = number
 export type Priority = SemanticPriority | number
 
-export type JobIdentity = NonNullable<any>
-
-interface JobOpts {
+interface JobOpts<Identity> {
     trigger?: string | null
-    identity: JobIdentity
+    identity: Identity
     fn: JobFn
     logger: Logger
     priority?: Priority
@@ -30,8 +28,8 @@ interface JobOpts {
 
 type JobFn = (args: {logger: Logger, abortSignal: AbortSignal}) => Promise<any>
 
-export class Job<Result> extends EventEmitter {
-    protected identity: JobIdentity
+export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter {
+    protected identity: Identity
     protected priority: Priority
     protected fn: JobFn
     protected state: JobState = 'new'
@@ -48,7 +46,7 @@ export class Job<Result> extends EventEmitter {
     protected warnings: object[] = []
     protected abortController: AbortController = new AbortController
 
-    constructor({ trigger, identity, fn, priority = 'normal', logger }: JobOpts) {
+    constructor({ trigger, identity, fn, priority = 'normal', logger }: JobOpts<Identity>) {
         super()
 
         this.identity = identity
@@ -234,8 +232,8 @@ export class Job<Result> extends EventEmitter {
 }
 
 export class JobsRunner {
-    protected queue: Job<any>[] = []
-    protected running: Job<any>[] = []
+    protected queue: Job<any, any>[] = []
+    protected running: Job<any, any>[] = []
     protected started = false
     protected logger: Logger
 
@@ -280,10 +278,10 @@ export class JobsRunner {
         return this.running
     }
 
-    public run(job: Job<any>, getResult?: false): void
-    public run<Result>(job: Job<Result>, getResult: true): Promise<Result>
+    public run(job: Job<any, any>, getResult?: false): void
+    public run<Result>(job: Job<any, Result>, getResult: true): Promise<Result>
 
-    public run<Result>(job: Job<Result>, getResult: boolean = false) {
+    public run<Result>(job: Job<any, Result>, getResult: boolean = false) {
         if (job.getState() !== 'new') {
             throw new Error('Job already started')
         }
@@ -326,7 +324,7 @@ export class JobsRunner {
         }
     }
 
-    protected computeJobQueuePosition(job: Job<any>) {
+    protected computeJobQueuePosition(job: Job<any, any>) {
         let index = 0
         for (const jjob of this.queue) {
             if (this.isPrioSup(job, jjob)) {
@@ -355,14 +353,14 @@ export class JobsRunner {
         }
     }
 
-    protected _run(job: Job<any>) {
+    protected _run(job: Job<any, any>) {
         // Slot reservation
         this.queue.splice(this.queue.indexOf(job), 1)
         this.running.push(job)
         job.run()
     }
 
-    protected isPrioSup(jobA: Job<any>, jobB: Job<any>): boolean {
+    protected isPrioSup(jobA: Job<any, any>, jobB: Job<any, any>): boolean {
         let priorityA = jobA.getPriority()
         let priorityB = jobB.getPriority()
 
