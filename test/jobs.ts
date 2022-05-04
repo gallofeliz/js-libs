@@ -3,7 +3,7 @@ import {Job,/*, JobsManager*/ JobsRunner} from '../src/jobs'
 import { once } from 'events'
 const logger = createLogger('info')
 
-const jobRunner = new JobsRunner(logger)
+const jobRunner = new JobsRunner({logger, concurrency: 2})
 
 ;(async () => {
 
@@ -43,7 +43,7 @@ const jobRunner = new JobsRunner(logger)
         } catch (e) {
             console.error('An error occured : ', e)
         }
-    }, 100)
+    }, 50)
 
     setTimeout(() => {
         console.log('Starting jobRunner')
@@ -57,6 +57,6 @@ const jobRunner = new JobsRunner(logger)
          setTimeout(() => {
              console.log({ queue: jobRunner.getQueuingJobs(), running: jobRunner.getRunningJobs() })
          }, 200)
-    }, 20000)
+    }, 10000)
 
 })()

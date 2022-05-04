@@ -14,7 +14,7 @@ const runStateMapping: Record<JobState, JobRunState> = {
     'aborted': 'ended',
     'canceled': 'ended'
 }
-export type SemanticPriority =     'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
+export type SemanticPriority = 'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
 export type OrderedPriority = number
 export type Priority = SemanticPriority | number
 
@@ -63,6 +63,10 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
 
     public getState() {
         return this.state
+    }
+
+    public isRunnableConcurrently(job: Job<Identity, any>) {
+        return true
     }
 
     public getRunState(): JobRunState {
@@ -236,9 +240,11 @@ export class JobsRunner {
     protected running: Job<any, any>[] = []
     protected started = false
     protected logger: Logger
+    protected concurrency: number
 
-    public constructor(logger: Logger) {
+    public constructor({logger, concurrency = 1}: {logger: Logger, concurrency?: number}) {
         this.logger = logger
+        this.concurrency = concurrency
     }
 
     public start() {
@@ -336,6 +342,10 @@ export class JobsRunner {
         return index
     }
 
+    protected isJobRunnableConcurrentlyWithRunningJobs(job: Job<any, any>) {
+        return _.every(this.running, runningJob => runningJob.isRunnableConcurrently(job))
+    }
+
     protected runNexts() {
         if (!this.started) {
             return
@@ -343,12 +353,16 @@ export class JobsRunner {
 
         for (const job of [...this.queue]) {
             if (job.getPriority() === 'immediate') {
-                this._run(job)
-            } else {
-                if (this.running.length === 0) {
+                if (this.isJobRunnableConcurrentlyWithRunningJobs(job)) {
                     this._run(job)
                 }
-                break
+            } else {
+                if (this.running.length >= this.concurrency) {
+                    break
+                }
+                if (this.isJobRunnableConcurrentlyWithRunningJobs(job)) {
+                    this._run(job)
+                }
             }
         }
     }
