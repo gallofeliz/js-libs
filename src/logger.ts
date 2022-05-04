@@ -54,6 +54,10 @@ export default function createLogger(level: LogLevel): Logger {
         transports: [new transports.Console(), new transports.Stream({ stream })]
     })
 
+    // logger child share the same instance, this is a shitty design for me
+    // Should be good to find another solution to capture child logs
+    logger.setMaxListeners(100)
+
     stream._write = (obj, encoding, next) => {
         logger.emit('log', obj)
 

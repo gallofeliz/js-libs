@@ -2,6 +2,7 @@ import { EventEmitter, once } from 'events'
 import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
+import { Duration, durationToSeconds } from './utils'
 
 export type JobState = 'new' | 'running' | 'aborting' | ('done' | 'failed' | 'aborted' | 'canceled' /* = ended */)
 export type JobRunState = 'ready' | 'running' | 'ended'
@@ -39,8 +40,6 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
     protected createdAt: Date = new Date
     protected startedAt?: Date
     protected endedAt?: Date
-    protected resolve?: (data: any) => void
-    protected reject?: (error: Error) => void
     protected logger: Logger
     protected runLogs: object[] = []
     protected warnings: object[] = []
@@ -232,6 +231,80 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
         this.emit('canceled')
         this.emit('ended')
         this.emit('error', new Error('Canceled'))
+    }
+}
+
+
+export class JobsRegistry {
+    protected maxNbEnded?: number
+    protected maxEndDateDurationSeconds?: number
+    // protected readyOrRunningJobs: Job<any, any>[] = []
+    // protected endedJobs: Job<any, any>[] = []
+    protected jobs: Job<any, any>[] = []
+    //protected nextRemoveExceedEndedTimeout?: NodeJS.Timeout
+    protected logger: Logger
+
+    constructor({ maxNbEnded, maxEndDateDuration, logger }: { maxNbEnded?: number, maxEndDateDuration?: Duration, logger:Logger }) {
+        this.maxEndDateDurationSeconds = maxEndDateDuration ? durationToSeconds(maxEndDateDuration) : undefined
+        this.maxNbEnded = maxNbEnded
+        this.logger = logger
+    }
+
+    // public addJob(job: Job<any, any>) {
+    //     if (job.getRunState() === 'ended') {
+    //         const olderIndex = this.endedJobs.findIndex((job2) => job2.getEndedAt()! > job.getEndedAt()!)
+    //         if (!olderIndex) {
+    //             this.endedJobs.push(job)
+    //         } else {
+    //             this.endedJobs.splice(olderIndex, 0, job)
+    //         }
+    //         this.removeExceedEnded()
+    //     } else {
+    //         this.readyOrRunningJobs.push(job)
+    //         job.once('ended', () => this.removeExceedEnded())
+    //     }
+    // }
+
+    public addJob(job: Job<any, any>) {
+        this.jobs.push(job)
+        this.logger.info('Registering job', { job: job.getUuid() })
+
+        if (job.getRunState() === 'ended') {
+            this.removeExceedEnded()
+        } else {
+            job.once('ended', () => this.removeExceedEnded())
+        }
+    }
+
+    public getJobs() {
+        this.removeExceedEnded()
+        return this.jobs
+    }
+
+    protected removeExceedEnded() {
+        const endedJobs = _.sortBy(this.jobs.filter((job) => job.getRunState() === 'ended'), (job) => job.getEndedAt())
+        const jobsToRemove: Job<any, any>[] = []
+
+        if (this.maxNbEnded) {
+            jobsToRemove.push(..._.dropRight(endedJobs, this.maxNbEnded))
+        }
+
+        if (this.maxEndDateDurationSeconds) {
+            const nowTime = (new Date).getTime()
+            jobsToRemove.push(..._.takeWhile(endedJobs, (job) => (job.getEndedAt()!.getTime() + this.maxEndDateDurationSeconds! * 1000) < nowTime))
+
+            // const stillEndedJobs = _.without(endedJobs, ...jobsToRemove)
+            // if (stillEndedJobs.length > 0) {
+            //     const nextTimeout = stillEndedJobs[0].getEndedAt()!.getTime() + this.maxEndDateDurationSeconds * 1000 - (new Date).getTime()
+            // }
+        }
+
+        if (!jobsToRemove.length) {
+            return
+        }
+
+        this.logger.info('Cleaning jobs', { jobs: jobsToRemove.map(j => j.getUuid()) })
+        this.jobs = _.without(this.jobs, ...jobsToRemove)
     }
 }
 

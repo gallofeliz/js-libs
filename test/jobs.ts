@@ -1,12 +1,38 @@
 import createLogger from '../src/logger'
-import {Job,/*, JobsManager*/ JobsRunner} from '../src/jobs'
+import {Job,/*, JobsManager*/ JobsRunner, JobsRegistry} from '../src/jobs'
 import { once } from 'events'
 const logger = createLogger('info')
 
 const jobRunner = new JobsRunner({logger, concurrency: 2})
 
 ;(async () => {
+    function createJob() {
+        return new Job({
+            logger,
+            identity: Math.random(),
+            priority: 'normal',
+            async fn(){
+                await new Promise(resolve => setTimeout(resolve, Math.round(Math.random() * 20000)))
+            }
+        })
+    }
 
+    const registry = new JobsRegistry({maxNbEnded: 50, maxEndDateDuration: '10s', logger})
+
+    for (let i=0; i < 20; i++) {
+        const job = createJob()
+        job.run()
+        registry.addJob(job)
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 15000))
+
+    console.log(registry.getJobs())
+
+})()
+
+;(async () => {
+    return
     function createJob() {
         const identity = Math.random()
         const priority = (() => {
@@ -15,7 +41,6 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
         })()
 
         return new Job({
-            trigger: 'manual',
             identity: identity,
             priority: 'normal',
             logger,
