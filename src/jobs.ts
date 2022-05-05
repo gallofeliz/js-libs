@@ -107,6 +107,17 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
         return this.result!
     }
 
+    public async toPromise(): Promise<Result> {
+        if (this.getRunState() === 'ended') {
+            if (this.state === 'done') {
+                return this.result!
+            }
+            throw this.error!
+        }
+
+        return once(this, 'done').then(eventArgs => eventArgs[0])
+    }
+
     public getError(): Error {
         if (this.state !== 'failed') {
             throw new Error('Error only available on failed job')
@@ -398,7 +409,7 @@ export class JobsRunner {
         this.runNexts()
 
         if (getResult) {
-            return once(job, 'done').then(eventArgs => eventArgs[0])
+            return job.toPromise()
         }
     }
 
