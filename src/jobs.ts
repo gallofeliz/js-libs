@@ -19,8 +19,7 @@ export type SemanticPriority = 'immediate' | 'next' | 'superior' | 'normal' | 'i
 export type OrderedPriority = number
 export type Priority = SemanticPriority | number
 
-interface JobOpts<Identity> {
-    trigger?: string | null
+export interface JobOpts<Identity> {
     identity: Identity
     fn: JobFn
     logger: Logger
@@ -45,7 +44,7 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
     protected warnings: object[] = []
     protected abortController: AbortController = new AbortController
 
-    constructor({ trigger, identity, fn, priority = 'normal', logger }: JobOpts<Identity>) {
+    constructor({ identity, fn, priority = 'normal', logger }: JobOpts<Identity>) {
         super()
 
         this.identity = identity
