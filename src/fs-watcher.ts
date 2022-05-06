@@ -17,7 +17,10 @@ export default class FsWatcher {
     protected waitPending: WaitPending | null = null
     protected logger: Logger
 
-    constructor(fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration) {
+    constructor(
+        { fn, logger, paths, ignore, waitMin, waitMax }:
+        { fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration }
+    ) {
         this.fn = fn
         this.paths = paths
         this.logger = logger

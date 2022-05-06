@@ -16,7 +16,10 @@ export default class FnScheduler {
     protected timeoutNextDate: Date | null = null
     protected logger: Logger
 
-    constructor(id: any, fn: Function, logger: Logger, schedules: Schedule[], runOnStart: boolean) {
+    constructor(
+        {id, fn, logger, schedules, runOnStart}:
+        {id: any, fn: Function, logger: Logger, schedules: Schedule[], runOnStart: boolean}
+    ) {
         this.id = id
         this.fn = fn
         this.schedules = schedules
