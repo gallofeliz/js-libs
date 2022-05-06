@@ -283,7 +283,12 @@ export class JobsRegistry<RegisteredJob extends Job> {
         if (job.getRunState() === 'ended') {
             this.removeExceedEnded()
         } else {
-            job.once('ended', () => this.removeExceedEnded())
+            const onError = () => {} // Registry avoid to need to catch ;)
+            job.once('error', onError)
+            job.once('ended', () => {
+                job.off('error', onError)
+                this.removeExceedEnded()
+            })
         }
     }
 
