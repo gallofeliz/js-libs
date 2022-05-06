@@ -15,22 +15,22 @@ const runStateMapping: Record<JobState, JobRunState> = {
     'aborted': 'ended',
     'canceled': 'ended'
 }
-export type SemanticPriority = 'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
-export type OrderedPriority = number
-export type Priority = SemanticPriority | number
+export type SemanticJobPriority = 'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
+export type OrderedJobPriority = number
+export type JobPriority = SemanticJobPriority | OrderedJobPriority
 
 export interface JobOpts<Identity> {
     identity: Identity
     fn: JobFn
     logger: Logger
-    priority?: Priority
+    priority?: JobPriority
 }
 
 type JobFn = (args: {logger: Logger, abortSignal: AbortSignal}) => Promise<any>
 
 export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter {
     protected identity: Identity
-    protected priority: Priority
+    protected priority: JobPriority
     protected fn: JobFn
     protected state: JobState = 'new'
     protected result?: Result
