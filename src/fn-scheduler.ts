@@ -7,9 +7,9 @@ export type Cron = string
 
 export type Schedule = Duration | Cron
 
-export default class FnScheduler {
+export default class FnScheduler<Identity = any> {
+    protected id: Identity
     protected fn: Function
-    protected id: any
     protected schedules: Schedule[]
     protected runOnStart: boolean
     protected timeoutId: NodeJS.Timeout | null = null
@@ -18,7 +18,7 @@ export default class FnScheduler {
 
     constructor(
         {id, fn, logger, schedules, runOnStart}:
-        {id: any, fn: Function, logger: Logger, schedules: Schedule[], runOnStart: boolean}
+        {id?: any, fn: Function, logger: Logger, schedules: Schedule[], runOnStart: boolean}
     ) {
         this.id = id
         this.fn = fn
@@ -80,7 +80,7 @@ export default class FnScheduler {
             await this.fn()
         } catch (e) {
             // Thanks to async/await I can cheat with no promise ahah
-            this.logger.error('Fn call fails', {fn: this.fn.toString(), error: e})
+            this.logger.error('Fn call fails', {id: this.id, error: e})
         }
     }
 }

@@ -9,7 +9,7 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
     function createJob() {
         return new Job({
             logger,
-            identity: Math.random(),
+            id: Math.random(),
             priority: 'normal',
             async fn(){
                 await new Promise(resolve => setTimeout(resolve, Math.round(Math.random() * 20000)))
@@ -42,7 +42,7 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
         })()
 
         return new Job({
-            identity: identity,
+            id: identity,
             priority: 'normal',
             logger,
             async fn({logger}) {

@@ -7,8 +7,9 @@ interface WaitPending {
     timeout: NodeJS.Timeout
 }
 
-export default class FsWatcher {
+export default class FsWatcher<Identity = any> {
     protected fn: Function
+    protected id: Identity
     protected paths: string[]
     protected ignore: string[]
     protected waitMinMs: number | null
@@ -18,15 +19,20 @@ export default class FsWatcher {
     protected logger: Logger
 
     constructor(
-        { fn, logger, paths, ignore, waitMin, waitMax }:
-        { fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration }
+        { id, fn, logger, paths, ignore, waitMin, waitMax }:
+        { id?: any, fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration }
     ) {
+        this.id = id
         this.fn = fn
         this.paths = paths
         this.logger = logger
         this.ignore = ignore || []
         this.waitMinMs = waitMin ? durationToSeconds(waitMin) * 1000 : null
         this.waitMaxMs = waitMax ? durationToSeconds(waitMax) * 1000 : this.waitMinMs
+    }
+
+    public getId() {
+        return this.id
     }
 
     public start() {
@@ -68,7 +74,7 @@ export default class FsWatcher {
             await this.fn()
         } catch (e) {
             // Thanks to async/await I can cheat with no promise ahah
-            this.logger.error('Fn call fails', {fn: this.fn.toString(), error: e})
+            this.logger.error('Fn call fails', {id: this.id, error: e})
         }
     }
 

@@ -20,7 +20,7 @@ export type OrderedJobPriority = number
 export type JobPriority = SemanticJobPriority | OrderedJobPriority
 
 export interface JobOpts<Identity> {
-    identity: Identity
+    id: Identity
     fn: JobFn
     logger: Logger
     priority?: JobPriority
@@ -28,8 +28,8 @@ export interface JobOpts<Identity> {
 
 type JobFn = (args: {logger: Logger, abortSignal: AbortSignal}) => Promise<any>
 
-export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter {
-    protected identity: Identity
+export class Job<Identity = any, Result = any> extends EventEmitter {
+    protected id: Identity
     protected priority: JobPriority
     protected fn: JobFn
     protected state: JobState = 'new'
@@ -44,17 +44,17 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
     protected warnings: object[] = []
     protected abortController: AbortController = new AbortController
 
-    constructor({ identity, fn, priority = 'normal', logger }: JobOpts<Identity>) {
+    constructor({ id, fn, priority = 'normal', logger }: JobOpts<Identity>) {
         super()
 
-        this.identity = identity
+        this.id = id
         this.priority = priority
         this.fn = fn
 
         this.logger = logger.child({
             job: {
                 uuid: this.uuid,
-                identity: this.identity
+                id: this.id
             }
         })
     }
@@ -79,8 +79,8 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
         return this.uuid
     }
 
-    public getIdentity() {
-        return this.identity
+    public getId() {
+        return this.id
     }
 
     public getCreatedAt() {
@@ -245,7 +245,7 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
 }
 
 
-export class JobsRegistry<RegisteredJob extends Job<any, any>> {
+export class JobsRegistry<RegisteredJob extends Job> {
     protected maxNbEnded?: number
     protected maxEndDateDurationSeconds?: number
     // protected readyOrRunningJobs: Job<any, any>[] = []
@@ -331,7 +331,7 @@ export class JobsRegistry<RegisteredJob extends Job<any, any>> {
     }
 }
 
-export class JobsRunner<RunnedJob extends Job<any, any>> {
+export class JobsRunner<RunnedJob extends Job> {
     protected queue: RunnedJob[] = []
     protected running: RunnedJob[] = []
     protected started = false
