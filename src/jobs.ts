@@ -245,12 +245,12 @@ export class Job<Identity extends NonNullable<any>, Result> extends EventEmitter
 }
 
 
-export class JobsRegistry {
+export class JobsRegistry<RegisteredJob extends Job<any, any>> {
     protected maxNbEnded?: number
     protected maxEndDateDurationSeconds?: number
     // protected readyOrRunningJobs: Job<any, any>[] = []
     // protected endedJobs: Job<any, any>[] = []
-    protected jobs: Job<any, any>[] = []
+    protected jobs: RegisteredJob[] = []
     //protected nextRemoveExceedEndedTimeout?: NodeJS.Timeout
     protected logger: Logger
 
@@ -275,7 +275,7 @@ export class JobsRegistry {
     //     }
     // }
 
-    public addJob(job: Job<any, any>) {
+    public addJob(job: RegisteredJob) {
         this.jobs.push(job)
         this.logger.info('Registering job', { job: job.getUuid() })
 
@@ -291,9 +291,22 @@ export class JobsRegistry {
         return this.jobs
     }
 
+    public getJobsByRunState(): Record<JobRunState, RegisteredJob[]> {
+        return {
+            ready: [],
+            running: [],
+            ended: [],
+            ..._.groupBy(this.getJobs(), (job) => job.getRunState())
+        }
+    }
+
+    public getJob(uuid: string) {
+        return this.getJobs().find(job => job.getUuid() === uuid)
+    }
+
     protected removeExceedEnded() {
         const endedJobs = _.sortBy(this.jobs.filter((job) => job.getRunState() === 'ended'), (job) => job.getEndedAt())
-        const jobsToRemove: Job<any, any>[] = []
+        const jobsToRemove: RegisteredJob[] = []
 
         if (this.maxNbEnded) {
             jobsToRemove.push(..._.dropRight(endedJobs, this.maxNbEnded))
@@ -318,9 +331,9 @@ export class JobsRegistry {
     }
 }
 
-export class JobsRunner {
-    protected queue: Job<any, any>[] = []
-    protected running: Job<any, any>[] = []
+export class JobsRunner<RunnedJob extends Job<any, any>> {
+    protected queue: RunnedJob[] = []
+    protected running: RunnedJob[] = []
     protected started = false
     protected logger: Logger
     protected concurrency: number
@@ -367,10 +380,10 @@ export class JobsRunner {
         return this.running
     }
 
-    public run(job: Job<any, any>, getResult?: false): void
-    public run<Result>(job: Job<any, Result>, getResult: true): Promise<Result>
+    public run(job: RunnedJob, getResult?: false): void
+    public run<Result>(job: RunnedJob, getResult: true): Promise<Result>
 
-    public run<Result>(job: Job<any, Result>, getResult: boolean = false) {
+    public run<Result>(job: RunnedJob, getResult: boolean = false) {
         if (job.getState() !== 'new') {
             throw new Error('Job already started')
         }
@@ -413,7 +426,7 @@ export class JobsRunner {
         }
     }
 
-    protected computeJobQueuePosition(job: Job<any, any>) {
+    protected computeJobQueuePosition(job: RunnedJob) {
         let index = 0
         for (const jjob of this.queue) {
             if (this.isPrioSup(job, jjob)) {
@@ -425,7 +438,7 @@ export class JobsRunner {
         return index
     }
 
-    protected isJobRunnableConcurrentlyWithRunningJobs(job: Job<any, any>) {
+    protected isJobRunnableConcurrentlyWithRunningJobs(job: RunnedJob) {
         return _.every(this.running, runningJob => runningJob.isRunnableConcurrently(job))
     }
 
@@ -450,14 +463,14 @@ export class JobsRunner {
         }
     }
 
-    protected _run(job: Job<any, any>) {
+    protected _run(job: RunnedJob) {
         // Slot reservation
         this.queue.splice(this.queue.indexOf(job), 1)
         this.running.push(job)
         job.run()
     }
 
-    protected isPrioSup(jobA: Job<any, any>, jobB: Job<any, any>): boolean {
+    protected isPrioSup(jobA: RunnedJob, jobB: RunnedJob): boolean {
         let priorityA = jobA.getPriority()
         let priorityB = jobB.getPriority()
 

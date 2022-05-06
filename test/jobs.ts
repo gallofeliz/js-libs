@@ -28,6 +28,7 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
     await new Promise(resolve => setTimeout(resolve, 15000))
 
     console.log(registry.getJobs())
+    console.log(registry.getJobsByRunState())
 
 })()
 
