@@ -26,7 +26,7 @@ export interface JobOpts<Identity> {
     priority?: JobPriority
 }
 
-type JobFn = (args: {logger: Logger, abortSignal: AbortSignal}) => Promise<any>
+type JobFn = (args: {logger: Logger, abortSignal: AbortSignal, job: Job}) => Promise<any>
 
 export class Job<Identity = any, Result = any> extends EventEmitter {
     protected id: Identity
@@ -162,7 +162,8 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         try {
             result = await this.fn({
                 logger: this.logger,
-                abortSignal: this.abortController.signal
+                abortSignal: this.abortController.signal,
+                job: this
             })
         } catch (e) {
             error = e as Error
