@@ -24,6 +24,9 @@ export interface JobOpts<Identity> {
     fn: JobFn
     logger: Logger
     priority?: JobPriority
+    allocatedTime?: Duration
+    abortOnAllocatedTime?: boolean
+    duplicable?: boolean
 }
 
 type JobFn = (args: {logger: Logger, abortSignal: AbortSignal, job: Job}) => Promise<any>
@@ -44,8 +47,11 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     protected warnings: object[] = []
     protected abortController: AbortController = new AbortController
     protected abortCancelReason?: string
+    protected allocatedTime?: Duration
+    protected abortOnAllocatedTime: boolean
+    protected duplicable: boolean
 
-    constructor({ id, fn, priority = 'normal', logger }: JobOpts<Identity>) {
+    constructor({ id, fn, priority = 'normal', logger, allocatedTime, abortOnAllocatedTime, duplicable }: JobOpts<Identity>) {
         super()
 
         this.id = id
@@ -58,14 +64,29 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
                 id: this.id
             }
         })
+
+        this.allocatedTime = allocatedTime
+        this.abortOnAllocatedTime = abortOnAllocatedTime || false
+        this.duplicable = duplicable || false
+    }
+
+    public isDuplicable() {
+        return this.duplicable
     }
 
     public duplicate() {
+        if (!this.duplicable) {
+            throw new Error('Not duplicable (potential side effects)')
+        }
+
         return new Job({
             id: this.id,
             priority: this.priority,
             fn: this.fn,
-            logger: this.logger
+            logger: this.logger,
+            allocatedTime: this.allocatedTime,
+            abortOnAllocatedTime: this.abortOnAllocatedTime,
+            duplicable: this.duplicable
         })
     }
 
@@ -242,6 +263,17 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         let result: any = undefined
         let error: Error | undefined = undefined
 
+        let allocatedTimeTimeout
+
+        if (this.allocatedTime) {
+            allocatedTimeTimeout = setTimeout(() => {
+                if (this.abortOnAllocatedTime) {
+                    this.abort('timeout')
+                }
+                this.emit('allocated-time-reached')
+            }, durationToSeconds(this.allocatedTime) * 1000)
+        }
+
         try {
             result = await this.fn({
                 logger: this.logger,
@@ -251,6 +283,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         } catch (e) {
             error = e as Error
         } finally {
+            allocatedTimeTimeout && clearTimeout(allocatedTimeTimeout)
             this.logger.off('log', runningLoggerListener)
             this.endedAt = new Date
         }
@@ -431,10 +464,16 @@ export class JobsRunner<RunnedJob extends Job> {
     protected started = false
     protected logger: Logger
     protected concurrency: number
+    protected allocatedTimeReached: RunnedJob[] = []
+    protected handleAllocatedTimesReaches: boolean
 
-    public constructor({logger, concurrency = 1}: {logger: Logger, concurrency?: number}) {
+    public constructor(
+        {logger, concurrency = 1, handleAllocatedTimesReaches}:
+        {logger: Logger, concurrency?: number, handleAllocatedTimesReaches?: boolean }
+    ) {
         this.logger = logger
         this.concurrency = concurrency
+        this.handleAllocatedTimesReaches = handleAllocatedTimesReaches || false
     }
 
     public start() {
@@ -509,12 +548,23 @@ export class JobsRunner<RunnedJob extends Job> {
             }
         }
 
+        const onJobReachAllocatedTime = () => {
+            this.allocatedTimeReached.push(job)
+            this.handleAllocatedTimesReached()
+        }
+
         job.once('running', onRunning)
         job.on('prioritize', onPrioritize)
+        job.once('allocated-time-reached', onJobReachAllocatedTime)
 
         job.once('ended', () => {
             job.off('running', onRunning)
             job.off('prioritize', onPrioritize)
+            job.off('allocated-time-reached', onJobReachAllocatedTime)
+
+            if (this.allocatedTimeReached.includes(job)) {
+                this.allocatedTimeReached.splice(this.allocatedTimeReached.indexOf(job), 1)
+            }
 
             // Don't listen others events, we only want to remove the job
             if (this.queue.includes(job)) {
@@ -527,10 +577,46 @@ export class JobsRunner<RunnedJob extends Job> {
         })
 
         this.runNexts()
+        this.handleAllocatedTimesReached()
 
         if (getResult) {
             return job.toPromise()
         }
+    }
+
+    protected handleAllocatedTimesReached() {
+        if (!this.handleAllocatedTimesReaches) {
+            return
+        }
+        /*
+            It is hard to develop this logic
+            For example : is it logic to interrupt a high priority job for a low priority job ?
+            Should we abort a job only for higher or equal priority ?
+        */
+
+        const nbCleanable = this.allocatedTimeReached.length
+        const nbSlotsToFreeToRunNewJob = this.running.length - this.concurrency + 1
+        const nbQueuingJobs = this.queue.filter(job => job.getPriority() !== 'on-idle').length
+
+        if (!nbQueuingJobs || nbSlotsToFreeToRunNewJob > nbCleanable) {
+            return
+        }
+
+        const nbJobsToAbort = Math.min(this.running.length - this.concurrency + Math.max(nbQueuingJobs, this.concurrency), nbCleanable)
+
+        const jobsToAbort = this.allocatedTimeReached.slice(0, nbJobsToAbort)
+
+        jobsToAbort.forEach(job => job.abort('allocatedTime exceeds, others jobs queuing'))
+
+        this.runNexts()
+
+        jobsToAbort.forEach(job => {
+            if (!job.isDuplicable() || job.listenerCount('done') > 0) {
+                return
+            }
+            this.logger.info('Duplicate job and rerun for postponing')
+            this.run(job.duplicate() as RunnedJob, false)
+        })
     }
 
     protected computeJobQueuePosition(job: RunnedJob) {
