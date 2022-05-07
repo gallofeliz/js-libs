@@ -6,6 +6,35 @@ const logger = createLogger('info')
 const jobRunner = new JobsRunner({logger, concurrency: 2})
 
 ;(async () => {
+
+    const job = new Job({
+        logger,
+        id: null,
+        priority: 'normal',
+        async fn() {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+
+            throw new Error('BADABOOOOM')
+        }
+    })
+
+    const registry2 = new JobsRegistry({logger})
+
+    registry2.addJob(job)
+
+    try {
+        job.run()
+
+        //await once(job, 'ended')
+        console.log('cooool')
+    } catch {
+        console.error('pas cool')
+    }
+
+
+
+
+    return
     function createJob() {
         return new Job({
             logger,

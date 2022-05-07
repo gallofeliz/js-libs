@@ -43,6 +43,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     protected runLogs: object[] = []
     protected warnings: object[] = []
     protected abortController: AbortController = new AbortController
+    protected abortCancelReason?: string
 
     constructor({ id, fn, priority = 'normal', logger }: JobOpts<Identity>) {
         super()
@@ -59,8 +60,24 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         })
     }
 
+    public duplicate() {
+        return new Job({
+            id: this.id,
+            priority: this.priority,
+            fn: this.fn,
+            logger: this.logger
+        })
+    }
+
     public getState() {
         return this.state
+    }
+
+    public getAbortOrCancelReason() {
+        if (!['aborting', 'aborted', 'canceled'].includes(this.state)) {
+            throw new Error('Job not aborted nor canceled')
+        }
+        return this.abortCancelReason
     }
 
     public isRunnableConcurrently(job: Job<Identity, any>) {
@@ -73,6 +90,72 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
 
     public getPriority() {
         return this.priority
+    }
+
+    public prioritize(priority: JobPriority) {
+        if (priority === this.priority) {
+            return
+        }
+        this.priority = priority
+        this.emit('prioritize', this.priority)
+    }
+
+    public static isPriorityHigherThan(priorityA: JobPriority, priorityB: JobPriority): boolean {
+        if (priorityA === priorityB) {
+            return false
+        }
+
+        if (priorityA === 'immediate') {
+            return true
+        }
+
+        // Can be optimized
+
+        if (priorityA === 'next' && priorityB != 'immediate') {
+            return true
+        }
+
+        if (priorityA === 'on-idle') {
+            return false
+        }
+
+        if (priorityB === 'immediate' || priorityB === 'next') {
+            return false
+        }
+
+        if (priorityB === 'on-idle') {
+            return true
+        }
+
+        if (priorityA === 'normal') {
+            priorityA = 0
+        }
+
+        if (priorityB === 'normal') {
+            priorityB = 0
+        }
+
+        if (priorityA === 'superior' && priorityB != 'superior') {
+            return true
+        }
+
+        if (priorityA === 'inferior' && priorityB != 'inferior') {
+            return false
+        }
+
+        if (priorityB === 'superior' && priorityA != 'superior') {
+            return false
+        }
+
+        if (priorityB === 'inferior' && priorityA != 'inferior') {
+            return true
+        }
+
+        return priorityA > priorityB
+    }
+
+    public isPriorityHigherThan(otherJob: Job): boolean {
+        return Job.isPriorityHigherThan(this.getPriority(), otherJob.getPriority())
     }
 
     public getUuid() {
@@ -173,10 +256,12 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         }
 
         if ((this.state as JobState) === 'aborting') {
-            error = error || new Error('Aborted')
+            error = error || new Error('Aborted : ' + this.abortCancelReason)
             this.state = 'aborted'
+            this.error = error
             this.logger.error('Aborted', {
-                jobState: this.state
+                jobState: this.state,
+                reason: this.abortCancelReason
             })
             this.emit('aborted')
             this.emit('error', error)
@@ -205,10 +290,10 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         return this.runLogs
     }
 
-    public abort(): void {
+    public abort(reason: string): void {
         // Convenience
         if (this.state === 'new') {
-            return this.cancel()
+            return this.cancel(reason)
         }
 
         if (this.state !== 'running') {
@@ -217,17 +302,18 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
 
         this.state = 'aborting'
         this.logger.info('Requested abort', {
-            jobState: this.state
+            jobState: this.state,
+            reason
         })
-
+        this.abortCancelReason = reason
         this.emit('abort')
         this.abortController.abort()
     }
 
-    public cancel(): void {
+    public cancel(reason: string): void {
         // Convenience
         if (this.state === 'running') {
-            return this.abort()
+            return this.abort(reason)
         }
 
         if (this.state !== 'new') {
@@ -236,12 +322,14 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
 
         this.state = 'canceled'
         this.logger.info('Requested cancel', {
-            jobState: this.state
+            jobState: this.state,
+            reason
         })
-
+        this.abortCancelReason = reason
+        this.error = new Error('Canceled : ' + reason)
         this.emit('canceled')
         this.emit('ended')
-        this.emit('error', new Error('Canceled'))
+        this.emit('error', this.error)
     }
 }
 
@@ -362,20 +450,20 @@ export class JobsRunner<RunnedJob extends Job> {
         this.started = false
 
         if (clearQueue) {
-            this.clearQueue()
+            this.clearQueue('JobsRunner stop')
         }
 
         if (clearRunning) {
-            this.clearRunning()
+            this.clearRunning('JobsRunner stop')
         }
     }
 
-    public clearQueue() {
-        ;[...this.queue].forEach(job => job.cancel())
+    public clearQueue(reason: string) {
+        ;[...this.queue].forEach(job => job.cancel(reason))
     }
 
-    public clearRunning() {
-        ;[...this.running].forEach(job => job.abort())
+    public clearRunning(reason: string) {
+        ;[...this.running].forEach(job => job.abort(reason))
     }
 
     public getQueuingJobs() {
@@ -402,6 +490,17 @@ export class JobsRunner<RunnedJob extends Job> {
 
         this.queue.splice(this.computeJobQueuePosition(job), 0, job)
 
+        const onPrioritize = () => {
+            if (!this.queue.includes(job)) { // == new
+                return
+            }
+
+            this.logger.info('Job priority changed ; update ...', { job: job.getUuid() })
+
+            this.queue.splice(this.queue.indexOf(job), 1)
+            this.queue.splice(this.computeJobQueuePosition(job), 0, job)
+        }
+
         const onRunning = () => {
             // In case of job is run outside this runner
             if (this.queue.includes(job)) {
@@ -411,9 +510,11 @@ export class JobsRunner<RunnedJob extends Job> {
         }
 
         job.once('running', onRunning)
+        job.on('prioritize', onPrioritize)
 
         job.once('ended', () => {
             job.off('running', onRunning)
+            job.off('prioritize', onPrioritize)
 
             // Don't listen others events, we only want to remove the job
             if (this.queue.includes(job)) {
@@ -435,7 +536,7 @@ export class JobsRunner<RunnedJob extends Job> {
     protected computeJobQueuePosition(job: RunnedJob) {
         let index = 0
         for (const jjob of this.queue) {
-            if (this.isPrioSup(job, jjob)) {
+            if (job.isPriorityHigherThan(jjob)) {
                 break
             }
             index++
@@ -474,56 +575,5 @@ export class JobsRunner<RunnedJob extends Job> {
         this.queue.splice(this.queue.indexOf(job), 1)
         this.running.push(job)
         job.run()
-    }
-
-    protected isPrioSup(jobA: RunnedJob, jobB: RunnedJob): boolean {
-        let priorityA = jobA.getPriority()
-        let priorityB = jobB.getPriority()
-
-        if (priorityA === 'immediate') {
-            return true
-        }
-
-        if (priorityA === 'next' && priorityB != 'immediate') {
-            return true
-        }
-
-        if (priorityA === 'on-idle') {
-            return false
-        }
-
-        if (priorityB === 'immediate' || priorityB === 'next') {
-            return false
-        }
-
-        if (priorityB === 'on-idle') {
-            return true
-        }
-
-        if (priorityA === 'normal') {
-            priorityA = 0
-        }
-
-        if (priorityB === 'normal') {
-            priorityB = 0
-        }
-
-        if (priorityA === 'superior' && priorityB != 'superior') {
-            return true
-        }
-
-        if (priorityA === 'inferior' && priorityB != 'inferior') {
-            return false
-        }
-
-        if (priorityB === 'superior' && priorityA != 'superior') {
-            return false
-        }
-
-        if (priorityB === 'inferior' && priorityA != 'inferior') {
-            return true
-        }
-
-        return priorityA > priorityB
     }
 }
