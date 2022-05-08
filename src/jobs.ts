@@ -113,7 +113,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         return this.priority
     }
 
-    public prioritize(priority: JobPriority) {
+    public prioritizeTo(priority: JobPriority) {
         if (priority === this.priority) {
             return
         }
@@ -121,33 +121,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         this.emit('prioritize', this.priority)
     }
 
-    public static isPriorityHigherThan(priorityA: JobPriority, priorityB: JobPriority): boolean {
-        if (priorityA === priorityB) {
-            return false
-        }
-
-        if (priorityA === 'immediate') {
-            return true
-        }
-
-        // Can be optimized
-
-        if (priorityA === 'next' && priorityB != 'immediate') {
-            return true
-        }
-
-        if (priorityA === 'on-idle') {
-            return false
-        }
-
-        if (priorityB === 'immediate' || priorityB === 'next') {
-            return false
-        }
-
-        if (priorityB === 'on-idle') {
-            return true
-        }
-
+    public static comparePriority(priorityA: JobPriority, priorityB: JobPriority): -1 | 0 | 1 {
         if (priorityA === 'normal') {
             priorityA = 0
         }
@@ -156,27 +130,53 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             priorityB = 0
         }
 
+        if (priorityA === priorityB) {
+            return 0
+        }
+
+        if (priorityA === 'immediate') {
+            return 1
+        }
+
+        // Can be optimized
+
+        if (priorityA === 'next' && priorityB != 'immediate') {
+            return 1
+        }
+
+        if (priorityA === 'on-idle') {
+            return -1
+        }
+
+        if (priorityB === 'immediate' || priorityB === 'next') {
+            return -1
+        }
+
+        if (priorityB === 'on-idle') {
+            return 1
+        }
+
         if (priorityA === 'superior' && priorityB != 'superior') {
-            return true
+            return 1
         }
 
         if (priorityA === 'inferior' && priorityB != 'inferior') {
-            return false
+            return -1
         }
 
         if (priorityB === 'superior' && priorityA != 'superior') {
-            return false
+            return -1
         }
 
         if (priorityB === 'inferior' && priorityA != 'inferior') {
-            return true
+            return 1
         }
 
-        return priorityA > priorityB
+        return priorityA > priorityB ? 1 : -1
     }
 
-    public isPriorityHigherThan(otherJob: Job): boolean {
-        return Job.isPriorityHigherThan(this.getPriority(), otherJob.getPriority())
+    public comparePriority(otherJob: Job) {
+        return Job.comparePriority(this.getPriority(), otherJob.getPriority())
     }
 
     public getUuid() {
@@ -622,7 +622,8 @@ export class JobsRunner<RunnedJob extends Job> {
     protected computeJobQueuePosition(job: RunnedJob) {
         let index = 0
         for (const jjob of this.queue) {
-            if (job.isPriorityHigherThan(jjob)) {
+            const compare = job.comparePriority(jjob)
+            if (compare === 1 || compare === 0 && job.getCreatedAt() < jjob.getCreatedAt()) {
                 break
             }
             index++

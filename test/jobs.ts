@@ -7,6 +7,25 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
 
 ;(async () => {
 
+    const joby = new Job({
+        logger,
+        id: null,
+        priority: 'normal',
+        async fn() {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+
+            return 52
+        }
+    })
+
+    jobRunner.start()
+
+    console.log(await jobRunner.run(joby, true))
+
+    jobRunner.stop()
+
+    return
+
     const job = new Job({
         logger,
         id: null,

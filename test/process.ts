@@ -5,6 +5,17 @@ import { once, EventEmitter } from 'events'
 
 ;(async() => {
 
+    const result42 = await runProcess({
+        cmd: 'echo',
+        args: ['-n', '{"name": "me"}\n'],
+        logger,
+        outputType: 'json'
+    }, true)
+
+    console.log(result42.name)
+
+    return
+
     const result = await runProcess({
         cmd: 'ls',
         logger,
