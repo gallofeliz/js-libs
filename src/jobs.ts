@@ -453,6 +453,38 @@ export interface JobsCollection<RegisteredJob extends Job> {
     findOne(query: JobsCollectionQuery, sort?: JobsCollectionSort): Promise<RegisteredJob | undefined>
 }
 
+function resolveQuery(query: JobsCollectionQuery): JobsCollectionQuery {
+    if (query.runState as JobRunState) {
+        const states = _.invertBy(runStateMapping)[query.runState]
+
+        query = _.cloneDeep(query)
+        delete query.runState
+
+        // Strange but to avoid complex code
+        if (!query.$and) {
+            query.$and = [query]
+        }
+        query.$and.push({ state: { $in: states } })
+
+        // if (!query.state) {
+        //     query.state = { $in: states }
+        // } else {
+        //     if (query.$and) {
+        //         query.$and.push({ state: { $in: states } })
+        //     } else {
+        //         query = {
+        //             $and: [
+        //                 query,
+        //                 { state: { $in: states } }
+        //             ]
+        //         }
+        //     }
+        // }
+    }
+
+    return query
+}
+
 export class InMemoryJobsCollection<RegisteredJob extends Job> implements JobsCollection<RegisteredJob> {
     protected jobs: RegisteredJob[] = []
 
@@ -465,7 +497,7 @@ export class InMemoryJobsCollection<RegisteredJob extends Job> implements JobsCo
     }
 
     public async find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number) {
-        const cursor = new Query(query).find(this.jobs)
+        const cursor = new Query(resolveQuery(query)).find(this.jobs)
 
         if (sort) {
             cursor.sort(sort)
@@ -516,7 +548,7 @@ export class FilePersistedJobsCollection<RegisteredJob extends Job> implements J
 
     public async find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number) {
         const docs: object[] = await new Promise((resolve, reject) => {
-            const cursor = this.datastore.find(query)
+            const cursor = this.datastore.find(resolveQuery(query))
 
             if (sort) {
                 cursor.sort(sort)
