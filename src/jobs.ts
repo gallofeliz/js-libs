@@ -496,11 +496,11 @@ export class InMemoryJobsCollection<RegisteredJob extends Job> implements JobsCo
 }
 
 // Only for ended jobs :)
-export class NeDBPersisteJobsCollection<RegisteredJob extends Job> implements JobsCollection<RegisteredJob> {
+export class FilePersistedJobsCollection<RegisteredJob extends Job> implements JobsCollection<RegisteredJob> {
     protected datastore: Datastore
 
-    constructor(datastore: Datastore) {
-        this.datastore = datastore
+    constructor(filePath: string) {
+        this.datastore = new Datastore({filename: filePath, autoload: true})
     }
 
     public async insert(job: RegisteredJob) {

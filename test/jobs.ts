@@ -1,5 +1,5 @@
 import createLogger from '../src/logger'
-import {Job,/*, JobsManager*/ JobsRunner, NeDBPersisteJobsCollection, InMemoryJobsCollection} from '../src/jobs'
+import {Job,/*, JobsManager*/ JobsRunner, InMemoryJobsCollection} from '../src/jobs'
 import { once } from 'events'
 
 import Datastore from 'nedb'
