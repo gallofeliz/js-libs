@@ -462,7 +462,7 @@ function resolveQuery(query: JobsCollectionQuery): JobsCollectionQuery {
 
         // Strange but to avoid complex code
         if (!query.$and) {
-            query.$and = [query]
+            query = { $and: [query] }
         }
         query.$and.push({ state: { $in: states } })
 

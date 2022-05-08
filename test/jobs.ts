@@ -33,7 +33,7 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
 
     coll.insert(joby)
 
-    console.log((await coll.find({'id.operation': 'special'})))
+    console.log((await coll.find({runState: 'ready'})))
 })()
 
 ;(async () => {
