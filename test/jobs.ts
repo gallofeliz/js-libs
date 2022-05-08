@@ -1,5 +1,5 @@
 import createLogger from '../src/logger'
-import {Job,/*, JobsManager*/ JobsRunner, JobsRegistry, NeDBPersisteJobsCollection} from '../src/jobs'
+import {Job,/*, JobsManager*/ JobsRunner, NeDBPersisteJobsCollection, InMemoryJobsCollection} from '../src/jobs'
 import { once } from 'events'
 
 import Datastore from 'nedb'
@@ -26,86 +26,14 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
         }
     })
 
-    const db = new Datastore({filename: './test.db', autoload: true})
-    const neDBPersisteJobsCollection = new NeDBPersisteJobsCollection(db)
+    //const db = new Datastore({filename: './test.db', autoload: true})
+    //const neDBPersisteJobsCollection = new NeDBPersisteJobsCollection(db)
 
-    const jobsRegistry = new JobsRegistry({maxNbEnded: 2, logger, jobsEndedCollection: neDBPersisteJobsCollection})
+    const coll = new InMemoryJobsCollection
 
-    jobsRegistry.addJob(joby)
+    coll.insert(joby)
 
-    joby.run()
-    try {
-        await joby.toPromise()
-    } catch {}
-
-    console.log('---')
-
-    const stored = JSON.stringify(joby.toJSON())
-
-    console.log(Job.fromJSON(JSON.parse(stored)))
-
-    return
-
-    jobRunner.start()
-
-    console.log(await jobRunner.run(joby, true))
-
-    jobRunner.stop()
-
-    return
-
-    const job = new Job({
-        logger,
-        id: null,
-        priority: 'normal',
-        async fn() {
-            await new Promise(resolve => setTimeout(resolve, 1000))
-
-            throw new Error('BADABOOOOM')
-        }
-    })
-
-    const registry2 = new JobsRegistry({logger})
-
-    registry2.addJob(job)
-
-    try {
-        job.run()
-
-        //await once(job, 'ended')
-        console.log('cooool')
-    } catch {
-        console.error('pas cool')
-    }
-
-
-
-
-    return
-    function createJob() {
-        return new Job({
-            logger,
-            id: Math.random(),
-            priority: 'normal',
-            async fn(){
-                await new Promise(resolve => setTimeout(resolve, Math.round(Math.random() * 20000)))
-            }
-        })
-    }
-
-    const registry = new JobsRegistry({maxNbEnded: 50, maxEndDateDuration: '10s', logger})
-
-    for (let i=0; i < 20; i++) {
-        const job = createJob()
-        job.run()
-        registry.addJob(job)
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 15000))
-
-    console.log(registry.getJobs())
-    console.log(registry.getJobsByRunState())
-
+    console.log((await coll.find({'id.operation': 'special'})))
 })()
 
 ;(async () => {

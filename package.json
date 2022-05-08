@@ -34,6 +34,7 @@
     "express-basic-auth": "^1.2.1",
     "htpasswd-verify": "github:gallofeliz/htpasswd-verify",
     "lodash": "^4.17.21",
+    "mingo": "^6.0.6",
     "morgan": "^1.10.0",
     "nedb": "^1.8.0",
     "tsconfig-loader": "^1.1.0",

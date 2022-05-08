@@ -3,7 +3,7 @@ import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
 import { Duration, durationToSeconds } from './utils'
-
+import { Query } from 'mingo'
 import Datastore from 'nedb'
 import { promisify } from 'util'
 
@@ -442,13 +442,60 @@ interface JobsCollectionQuery {
     [filter: string]: any
 }
 
+interface JobsCollectionSort {
+    [filter: string]: 1 | -1
+}
+
 interface JobsCollection<RegisteredJob extends Job> {
     insert(job: RegisteredJob): Promise<void>
     remove(query: JobsCollectionQuery): Promise<void>
-    find(query: JobsCollectionQuery): Promise<RegisteredJob[]>
-    findOne(query: JobsCollectionQuery): Promise<RegisteredJob | undefined>
+    find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number): Promise<RegisteredJob[]>
+    findOne(query: JobsCollectionQuery, sort?: JobsCollectionSort): Promise<RegisteredJob | undefined>
 }
 
+export class InMemoryJobsCollection<RegisteredJob extends Job> implements JobsCollection<RegisteredJob> {
+    protected jobs: RegisteredJob[] = []
+
+    public async insert(job: RegisteredJob) {
+        if (this.jobs.includes(job)) {
+            return
+        }
+
+        this.jobs.push(job)
+    }
+
+    public async find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number) {
+        const cursor = new Query(query).find(this.jobs)
+
+        if (sort) {
+            cursor.sort(sort)
+        }
+
+        if (skip) {
+            cursor.skip(skip)
+        }
+
+        if (limit) {
+            cursor.limit(limit)
+        }
+
+        return cursor.all() as RegisteredJob[]
+    }
+
+    public async remove(query: JobsCollectionQuery) {
+        const jobs = await this.find(query)
+
+        jobs.forEach(job => this.jobs.splice(this.jobs.indexOf(job), 1))
+    }
+
+    public async findOne(query: JobsCollectionQuery, sort?: JobsCollectionSort) {
+        const founds = await this.find(query, sort, 1)
+
+        return founds.length ? founds[0] as RegisteredJob : undefined
+    }
+}
+
+// Only for ended jobs :)
 export class NeDBPersisteJobsCollection<RegisteredJob extends Job> implements JobsCollection<RegisteredJob> {
     protected datastore: Datastore
 
@@ -457,6 +504,9 @@ export class NeDBPersisteJobsCollection<RegisteredJob extends Job> implements Jo
     }
 
     public async insert(job: RegisteredJob) {
+        if (await this.findOne({uuid: job.getUuid()})) {
+            return
+        }
         await new Promise((resolve, reject) => this.datastore.insert(job.toJSON(), (e) => e && reject(e) || resolve(undefined)))
     }
 
@@ -464,159 +514,32 @@ export class NeDBPersisteJobsCollection<RegisteredJob extends Job> implements Jo
          await new Promise((resolve, reject) => this.datastore.remove(query, { multi: true }, (e) => e && reject(e) || resolve(undefined)))
     }
 
-    public async find(query: JobsCollectionQuery) {
-        const docs: object[] = await new Promise((resolve, reject) => this.datastore.find(query).exec((e, docs) => e && reject(e) || resolve(docs)))
+    public async find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number) {
+        const docs: object[] = await new Promise((resolve, reject) => {
+            const cursor = this.datastore.find(query)
+
+            if (sort) {
+                cursor.sort(sort)
+            }
+
+            if (limit) {
+                cursor.limit(limit)
+            }
+
+            if (skip) {
+                cursor.skip(skip)
+            }
+
+            cursor.exec((e, docs) => e && reject(e) || resolve(docs))
+        })
 
         return docs.map(doc => Job.fromJSON(doc))
     }
 
-    public async findOne(query: JobsCollectionQuery) {
-        const doc: object = await new Promise((resolve, reject) => this.datastore.findOne(query, (e, doc) => e && reject(e) || resolve(doc)))
+    public async findOne(query: JobsCollectionQuery, sort?: JobsCollectionSort) {
+        const founds = await this.find(query, sort, 1)
 
-        return doc ? Job.fromJSON(doc) : undefined
-    }
-}
-/*
-There is something bad in this implementation. We need to refactor this part
-*/
-export class JobsRegistry<RegisteredJob extends Job> {
-    protected maxNbEnded?: number
-    protected maxEndDateDurationSeconds?: number
-    // protected readyOrRunningJobs: Job<any, any>[] = []
-    // protected endedJobs: Job<any, any>[] = []
-    protected jobs: RegisteredJob[] = []
-    //protected nextRemoveExceedEndedTimeout?: NodeJS.Timeout
-    protected logger: Logger
-    protected jobsEndedCollection?: JobsCollection<RegisteredJob>
-
-    constructor(
-        { maxNbEnded, maxEndDateDuration, logger, jobsEndedCollection }:
-        { maxNbEnded?: number, maxEndDateDuration?: Duration, logger:Logger, jobsEndedCollection?: JobsCollection<RegisteredJob> }
-    ) {
-        this.maxEndDateDurationSeconds = maxEndDateDuration ? durationToSeconds(maxEndDateDuration) : undefined
-        this.maxNbEnded = maxNbEnded
-        this.logger = logger
-        this.jobsEndedCollection = jobsEndedCollection
-
-        this.loadEndedJobs()
-    }
-
-    protected async loadEndedJobs() {
-        if (!this.jobsEndedCollection) {
-            return
-        }
-
-        try {
-            this.jobs.push(...await this.jobsEndedCollection.find({}))
-        } catch (e) {
-            this.logger.error('Unable to load ended jobs')
-        }
-    }
-
-    protected async persistEndedJob(job: RegisteredJob) {
-        if (!this.jobsEndedCollection) {
-            return
-        }
-
-        try {
-            await this.jobsEndedCollection.insert(job)
-        } catch (e) {
-            this.logger.error('Unable persist ended job')
-        }
-    }
-
-    protected async unpersistEndedJobs(jobs: RegisteredJob[]) {
-        if (!this.jobsEndedCollection) {
-            return
-        }
-
-        try {
-            await this.jobsEndedCollection.remove({ uuid: { $in : jobs.map(j => j.getUuid()) } })
-        } catch (e) {
-            this.logger.error('Unable to unpersist ended job')
-        }
-    }
-
-    // public addJob(job: Job<any, any>) {
-    //     if (job.getRunState() === 'ended') {
-    //         const olderIndex = this.endedJobs.findIndex((job2) => job2.getEndedAt()! > job.getEndedAt()!)
-    //         if (!olderIndex) {
-    //             this.endedJobs.push(job)
-    //         } else {
-    //             this.endedJobs.splice(olderIndex, 0, job)
-    //         }
-    //         this.removeExceedEnded()
-    //     } else {
-    //         this.readyOrRunningJobs.push(job)
-    //         job.once('ended', () => this.removeExceedEnded())
-    //     }
-    // }
-
-    public addJob(job: RegisteredJob) {
-        if (this.jobs.includes(job)) {
-            return
-        }
-
-        this.jobs.push(job)
-        this.logger.info('Registering job', { job: job.getUuid() })
-
-        if (job.getRunState() === 'ended') {
-            this.persistEndedJob(job)
-            this.removeExceedEnded()
-        } else {
-            const onError = () => {} // Registry avoid to need to catch ;)
-            job.once('error', onError)
-            job.once('ended', () => {
-                job.off('error', onError)
-                this.persistEndedJob(job)
-                this.removeExceedEnded()
-            })
-        }
-    }
-
-    public getJobs() {
-        this.removeExceedEnded()
-        return this.jobs
-    }
-
-    public getJobsByRunState(): Record<JobRunState, RegisteredJob[]> {
-        return {
-            ready: [],
-            running: [],
-            ended: [],
-            ..._.groupBy(this.getJobs(), (job) => job.getRunState())
-        }
-    }
-
-    public getJob(uuid: string) {
-        return this.getJobs().find(job => job.getUuid() === uuid)
-    }
-
-    protected removeExceedEnded() {
-        const endedJobs = _.sortBy(this.jobs.filter((job) => job.getRunState() === 'ended'), (job) => job.getEndedAt())
-        const jobsToRemove: RegisteredJob[] = []
-
-        if (this.maxNbEnded) {
-            jobsToRemove.push(..._.dropRight(endedJobs, this.maxNbEnded))
-        }
-
-        if (this.maxEndDateDurationSeconds) {
-            const nowTime = (new Date).getTime()
-            jobsToRemove.push(..._.takeWhile(endedJobs, (job) => (job.getEndedAt()!.getTime() + this.maxEndDateDurationSeconds! * 1000) < nowTime))
-
-            // const stillEndedJobs = _.without(endedJobs, ...jobsToRemove)
-            // if (stillEndedJobs.length > 0) {
-            //     const nextTimeout = stillEndedJobs[0].getEndedAt()!.getTime() + this.maxEndDateDurationSeconds * 1000 - (new Date).getTime()
-            // }
-        }
-
-        if (!jobsToRemove.length) {
-            return
-        }
-
-        this.logger.info('Cleaning jobs', { jobs: jobsToRemove.map(j => j.getUuid()) })
-        this.jobs = _.without(this.jobs, ...jobsToRemove)
-        this.unpersistEndedJobs(jobsToRemove)
+        return founds.length ? founds[0] as RegisteredJob : undefined
     }
 }
 
