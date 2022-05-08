@@ -24,6 +24,7 @@ export interface JobOpts<Identity> {
     fn: JobFn
     logger: Logger
     priority?: JobPriority
+    keepResult?: boolean
     allocatedTime?: Duration
     abortOnAllocatedTime?: boolean
     duplicable?: boolean
@@ -50,8 +51,12 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     protected allocatedTime?: Duration
     protected abortOnAllocatedTime: boolean
     protected duplicable: boolean
+    protected keepResult: boolean
 
-    constructor({ id, fn, priority = 'normal', logger, allocatedTime, abortOnAllocatedTime, duplicable }: JobOpts<Identity>) {
+    constructor(
+        { id, fn, priority = 'normal', logger, allocatedTime, abortOnAllocatedTime = false, duplicable = false, keepResult = true }:
+        JobOpts<Identity>
+    ) {
         super()
 
         this.id = id
@@ -66,8 +71,9 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         })
 
         this.allocatedTime = allocatedTime
-        this.abortOnAllocatedTime = abortOnAllocatedTime || false
-        this.duplicable = duplicable || false
+        this.abortOnAllocatedTime = abortOnAllocatedTime
+        this.duplicable = duplicable
+        this.keepResult = keepResult
     }
 
     public isDuplicable() {
@@ -88,6 +94,58 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             abortOnAllocatedTime: this.abortOnAllocatedTime,
             duplicable: this.duplicable
         })
+    }
+
+    public toJSON() {
+        return {
+            uuid: this.uuid,
+            createdAt: this.createdAt.toJSON(),
+            startedAt: this.startedAt?.toJSON(),
+            endedAt: this.endedAt?.toJSON(),
+            state: this.state,
+            priority: this.priority,
+            id: this.id,
+            warnings: this.warnings,
+            abortCancelReason: this.abortCancelReason,
+            error: this.state === 'failed' && {
+                name: this.error!.name,
+                message: this.error!.message,
+                stack: this.error!.stack
+                // Add others properties ?
+            },
+            runLogs: this.runLogs,
+            duplicable: this.duplicable
+            // others if needed
+        }
+    }
+
+    public static fromJSON(jsonJob: any) {
+        if (runStateMapping[jsonJob.state as JobState] !== 'ended') {
+            throw new Error('Job not unserializable (not ended) : cannot be unserialized correctly nor in the same state')
+        }
+
+        const values = {
+            ...jsonJob,
+            duplicable: false, // as it is alterated, it cannot be duplicated
+            createdAt: new Date(jsonJob.createdAt),
+            startedAt: jsonJob.startedAt && new Date(jsonJob.startedAt),
+            endedAt: jsonJob.endedAt && new Date(jsonJob.endedAt),
+            error: jsonJob.error && (() => {
+                const e = new Error(jsonJob.error.message)
+                e.name = jsonJob.error.name
+                e.stack = jsonJob.error.stack
+                return e
+            })()
+        }
+
+        const asProperties = _.mapValues(values, value => ({
+            value,
+            writable: true,
+            enumerable: true,
+            configurable: true
+        }))
+
+        return Object.create(Job.prototype, asProperties)
     }
 
     public getState() {
@@ -114,9 +172,14 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     }
 
     public prioritizeTo(priority: JobPriority) {
+        if (this.state !== 'new') {
+            throw new Error('Cannot change priority on not new job')
+        }
+
         if (priority === this.priority) {
             return
         }
+
         this.priority = priority
         this.emit('prioritize', this.priority)
     }
@@ -206,6 +269,10 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     public getResult(): Result {
         if (this.state !== 'done') {
             throw new Error('Result only available on done job')
+        }
+
+        if (!this.keepResult) {
+            throw new Error('No result kept')
         }
 
         return this.result!
@@ -307,7 +374,9 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             this.emit('failed', error)
             this.emit('error', error)
         } else {
-            this.result = result
+            if (this.keepResult) {
+                this.result = result
+            }
             this.state = 'done'
             this.logger.info('Done :)', {
                 jobState: this.state
@@ -366,6 +435,24 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     }
 }
 
+
+// function serializeEndedJob(job: Job) {
+//     if (job.getRunState() !== 'ended') {
+//         throw new Error('Unable to serialize not ended Job (side-effects)')
+//     }
+
+//     return JSON.stringify(job)
+// }
+
+// class UnserializedEndedJob extends Job {
+//     constructor(serializedJob) {
+//         super()
+//     }
+// }
+
+// function unserializeEndedJob(serializedJob: object) {
+
+// }
 
 export class JobsRegistry<RegisteredJob extends Job> {
     protected maxNbEnded?: number

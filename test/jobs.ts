@@ -1,22 +1,58 @@
 import createLogger from '../src/logger'
 import {Job,/*, JobsManager*/ JobsRunner, JobsRegistry} from '../src/jobs'
 import { once } from 'events'
+
+
+
 const logger = createLogger('info')
 
 const jobRunner = new JobsRunner({logger, concurrency: 2})
+
+function jobToJson(job: Job<any>) {
+    return {
+        uuid: job.getUuid(),
+        createdAt: job.getCreatedAt(),
+        startedAt: job.getStartedAt(),
+        endedAt: job.getEndedAt(),
+        state: job.getState(),
+        priority: job.getPriority(),
+        id: job.getId(),
+        warnings: job.getWarnings(),
+        error: job.getState() === 'failed' && job.getError().toString()
+    }
+}
+
 
 ;(async () => {
 
     const joby = new Job({
         logger,
-        id: null,
+        id: {operation: 'special'},
+        duplicable: true,
         priority: 'normal',
-        async fn() {
-            await new Promise(resolve => setTimeout(resolve, 1000))
+        async fn({logger}) {
+            await new Promise(resolve => setTimeout(resolve, 10))
 
-            return 52
+            const originalError = new Error('Http Error')
+            logger.warning('Partner error', {originalError})
+
+
+            throw new Error('BADABOOOOM')
         }
     })
+
+    joby.run()
+    try {
+        await joby.toPromise()
+    } catch {}
+
+    console.log('---')
+
+    const stored = JSON.stringify(joby.toJSON())
+
+    console.log(Job.fromJSON(JSON.parse(stored)))
+
+    return
 
     jobRunner.start()
 
