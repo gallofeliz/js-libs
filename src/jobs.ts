@@ -384,7 +384,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             this.logger.info('Done :)', {
                 jobState: this.state
             })
-            this.emit('done', this.result)
+            this.emit('done', result)
         }
 
         this.logger.off('log', runningLoggerListener)
