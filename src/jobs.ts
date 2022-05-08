@@ -284,7 +284,6 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             error = e as Error
         } finally {
             allocatedTimeTimeout && clearTimeout(allocatedTimeTimeout)
-            this.logger.off('log', runningLoggerListener)
             this.endedAt = new Date
         }
 
@@ -316,6 +315,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             this.emit('done', this.result)
         }
 
+        this.logger.off('log', runningLoggerListener)
         this.emit('ended')
     }
 
