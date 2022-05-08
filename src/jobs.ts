@@ -4,6 +4,9 @@ import { Logger } from './logger'
 import _ from 'lodash'
 import { Duration, durationToSeconds } from './utils'
 
+import Datastore from 'nedb'
+import { promisify } from 'util'
+
 export type JobState = 'new' | 'running' | 'aborting' | ('done' | 'failed' | 'aborted' | 'canceled' /* = ended */)
 export type JobRunState = 'ready' | 'running' | 'ended'
 const runStateMapping: Record<JobState, JobRunState> = {
@@ -435,25 +438,47 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     }
 }
 
+interface JobsCollectionQuery {
+    [filter: string]: any
+}
 
-// function serializeEndedJob(job: Job) {
-//     if (job.getRunState() !== 'ended') {
-//         throw new Error('Unable to serialize not ended Job (side-effects)')
-//     }
+interface JobsCollection<RegisteredJob extends Job> {
+    insert(job: RegisteredJob): Promise<void>
+    remove(query: JobsCollectionQuery): Promise<void>
+    find(query: JobsCollectionQuery): Promise<RegisteredJob[]>
+    findOne(query: JobsCollectionQuery): Promise<RegisteredJob | undefined>
+}
 
-//     return JSON.stringify(job)
-// }
+export class NeDBPersisteJobsCollection<RegisteredJob extends Job> implements JobsCollection<RegisteredJob> {
+    protected datastore: Datastore
 
-// class UnserializedEndedJob extends Job {
-//     constructor(serializedJob) {
-//         super()
-//     }
-// }
+    constructor(datastore: Datastore) {
+        this.datastore = datastore
+    }
 
-// function unserializeEndedJob(serializedJob: object) {
+    public async insert(job: RegisteredJob) {
+        await new Promise((resolve, reject) => this.datastore.insert(job.toJSON(), (e) => e && reject(e) || resolve(undefined)))
+    }
 
-// }
+    public async remove(query: JobsCollectionQuery) {
+         await new Promise((resolve, reject) => this.datastore.remove(query, { multi: true }, (e) => e && reject(e) || resolve(undefined)))
+    }
 
+    public async find(query: JobsCollectionQuery) {
+        const docs: object[] = await new Promise((resolve, reject) => this.datastore.find(query).exec((e, docs) => e && reject(e) || resolve(docs)))
+
+        return docs.map(doc => Job.fromJSON(doc))
+    }
+
+    public async findOne(query: JobsCollectionQuery) {
+        const doc: object = await new Promise((resolve, reject) => this.datastore.findOne(query, (e, doc) => e && reject(e) || resolve(doc)))
+
+        return doc ? Job.fromJSON(doc) : undefined
+    }
+}
+/*
+There is something bad in this implementation. We need to refactor this part
+*/
 export class JobsRegistry<RegisteredJob extends Job> {
     protected maxNbEnded?: number
     protected maxEndDateDurationSeconds?: number
@@ -462,11 +487,54 @@ export class JobsRegistry<RegisteredJob extends Job> {
     protected jobs: RegisteredJob[] = []
     //protected nextRemoveExceedEndedTimeout?: NodeJS.Timeout
     protected logger: Logger
+    protected jobsEndedCollection?: JobsCollection<RegisteredJob>
 
-    constructor({ maxNbEnded, maxEndDateDuration, logger }: { maxNbEnded?: number, maxEndDateDuration?: Duration, logger:Logger }) {
+    constructor(
+        { maxNbEnded, maxEndDateDuration, logger, jobsEndedCollection }:
+        { maxNbEnded?: number, maxEndDateDuration?: Duration, logger:Logger, jobsEndedCollection?: JobsCollection<RegisteredJob> }
+    ) {
         this.maxEndDateDurationSeconds = maxEndDateDuration ? durationToSeconds(maxEndDateDuration) : undefined
         this.maxNbEnded = maxNbEnded
         this.logger = logger
+        this.jobsEndedCollection = jobsEndedCollection
+
+        this.loadEndedJobs()
+    }
+
+    protected async loadEndedJobs() {
+        if (!this.jobsEndedCollection) {
+            return
+        }
+
+        try {
+            this.jobs.push(...await this.jobsEndedCollection.find({}))
+        } catch (e) {
+            this.logger.error('Unable to load ended jobs')
+        }
+    }
+
+    protected async persistEndedJob(job: RegisteredJob) {
+        if (!this.jobsEndedCollection) {
+            return
+        }
+
+        try {
+            await this.jobsEndedCollection.insert(job)
+        } catch (e) {
+            this.logger.error('Unable persist ended job')
+        }
+    }
+
+    protected async unpersistEndedJobs(jobs: RegisteredJob[]) {
+        if (!this.jobsEndedCollection) {
+            return
+        }
+
+        try {
+            await this.jobsEndedCollection.remove({ uuid: { $in : jobs.map(j => j.getUuid()) } })
+        } catch (e) {
+            this.logger.error('Unable to unpersist ended job')
+        }
     }
 
     // public addJob(job: Job<any, any>) {
@@ -485,16 +553,22 @@ export class JobsRegistry<RegisteredJob extends Job> {
     // }
 
     public addJob(job: RegisteredJob) {
+        if (this.jobs.includes(job)) {
+            return
+        }
+
         this.jobs.push(job)
         this.logger.info('Registering job', { job: job.getUuid() })
 
         if (job.getRunState() === 'ended') {
+            this.persistEndedJob(job)
             this.removeExceedEnded()
         } else {
             const onError = () => {} // Registry avoid to need to catch ;)
             job.once('error', onError)
             job.once('ended', () => {
                 job.off('error', onError)
+                this.persistEndedJob(job)
                 this.removeExceedEnded()
             })
         }
@@ -542,6 +616,7 @@ export class JobsRegistry<RegisteredJob extends Job> {
 
         this.logger.info('Cleaning jobs', { jobs: jobsToRemove.map(j => j.getUuid()) })
         this.jobs = _.without(this.jobs, ...jobsToRemove)
+        this.unpersistEndedJobs(jobsToRemove)
     }
 }
 

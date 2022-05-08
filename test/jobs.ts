@@ -1,27 +1,12 @@
 import createLogger from '../src/logger'
-import {Job,/*, JobsManager*/ JobsRunner, JobsRegistry} from '../src/jobs'
+import {Job,/*, JobsManager*/ JobsRunner, JobsRegistry, NeDBPersisteJobsCollection} from '../src/jobs'
 import { once } from 'events'
 
-
+import Datastore from 'nedb'
 
 const logger = createLogger('info')
 
 const jobRunner = new JobsRunner({logger, concurrency: 2})
-
-function jobToJson(job: Job<any>) {
-    return {
-        uuid: job.getUuid(),
-        createdAt: job.getCreatedAt(),
-        startedAt: job.getStartedAt(),
-        endedAt: job.getEndedAt(),
-        state: job.getState(),
-        priority: job.getPriority(),
-        id: job.getId(),
-        warnings: job.getWarnings(),
-        error: job.getState() === 'failed' && job.getError().toString()
-    }
-}
-
 
 ;(async () => {
 
@@ -40,6 +25,13 @@ function jobToJson(job: Job<any>) {
             throw new Error('BADABOOOOM')
         }
     })
+
+    const db = new Datastore({filename: './test.db', autoload: true})
+    const neDBPersisteJobsCollection = new NeDBPersisteJobsCollection(db)
+
+    const jobsRegistry = new JobsRegistry({maxNbEnded: 2, logger, jobsEndedCollection: neDBPersisteJobsCollection})
+
+    jobsRegistry.addJob(joby)
 
     joby.run()
     try {
