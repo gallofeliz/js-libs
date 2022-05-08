@@ -438,15 +438,15 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     }
 }
 
-interface JobsCollectionQuery {
+export interface JobsCollectionQuery {
     [filter: string]: any
 }
 
-interface JobsCollectionSort {
+export interface JobsCollectionSort {
     [filter: string]: 1 | -1
 }
 
-interface JobsCollection<RegisteredJob extends Job> {
+export interface JobsCollection<RegisteredJob extends Job> {
     insert(job: RegisteredJob): Promise<void>
     remove(query: JobsCollectionQuery): Promise<void>
     find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number): Promise<RegisteredJob[]>
