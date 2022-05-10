@@ -19,6 +19,7 @@ const runStateMapping: Record<JobState, JobRunState> = {
     'canceled': 'ended'
 }
 export type SemanticJobPriority = 'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle'
+export const semanticJobPriorities = ['immediate', 'next', 'superior',  'normal',  'inferior',  'on-idle']
 export type OrderedJobPriority = number
 export type JobPriority = SemanticJobPriority | OrderedJobPriority
 
