@@ -111,10 +111,8 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             warnings: this.warnings,
             abortCancelReason: this.abortCancelReason,
             error: this.state === 'failed' && {
-                name: this.error!.name,
-                message: this.error!.message,
-                stack: this.error!.stack
-                // Add others properties ?
+                ..._.mapValues(Object.getOwnPropertyDescriptors(this.error), v => v.value),
+                name: this.error!.name
             },
             runLogs: this.runLogs,
             duplicable: this.duplicable
@@ -135,8 +133,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             endedAt: jsonJob.endedAt && new Date(jsonJob.endedAt),
             error: jsonJob.error && (() => {
                 const e = new Error(jsonJob.error.message)
-                e.name = jsonJob.error.name
-                e.stack = jsonJob.error.stack
+                _.forEach(jsonJob.error, (v, k) => (e as any)[k] = v)
                 return e
             })()
         }

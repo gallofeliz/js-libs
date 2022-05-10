@@ -1,5 +1,5 @@
 import createLogger from '../src/logger'
-import {Job,/*, JobsManager*/ JobsRunner, InMemoryJobsCollection} from '../src/jobs'
+import {Job,/*, JobsManager*/ JobsRunner, InMemoryJobsCollection, FilePersistedJobsCollection} from '../src/jobs'
 import { once } from 'events'
 
 import Datastore from 'nedb'
@@ -7,6 +7,16 @@ import Datastore from 'nedb'
 const logger = createLogger('info')
 
 const jobRunner = new JobsRunner({logger, concurrency: 2})
+
+class MyError extends Error {
+    protected a: string
+
+    constructor(message: string, a: string) {
+        super(message)
+        this.name = 'MyError'
+        this.a = a
+    }
+}
 
 ;(async () => {
 
@@ -21,19 +31,26 @@ const jobRunner = new JobsRunner({logger, concurrency: 2})
             const originalError = new Error('Http Error')
             logger.warning('Partner error', {originalError})
 
+            const e = new MyError('Boooom', 'a value')
+            ;(e as any).b = 'b value'
 
-            throw new Error('BADABOOOOM')
+            throw e
         }
     })
 
     //const db = new Datastore({filename: './test.db', autoload: true})
     //const neDBPersisteJobsCollection = new NeDBPersisteJobsCollection(db)
 
-    const coll = new InMemoryJobsCollection
+    const coll = new FilePersistedJobsCollection('/tmp/test.db')
 
-    coll.insert(joby)
+    joby.run()
+    await joby.toPromise().catch(e => {})
+    console.log(joby)
+    console.log(Job.fromJSON(joby.toJSON()))
 
-    console.log((await coll.find({runState: 'ready'})))
+    //await coll.insert(joby)
+
+    //console.log((await coll.findOne({'id.operation': 'special'})))
 })()
 
 ;(async () => {
