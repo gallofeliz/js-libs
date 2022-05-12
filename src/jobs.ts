@@ -116,7 +116,8 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
                 name: this.error!.name
             },
             runLogs: this.runLogs,
-            duplicable: this.duplicable
+            duplicable: this.duplicable,
+            result: this.result
             // others if needed
         }
     }
