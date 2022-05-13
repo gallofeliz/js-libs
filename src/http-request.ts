@@ -1,0 +1,49 @@
+import { Duration, durationToSeconds } from './utils'
+import { Logger } from './logger'
+import got, { Method } from 'got'
+
+/** @type integer */
+type integer = number
+
+export interface HttpRequestConfig {
+   url: string
+   method?: Method
+   timeout?: Duration
+   retries?: integer
+   outputType?: 'text' | 'json' | 'auto'
+   abortSignal: AbortSignal
+   logger: Logger
+}
+
+export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
+    const gotRequest = got({
+        method: request.method as Method || 'GET',
+        url: request.url,
+        timeout: { request: request.timeout ? durationToSeconds(request.timeout) * 1000 : undefined},
+        retry: { limit: request.retries || 0},
+        hooks: {
+            beforeRequest: [options  => { logger.info('Calling http request ' + options.url)}],
+            afterResponse: [response => { logger.info('Http Request returned code ' + response.statusCode) ; return response }],
+            beforeError: [error => { logger.info('Http Request returned error ' + error.message) ; return error }]
+        }
+    })
+
+    const onSignalAbort = () => gotRequest.cancel()
+    abortSignal.addEventListener('abort', onSignalAbort)
+
+    try {
+        const response = await gotRequest
+
+        if (!request.outputType) {
+            return undefined as Result
+        }
+
+        const isJson = request.outputType === 'auto'
+            ? (response.headers['content-type'] || '').includes('json')
+            : request.outputType === 'json'
+
+        return (isJson ? await gotRequest.json() : await gotRequest.text()) as Result
+    } finally {
+        abortSignal.removeEventListener('abort', onSignalAbort)
+    }
+}
