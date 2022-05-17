@@ -9,15 +9,20 @@ import { once, EventEmitter } from 'events'
 
     abortController.abort()
 
-    const result42 = await runProcess({
-        cmd: 'echo',
-        args: ['-n', '{"name": "me"}\n'],
-        logger,
-        outputType: 'json',
-        abortSignal: abortController.signal
-    }, true)
+    try {
+        const result42 = await runProcess({
+            cmd: 'echo',
+            args: ['-n', '{"name": "me"}\n'],
+            logger,
+            outputType: 'json',
+            abortSignal: abortController.signal
+        }, true)
 
-    console.log(result42.name)
+        console.log(result42.name)
+
+    } catch (e) {
+        console.log('error', e)
+    }
 
     return
 

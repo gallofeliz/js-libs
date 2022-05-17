@@ -2,6 +2,7 @@ import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
 import { sizeToKiB, AbortError } from './utils'
+const { nextTick } = process
 
 export interface ProcessConfig {
     logger: Logger
@@ -59,7 +60,8 @@ export class Process extends EventEmitter {
 
     protected async run() {
         if (this.config.abortSignal?.aborted) {
-            throw new AbortError
+            nextTick(() => this.emit('error', new AbortError))
+            return
         }
 
         this.logger.info('Starting process', {
