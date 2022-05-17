@@ -431,6 +431,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         })
         this.abortCancelReason = reason
         this.error = new Error('Canceled : ' + reason)
+        this.endedAt = new Date
         this.emit('canceled')
         this.emit('ended')
         this.emit('error', this.error)
