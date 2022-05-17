@@ -1,4 +1,4 @@
-import { Duration, durationToSeconds } from './utils'
+import { Duration, durationToSeconds, AbortError } from './utils'
 import { Logger } from './logger'
 import got, { Method } from 'got'
 
@@ -11,11 +11,15 @@ export interface HttpRequestConfig {
    timeout?: Duration
    retries?: integer
    outputType?: 'text' | 'json' | 'auto'
-   abortSignal: AbortSignal
+   abortSignal?: AbortSignal
    logger: Logger
 }
 
 export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
+    if (abortSignal?.aborted) {
+      throw new AbortError
+    }
+
     const gotRequest = got({
         method: request.method as Method || 'GET',
         url: request.url,
@@ -29,7 +33,7 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
     })
 
     const onSignalAbort = () => gotRequest.cancel()
-    abortSignal.addEventListener('abort', onSignalAbort)
+    abortSignal?.addEventListener('abort', onSignalAbort)
 
     try {
         const response = await gotRequest
@@ -43,7 +47,12 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
             : request.outputType === 'json'
 
         return (isJson ? await gotRequest.json() : await gotRequest.text()) as Result
+    } catch (e) {
+      if ((e as any).code === 'ERR_CANCELED') {
+        throw new AbortError
+      }
+      throw e
     } finally {
-        abortSignal.removeEventListener('abort', onSignalAbort)
+        abortSignal?.removeEventListener('abort', onSignalAbort)
     }
 }

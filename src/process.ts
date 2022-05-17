@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
-import { sizeToKiB } from './utils'
+import { sizeToKiB, AbortError } from './utils'
 
 export interface ProcessConfig {
     logger: Logger
@@ -58,6 +58,10 @@ export class Process extends EventEmitter {
     }
 
     protected async run() {
+        if (this.config.abortSignal?.aborted) {
+            throw new AbortError
+        }
+
         this.logger.info('Starting process', {
             cmd: this.config.cmd,
             args: this.config.args || [],

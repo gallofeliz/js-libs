@@ -5,11 +5,16 @@ import { once, EventEmitter } from 'events'
 
 ;(async() => {
 
+    const abortController = new AbortController
+
+    abortController.abort()
+
     const result42 = await runProcess({
         cmd: 'echo',
         args: ['-n', '{"name": "me"}\n'],
         logger,
-        outputType: 'json'
+        outputType: 'json',
+        abortSignal: abortController.signal
     }, true)
 
     console.log(result42.name)
@@ -42,7 +47,6 @@ import { once, EventEmitter } from 'events'
     }
 
 
-    const abortController = new AbortController
 
     const p2 = runProcess({
         cmd: 'curl',
