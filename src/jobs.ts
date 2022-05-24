@@ -305,11 +305,6 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         }
 
         const runningLoggerListener = (log: object) => {
-
-            if (_.get(log, 'job.uuid') !== this.uuid) {
-                return
-            }
-
             // WARNING IN CASE OF VERBOSE
             const runLog = _.omit(log, ['job'])
             this.runLogs.push(runLog)
