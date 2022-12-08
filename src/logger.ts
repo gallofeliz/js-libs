@@ -1,11 +1,20 @@
 import { EventEmitter } from 'events'
-import { mapValues, cloneDeep } from 'lodash'
+import { mapValues, cloneDeep, last, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
+import { EOL } from 'os'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
-const levels = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
+const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
 
-interface LoggerOpts {
+export function getLowerLevel(): LogLevel {
+    return last(levels) as LogLevel
+}
+
+export function shouldBeLogged(logLevel: LogLevel, maxLogLevel: LogLevel) {
+    return levels.indexOf(logLevel) <= levels.indexOf(maxLogLevel)
+}
+
+export interface LoggerOpts {
     level?: LogLevel
     secrets?: string[]
     metadata?: Object
@@ -13,13 +22,44 @@ interface LoggerOpts {
     logUnhandled?: boolean
 }
 
-interface Transport {
-    write(log: Object): Promise<void>
+export interface Log {
+    level: LogLevel
+    timestamp: Date
+    message: string
+    [k: string]: any
 }
 
-export class JsonConsoleTransport implements Transport {
-    public async write(log: Object) {
-        console.log(stringify(log))
+export interface Transport {
+    write(log: Log): Promise<void>
+}
+
+export abstract class BaseTransport implements Transport {
+    protected level: LogLevel
+
+    public constructor(level?: LogLevel) {
+        this.level = level || getLowerLevel()
+    }
+
+    public async write(log: Log) {
+        if (!shouldBeLogged(log.level, this.level)) {
+            return
+        }
+
+        return this._write(log)
+    }
+
+    protected abstract _write(log: Log): Promise<void>
+}
+
+export class JsonConsoleTransport extends BaseTransport {
+
+    public async _write(log: Log) {
+        const strLog = stringify(log) + EOL
+        if (['debug', 'info'].includes(log.level)) {
+            process.stdout.write(strLog)
+        } else {
+            process.stderr.write(strLog)
+        }
     }
 }
 
@@ -34,7 +74,7 @@ export class Logger extends EventEmitter {
     **/
     public constructor({level, secrets, metadata, transports, logUnhandled}: LoggerOpts = {}) {
         super()
-        this.level = level || 'info'
+        this.level = level || getLowerLevel()
         this.secrets = secrets || ['password', 'key', 'secret', 'auth', 'token', 'credential']
         this.metadata = metadata || {}
         this.transports = transports || []
@@ -86,16 +126,35 @@ export class Logger extends EventEmitter {
         })
     }
     protected async log(level: LogLevel, message: string, metadata?: Object) {
-        if (levels.indexOf(level) > levels.indexOf(this.level)) {
+        if (!shouldBeLogged(level, this.level)) {
             return
         }
 
-        const log = sanitize({...this.metadata, level, message, ...metadata, timestamp: new Date}, this.secrets)
+        const log = sanitize({
+            ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
+            timestamp: new Date,
+            level,
+            message,
+        }, this.secrets)
 
         this.emit('log', log) //, cb)
 
         await Promise.all(this.transports.map(transport => transport.write(log)))
     }
+}
+
+function ensureNotKeys(object: Object, keys: string[]): Object {
+    return mapKeys(object, (value, key) => {
+        if (!keys.includes(key)) {
+            return key
+        }
+        let newKey = key
+
+        while (object.hasOwnProperty(newKey)) {
+            newKey = '_' + newKey
+        }
+        return newKey
+    })
 }
 
 function sanitize(variable: any, secrets: string[]): any {
