@@ -6,13 +6,19 @@ import got, { Method } from 'got'
 type integer = number
 
 export interface HttpRequestConfig {
+   logger: Logger
+   abortSignal?: AbortSignal
+   outputType?: 'text' | 'json' | 'auto'
    url: string
    method?: Method
    timeout?: Duration
    retries?: integer
-   outputType?: 'text' | 'json' | 'auto'
-   abortSignal?: AbortSignal
-   logger: Logger
+   headers?: Record<any, string>
+
+   // searchParams?: Record<string, string>
+   // body?: any
+   // bodyType?: 'text' | 'json' | 'form'
+   // auth?: any
 }
 
 export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
@@ -25,6 +31,7 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
         url: request.url,
         timeout: { request: request.timeout ? durationToSeconds(request.timeout) * 1000 : undefined},
         retry: { limit: request.retries || 0},
+        headers: request.headers,
         hooks: {
             beforeRequest: [options  => { logger.info('Calling http request ' + options.url)}],
             afterResponse: [response => { logger.info('Http Request returned code ' + response.statusCode) ; return response }],

@@ -1,19 +1,24 @@
 import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
-import { sizeToKiB, AbortError } from './utils'
+import { sizeToKiB, AbortError, Duration, durationToSeconds } from './utils'
 const { nextTick } = process
 
 export interface ProcessConfig {
     logger: Logger
+    abortSignal?: AbortSignal
+    outputStream?: NodeJS.WritableStream
+    outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     cmd: string
     args?: string[]
     cwd?: string
     env?: {[k: string]: string}
-    outputStream?: NodeJS.WritableStream
-    outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     killSignal?: NodeJS.Signals
-    abortSignal?: AbortSignal
+    timeout?: Duration
+
+    // retries?: number
+    // stdIn?: any
+    // inputStream?: any
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
@@ -84,7 +89,8 @@ export class Process extends EventEmitter {
                 killSignal: this.config.killSignal || 'SIGINT',
                 ...this.config.env && { env: this.config.env },
                 ...this.config.cwd && { cwd: this.config.cwd },
-                signal: this.abortController.signal
+                signal: this.abortController.signal,
+                timeout: this.config.timeout ? durationToSeconds(this.config.timeout) * 1000 : undefined
             }
         )
         this.process = process
