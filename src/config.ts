@@ -67,7 +67,7 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
                     throw new Error('Unhandled file type')
             }
         } catch (e: any) {
-            if (!(e.code === 'ENOENT' && (opts.mandatoryFile === false || filename !== opts.filename))) {
+            if (!(e.code === 'ENOENT' && (opts.mandatoryFile === false || filename !== opts.filename))) {
                 throw e
             }
         }

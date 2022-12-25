@@ -26,7 +26,7 @@ export default class FsWatcher<Identity = any> {
         this.fn = fn
         this.paths = paths
         this.logger = logger
-        this.ignore = ignore || []
+        this.ignore = ignore || []
         this.waitMinMs = waitMin ? durationToSeconds(waitMin) * 1000 : null
         this.waitMaxMs = waitMax ? durationToSeconds(waitMax) * 1000 : this.waitMinMs
     }

@@ -52,7 +52,7 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
         throw new AbortError
       }
       throw e
-    } finally {
+    } finally {
         abortSignal?.removeEventListener('abort', onSignalAbort)
     }
 }

@@ -1,4 +1,4 @@
-import { Logger } from './logger'
+import { Logger } from './logger'
 import express from 'express'
 import { Server } from 'http'
 import basicAuth from 'express-basic-auth'
@@ -36,7 +36,7 @@ export default class HttpServer {
     protected connections: Record<string, Socket> = {}
     protected config: HttpServerConfig
 
-    constructor(config: HttpServerConfig) {
+    constructor(config: HttpServerConfig) {
         this.config = config
         this.logger = config.logger
 
@@ -52,7 +52,7 @@ export default class HttpServer {
 
         this.configureApi()
 
-        if (this.config.webUiFilesPath) {
+        if (this.config.webUiFilesPath) {
             this.app.use('/', express.static(this.config.webUiFilesPath))
         }
 
@@ -93,7 +93,7 @@ export default class HttpServer {
     }
 
     protected configureApi() {
-        if (!this.config.api) {
+        if (!this.config.api) {
             return
         }
 

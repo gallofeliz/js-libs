@@ -37,7 +37,7 @@ export abstract class BaseTransport implements Transport {
     protected level: LogLevel
 
     public constructor(level?: LogLevel) {
-        this.level = level || getLowerLevel()
+        this.level = level || getLowerLevel()
     }
 
     public async write(log: Log) {
@@ -57,7 +57,7 @@ export class JsonConsoleTransport extends BaseTransport {
         const strLog = stringify(log) + EOL
         if (['debug', 'info'].includes(log.level)) {
             process.stdout.write(strLog)
-        } else {
+        } else {
             process.stderr.write(strLog)
         }
     }
@@ -74,10 +74,10 @@ export class Logger extends EventEmitter {
     **/
     public constructor({level, secrets, metadata, transports, logUnhandled}: LoggerOpts = {}) {
         super()
-        this.level = level || getLowerLevel()
-        this.secrets = secrets || ['password', 'key', 'secret', 'auth', 'token', 'credential']
-        this.metadata = metadata || {}
-        this.transports = transports || []
+        this.level = level || getLowerLevel()
+        this.secrets = secrets || ['password', 'key', 'secret', 'auth', 'token', 'credential']
+        this.metadata = metadata || {}
+        this.transports = transports || []
 
         if (logUnhandled) {
             this.logUnhandled()
@@ -120,7 +120,7 @@ export class Logger extends EventEmitter {
         return new Logger({
             level: this.level,
             secrets: this.secrets,
-            metadata: {...this.metadata, ...(metadata || {})},
+            metadata: {...this.metadata, ...(metadata || {})},
             transports: this.transports,
             logUnhandled: false
         })

@@ -42,7 +42,7 @@ export class Process extends EventEmitter {
         this.config = config
         this.logger = config.logger
 
-        if (this.config.outputStream && this.config.outputType) {
+        if (this.config.outputStream && this.config.outputType) {
             throw new Error('Incompatible both outputType and outputStream')
         }
 
@@ -50,7 +50,7 @@ export class Process extends EventEmitter {
     }
 
     public abort() {
-        if (!this.process || this.process.exitCode !== null || this.process.killed) {
+        if (!this.process || this.process.exitCode !== null || this.process.killed) {
             return
         }
         this.logger.info('Abort Killing')
@@ -58,7 +58,7 @@ export class Process extends EventEmitter {
         this.abortController.abort()
     }
 
-    protected async run() {
+    protected async run() {
         if (this.config.abortSignal?.aborted) {
             nextTick(() => this.emit('error', new AbortError))
             return
@@ -66,7 +66,7 @@ export class Process extends EventEmitter {
 
         this.logger.info('Starting process', {
             cmd: this.config.cmd,
-            args: this.config.args || [],
+            args: this.config.args || [],
             env: this.config.env,
             cwd: this.config.cwd
         })
@@ -79,9 +79,9 @@ export class Process extends EventEmitter {
 
         const process = spawn(
             this.config.cmd,
-            this.config.args || [],
+            this.config.args || [],
             {
-                killSignal: this.config.killSignal || 'SIGINT',
+                killSignal: this.config.killSignal || 'SIGINT',
                 ...this.config.env && { env: this.config.env },
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: this.abortController.signal
@@ -141,7 +141,7 @@ export class Process extends EventEmitter {
             return output.trim().split('\n')
         }
 
-        if (['text'].includes(this.config.outputType || 'text')) {
+        if (['text'].includes(this.config.outputType || 'text')) {
             return output
         }
 

@@ -1,6 +1,6 @@
 import loadConfig from '../src/config'
 
-export interface Config {
+export interface Config {
     machin: {
         truc: {
             bidule: boolean

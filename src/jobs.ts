@@ -213,7 +213,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             return -1
         }
 
-        if (priorityB === 'immediate' || priorityB === 'next') {
+        if (priorityB === 'immediate' || priorityB === 'next') {
             return -1
         }
 
@@ -310,7 +310,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             this.runLogs.push(runLog)
             this.emit('log', runLog)
 
-            if (_.get(runLog, 'level') === 'warning') {
+            if (_.get(runLog, 'level') === 'warning') {
                 this.warnings.push(runLog)
             }
         }
@@ -325,7 +325,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
         this.emit('running')
 
         let result: any = undefined
-        let error: Error | undefined = undefined
+        let error: Error | undefined = undefined
 
         let allocatedTimeTimeout
 
@@ -445,7 +445,7 @@ export interface JobsCollection<RegisteredJob extends Job> {
     insert(job: RegisteredJob): Promise<void>
     remove(query: JobsCollectionQuery): Promise<void>
     find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number): Promise<RegisteredJob[]>
-    findOne(query: JobsCollectionQuery, sort?: JobsCollectionSort): Promise<RegisteredJob | undefined>
+    findOne(query: JobsCollectionQuery, sort?: JobsCollectionSort): Promise<RegisteredJob | undefined>
 }
 
 function resolveQuery(query: JobsCollectionQuery): JobsCollectionQuery {
@@ -534,14 +534,14 @@ export class FilePersistedJobsCollection<RegisteredJob extends Job> implements J
         if (await this.findOne({uuid: job.getUuid()})) {
             return
         }
-        await new Promise((resolve, reject) => this.datastore.insert(job.toJSON(), (e) => e && reject(e) || resolve(undefined)))
+        await new Promise((resolve, reject) => this.datastore.insert(job.toJSON(), (e) => e && reject(e) || resolve(undefined)))
     }
 
     public async remove(query: JobsCollectionQuery) {
-         await new Promise((resolve, reject) => this.datastore.remove(query, { multi: true }, (e) => e && reject(e) || resolve(undefined)))
+         await new Promise((resolve, reject) => this.datastore.remove(query, { multi: true }, (e) => e && reject(e) || resolve(undefined)))
     }
 
-    public async find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number) {
+    public async find(query: JobsCollectionQuery, sort?: JobsCollectionSort, limit?: number, skip?: number) {
         const docs: object[] = await new Promise((resolve, reject) => {
             const cursor = this.datastore.find(resolveQuery(query))
 
@@ -557,7 +557,7 @@ export class FilePersistedJobsCollection<RegisteredJob extends Job> implements J
                 cursor.skip(skip)
             }
 
-            cursor.exec((e, docs) => e && reject(e) || resolve(docs))
+            cursor.exec((e, docs) => e && reject(e) || resolve(docs))
         })
 
         return docs.map(doc => Job.fromJSON(doc))
@@ -681,7 +681,7 @@ export class JobsRunner<RunnedJob extends Job> {
             // Don't listen others events, we only want to remove the job
             if (this.queue.includes(job)) {
                 this.queue.splice(this.queue.indexOf(job), 1)
-            } else {
+            } else {
                 this.running.splice(this.running.indexOf(job), 1)
             }
 

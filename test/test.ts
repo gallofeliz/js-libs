@@ -24,7 +24,7 @@ const server = new HttpServer({
                 path: '/download',
                 async handler(req, res) {
                     const url = req.query.url as string
-                    const type = req.query.type || 'video'
+                    const type = req.query.type || 'video'
 
                     const process = runProcess({
                         cmd: 'youtube-dl',
