@@ -18,3 +18,10 @@ The workflow is :
 - The config is validated (end of user config) with schema
 - The config is completed with default values
 - The config is finalized (if provided)
+
+## Dev
+
+```
+	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i
+
+```

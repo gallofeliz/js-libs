@@ -3,22 +3,29 @@ import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
 import { sizeToKiB, AbortError, Duration, durationToSeconds } from './utils'
 const { nextTick } = process
+import jsonata from 'jsonata'
+import Readable from 'stream'
 
 export interface ProcessConfig {
     logger: Logger
     abortSignal?: AbortSignal
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
+    outputTransformation?: string
     cmd: string
     args?: string[]
     cwd?: string
     env?: {[k: string]: string}
     killSignal?: NodeJS.Signals
     timeout?: Duration
+    inputData?: NodeJS.ReadableStream | any
+    inputType?: 'raw' | 'json'
+
 
     // retries?: number
     // stdIn?: any
     // inputStream?: any
+    // validation?: any
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
@@ -95,6 +102,18 @@ export class Process extends EventEmitter {
         )
         this.process = process
 
+        if (this.config.inputData instanceof Readable) {
+            this.config.inputData.pipe(this.process.stdin)
+        } else if (this.config.inputData) {
+            const data = this.config.inputType === 'json'
+                ? JSON.stringify(this.config.inputData)
+                : data
+
+            process.stdin.write(data, () => process.stdin.end())
+        } else {
+            process.stdin.end()
+        }
+
         let stdout: string = ''
 
         if (this.config.outputStream) {
@@ -135,7 +154,16 @@ export class Process extends EventEmitter {
             }
         }
 
-        return this.emit('finish', !this.config.outputStream ? this.getOutputData(stdout) : undefined)
+        if (this.config.outputStream) {
+            return this.emit('finish')
+        }
+
+        const output = this.getOutputData(stdout)
+
+        return this.emit('finish', this.config.outputTransformation
+            ? jsonata(this.config.outputTransformation).evaluate(output)
+            : output
+        )
     }
 
     protected getOutputData(output: string) {
