@@ -1,8 +1,9 @@
 import { Duration, durationToSeconds, AbortError } from './utils'
 import { Logger } from './logger'
-import got, { Method } from 'got'
+import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
+import validate, { Schema } from './validate'
 
 /** @type integer */
 type integer = number
@@ -23,8 +24,8 @@ export interface HttpRequestConfig {
    auth?: {
       username: string
       password: string
-   }
-   // returnValidation?: any
+   },
+   resultSchema?: Schema
 }
 
 export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
@@ -38,14 +39,14 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
         const urlObject = new URL(url)
         const params = {
             ...querystring.parse(urlObject.searchParams.toString()),
-            ...Array.isArray(request.params) ? querystring.parse((new URLSearchParams(request.params)).searchParams.toString()) : request.params
+            ...Array.isArray(request.params) ? querystring.parse((new URLSearchParams(request.params)).toString()) : request.params
         }
 
-        urlObject.searchParams = new URLSearchParams(querystring.stringify(params))
+        urlObject.search = '?' + querystring.stringify(params)
         url = urlObject.toString()
     }
 
-    const gotOpts = {
+    const gotOpts: Options = {
         method: request.method as Method || 'GET',
         url: url,
         timeout: { request: request.timeout ? durationToSeconds(request.timeout) * 1000 : undefined},
@@ -73,7 +74,7 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
         }
     }
 
-    const gotRequest = got(gotOpts)
+    const gotRequest = got(gotOpts) as CancelableRequest<Response<string>>
 
     const onSignalAbort = () => gotRequest.cancel()
     abortSignal?.addEventListener('abort', onSignalAbort)
@@ -90,11 +91,15 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
             : request.responseType === 'json'
 
         const output = (isJson ? await gotRequest.json() : await gotRequest.text())
-
-        return (request.responseTransformation
-            ? jsonata(request.responseTransformation).evaluate(output)
+        const result = (request.responseTransformation
+            ? await jsonata(request.responseTransformation).evaluate(output)
             : output
-        ) as Result
+        )
+
+        return request.resultSchema
+            ? validate<Result>(result, {schema: request.resultSchema})
+            : result as Result
+
     } catch (e) {
       if ((e as any).code === 'ERR_CANCELED') {
         throw new AbortError
