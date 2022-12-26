@@ -1,4 +1,4 @@
-import runProcess, { ProcessConfig } from './process'
+import runProcess, { ReferenceProcessConfig } from './process'
 import httpRequest, { HttpRequestConfig } from './http-request'
 import { Logger } from './logger'
 import { Schema } from './validate'
@@ -7,20 +7,23 @@ import { Schema } from './validate'
 	Hard to find a good name
 	This component provides a way to use an user-config to call a service (command, http, etc)
 */
+
+export type HttpUserConfig = { type: 'http' }
+	& Pick<HttpRequestConfig,
+		'url' | 'method' | 'timeout' | 'retries' | 'headers' | 'responseType'
+		| 'responseTransformation' | 'auth' | 'bodyType'
+	>
+
+export type CommandUserConfig = { type: 'command' }
+	& Pick<ReferenceProcessConfig,
+		'command' | 'cwd' | 'env' | 'timeout' | 'retries' | 'outputType'
+		| 'outputTransformation' | 'killSignal' | 'inputType'
+	>
+
+export type UserConfig = HttpUserConfig | CommandUserConfig
+
 export interface UserCommunicateConfig {
-	userConfig: (
-		{ type: 'http' }
-		& Pick<HttpRequestConfig,
-			'url' | 'method' | 'timeout' | 'retries' | 'headers' | 'responseType'
-			| 'responseTransformation' | 'auth' | 'bodyType'
-		>
-	) | (
-		{ type: 'command' }
-		& Pick<ProcessConfig,
-			'cmd' | 'args' | 'cwd' | 'env' | 'timeout' | 'retries' | 'outputType'
-			| 'outputTransformation' | 'killSignal' | 'inputType'
-		>
-	)
+	userConfig: UserConfig
 	logger: Logger,
 	abortSignal?: AbortSignal
 	data?: any
@@ -52,7 +55,7 @@ export default async function communicate<Result extends any>(config: UserCommun
 				...httpDataMapping
 			})
 		case 'command':
-			let cmdDataMapping: Partial<ProcessConfig> = {}
+			let cmdDataMapping: Partial<ReferenceProcessConfig> = {}
 
 			// Give ability to data as arg ?
 			if (config.data) {

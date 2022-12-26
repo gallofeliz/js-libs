@@ -7,14 +7,13 @@ import jsonata from 'jsonata'
 import Readable from 'stream'
 import validate, { Schema } from './validate'
 
-export interface ProcessConfig {
+export interface ReferenceProcessConfig {
     logger: Logger
+    command: string | string[]
     abortSignal?: AbortSignal
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     outputTransformation?: string
-    cmd: string
-    args?: string[]
     cwd?: string
     env?: {[k: string]: string}
     killSignal?: NodeJS.Signals
@@ -23,6 +22,14 @@ export interface ProcessConfig {
     inputType?: 'raw' | 'json'
     retries?: number
     resultSchema?: Schema
+}
+
+export type LegacyProcessConfig = Omit<ReferenceProcessConfig, 'command'> & { cmd: string, args?: string[] }
+
+export type ProcessConfig = ReferenceProcessConfig | LegacyProcessConfig
+
+function isLegacyProcessConfig(config: ProcessConfig): config is LegacyProcessConfig {
+    return !!(config as LegacyProcessConfig).cmd
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
@@ -77,9 +84,21 @@ export class Process<Result extends any> extends EventEmitter {
             return
         }
 
+        let spawnCmd: string
+        let spawnArgs: string[]
+
+        if (isLegacyProcessConfig(this.config)) {
+            this.logger.notice('Deprecated cmd/args, use command instead')
+            spawnCmd = this.config.cmd
+            spawnArgs = this.config.args || []
+        } else {
+            const cmd = Array.isArray(this.config.command) ? this.config.command : ['sh', '-c', this.config.command]
+            spawnCmd = cmd[0]
+            spawnArgs = cmd.slice(1)
+        }
+
         this.logger.info('Starting process', {
-            cmd: this.config.cmd,
-            args: this.config.args || [],
+            ...isLegacyProcessConfig(this.config) ? { cmd: this.config.cmd, args: this.config.args || [] } : { command: this.config.command } ,
             env: this.config.env,
             cwd: this.config.cwd
         })
@@ -91,8 +110,8 @@ export class Process<Result extends any> extends EventEmitter {
         }
 
         const process = spawn(
-            this.config.cmd,
-            this.config.args || [],
+            spawnCmd,
+            spawnArgs,
             {
                 killSignal: this.config.killSignal || 'SIGINT',
                 env: this.config.env || {}, // keep process.env "secret"
@@ -109,7 +128,6 @@ export class Process<Result extends any> extends EventEmitter {
             const data = this.config.inputType === 'json'
                 ? JSON.stringify(this.config.inputData)
                 : this.config.inputData
-
             process.stdin.write(data, () => process.stdin.end())
         } else {
             process.stdin.end()
@@ -180,7 +198,7 @@ export class Process<Result extends any> extends EventEmitter {
         }
 
         if (['text'].includes(this.config.outputType || 'text')) {
-            return output
+            return output.trim()
         }
 
         if (this.config.outputType === 'multilineJson') {
