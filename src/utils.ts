@@ -8,7 +8,9 @@ export function durationToSeconds(duration: Duration): number {
     return parseInt(duration.substring(0, duration.length - 1), 10) * mapping[duration.substr(-1).toLowerCase() as 's' | 'm' | 'h' | 'd' | 'w']
 }
 
-
+export function durationToMilliSeconds(duration: Duration): number {
+    return durationToSeconds(duration) * 1000
+}
 
 /** @pattern ^[0-9]+[kmgKMG]$ */
 export type Size = string

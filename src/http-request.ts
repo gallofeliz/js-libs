@@ -1,4 +1,4 @@
-import { Duration, durationToSeconds, AbortError } from './utils'
+import { Duration, durationToMilliSeconds, AbortError } from './utils'
 import { Logger } from './logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
@@ -49,7 +49,7 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
     const gotOpts: Options = {
         method: request.method as Method || 'GET',
         url: url,
-        timeout: { request: request.timeout ? durationToSeconds(request.timeout) * 1000 : undefined},
+        timeout: { request: request.timeout ? durationToMilliSeconds(request.timeout) : undefined},
         retry: { limit: request.retries || 0},
         headers: request.headers,
         username: request.auth?.username,

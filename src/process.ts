@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
-import { sizeToKiB, AbortError, Duration, durationToSeconds } from './utils'
+import { AbortError, Duration, durationToMilliSeconds } from './utils'
 const { nextTick } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
@@ -23,7 +23,6 @@ export interface ProcessConfig {
     inputType?: 'raw' | 'json'
     retries?: number
     resultSchema?: Schema
-    // returnValidation?: any
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
@@ -99,7 +98,7 @@ export class Process<Result extends any> extends EventEmitter {
                 env: this.config.env || {}, // keep process.env "secret"
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: this.abortController.signal,
-                timeout: this.config.timeout ? durationToSeconds(this.config.timeout) * 1000 : undefined
+                timeout: this.config.timeout ? durationToMilliSeconds(this.config.timeout) : undefined
             }
         )
         this.process = process

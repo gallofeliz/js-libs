@@ -2,7 +2,7 @@ import { EventEmitter, once } from 'events'
 import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
-import { Duration, durationToSeconds } from './utils'
+import { Duration, durationToMilliSeconds } from './utils'
 import { Query } from 'mingo'
 import Datastore from 'nedb'
 import { promisify } from 'util'
@@ -335,7 +335,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
                     this.abort('timeout')
                 }
                 this.emit('allocated-time-reached')
-            }, durationToSeconds(this.allocatedTime) * 1000)
+            }, durationToMilliSeconds(this.allocatedTime))
         }
 
         try {

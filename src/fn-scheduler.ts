@@ -1,4 +1,4 @@
-import { durationToSeconds, Duration } from './utils'
+import { durationToMilliSeconds, Duration } from './utils'
 import cron from 'cron-parser'
 import { Logger } from './logger'
 
@@ -60,7 +60,7 @@ export default class FnScheduler<Identity = any> {
                 return cron.parseExpression(schedule).next().getTime() - now
             }
 
-            return durationToSeconds(schedule) * 1000
+            return durationToMilliSeconds(schedule)
         })
 
         return nextTimes.sort()[0]
