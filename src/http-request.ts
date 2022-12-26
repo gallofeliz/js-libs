@@ -12,8 +12,8 @@ export interface HttpRequestConfig {
    abortSignal?: AbortSignal
    url: string
    method?: Method
-   outputType?: 'text' | 'json' | 'auto' // responseType
-   outputTransformation?: string  // responseTransformation
+   responseType?: 'text' | 'json' | 'auto'
+   responseTransformation?: string
    timeout?: Duration
    retries?: integer
    headers?: Record<any, string>
@@ -24,7 +24,7 @@ export interface HttpRequestConfig {
       username: string
       password: string
    }
-   // validation?: any
+   // returnValidation?: any
 }
 
 export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
@@ -81,18 +81,18 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
     try {
         const response = await gotRequest
 
-        if (!request.outputType) {
+        if (!request.responseType) {
             return undefined as Result
         }
 
-        const isJson = request.outputType === 'auto'
+        const isJson = request.responseType === 'auto'
             ? (response.headers['content-type'] || '').includes('json')
-            : request.outputType === 'json'
+            : request.responseType === 'json'
 
         const output = (isJson ? await gotRequest.json() : await gotRequest.text())
 
-        return (request.outputTransformation
-            ? jsonata(request.outputTransformation).evaluate(output)
+        return (request.responseTransformation
+            ? jsonata(request.responseTransformation).evaluate(output)
             : output
         ) as Result
     } catch (e) {

@@ -5,6 +5,7 @@ import { sizeToKiB, AbortError, Duration, durationToSeconds } from './utils'
 const { nextTick } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
+import validate, { Schema } from './validate'
 
 export interface ProcessConfig {
     logger: Logger
@@ -20,18 +21,15 @@ export interface ProcessConfig {
     timeout?: Duration
     inputData?: NodeJS.ReadableStream | any
     inputType?: 'raw' | 'json'
-
-
-    // retries?: number
-    // stdIn?: any
-    // inputStream?: any
-    // validation?: any
+    retries?: number
+    resultSchema?: Schema
+    // returnValidation?: any
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
-function runProcess(config: ProcessConfig, asPromise: true): Promise<any>
-function runProcess(config: ProcessConfig, asPromise?: false): Process
-function runProcess(config: ProcessConfig, asPromise: boolean = false): Process | Promise<any> {
+function runProcess<Result extends any>(config: ProcessConfig, asPromise: true): Promise<Result>
+function runProcess<Result extends any>(config: ProcessConfig, asPromise?: false): Process<Result>
+function runProcess<Result extends any>(config: ProcessConfig, asPromise: boolean = false): Process<Result> | Promise<Result> {
     const proc = new Process(config)
 
     if (!asPromise) {
@@ -43,7 +41,7 @@ function runProcess(config: ProcessConfig, asPromise: boolean = false): Process 
 
 export default runProcess
 
-export class Process extends EventEmitter {
+export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
     protected logger: Logger
     protected process?: ChildProcess
@@ -56,6 +54,10 @@ export class Process extends EventEmitter {
 
         if (this.config.outputStream && this.config.outputType) {
             throw new Error('Incompatible both outputType and outputStream')
+        }
+
+        if (config.retries) {
+            this.logger.notice('retries configuration not handled yet')
         }
 
         this.run()
@@ -94,7 +96,7 @@ export class Process extends EventEmitter {
             this.config.args || [],
             {
                 killSignal: this.config.killSignal || 'SIGINT',
-                ...this.config.env && { env: this.config.env },
+                env: this.config.env || {}, // keep process.env "secret"
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: this.abortController.signal,
                 timeout: this.config.timeout ? durationToSeconds(this.config.timeout) * 1000 : undefined
@@ -103,11 +105,11 @@ export class Process extends EventEmitter {
         this.process = process
 
         if (this.config.inputData instanceof Readable) {
-            this.config.inputData.pipe(this.process.stdin)
+            this.config.inputData.pipe(process.stdin)
         } else if (this.config.inputData) {
             const data = this.config.inputType === 'json'
                 ? JSON.stringify(this.config.inputData)
-                : data
+                : this.config.inputData
 
             process.stdin.write(data, () => process.stdin.end())
         } else {
@@ -159,10 +161,13 @@ export class Process extends EventEmitter {
         }
 
         const output = this.getOutputData(stdout)
-
-        return this.emit('finish', this.config.outputTransformation
-            ? jsonata(this.config.outputTransformation).evaluate(output)
+        const result = this.config.outputTransformation
+            ? await jsonata(this.config.outputTransformation).evaluate(output)
             : output
+
+        return this.emit('finish', this.config.resultSchema
+            ? validate<Result>(result, {schema: this.config.resultSchema})
+            : result as Result
         )
     }
 

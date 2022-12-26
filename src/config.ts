@@ -1,11 +1,11 @@
 import fs from 'fs'
 import YAML from 'yaml'
 import envsubst from '@tuplo/envsubst'
-import _ from 'lodash'
+import _, { valuesIn } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve} from 'path'
 import {Logger} from './logger'
-import {SchemaObject, default as Ajv} from 'ajv'
+import validate, {SchemaObject} from './validate'
 
 interface ConfigOpts<UserProvidedConfig, Config> {
     mandatoryFile?: boolean
@@ -78,15 +78,11 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
     })
 
     if (opts.userProvidedConfigSchema) {
-        const ajv = new Ajv({coerceTypes: true, removeAdditional: true, useDefaults: true})
-        if (!ajv.validate({...opts.userProvidedConfigSchema, additionalProperties: false}, userProvidedConfig)) {
-            const firstError = ajv.errors![0]
-            const message2 = 'Configuration '
-                + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
-                + firstError.message
-
-            throw new Error(message2)
-        }
+        userProvidedConfig = validate(userProvidedConfig, {
+            schema: {...opts.userProvidedConfigSchema, additionalProperties: false},
+            removeAdditional: true,
+            contextErrorMsg: 'Configuration'
+        })
     }
 
     if (opts.defaultValues) {
