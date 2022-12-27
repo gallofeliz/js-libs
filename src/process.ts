@@ -10,6 +10,7 @@ import validate, { Schema } from './validate'
 export interface ReferenceProcessConfig {
     logger: Logger
     command: string | string[]
+    shell?: string | string[]
     abortSignal?: AbortSignal
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
@@ -92,7 +93,16 @@ export class Process<Result extends any> extends EventEmitter {
             spawnCmd = this.config.cmd
             spawnArgs = this.config.args || []
         } else {
-            const cmd = Array.isArray(this.config.command) ? this.config.command : ['sh', '-c', this.config.command]
+            const shell: string[] = this.config.shell
+                ? (
+                    Array.isArray(this.config.shell)
+                    ? this.config.shell
+                    // Test is cmd.exe (and powershell ?)
+                    : [this.config.shell, '-c']
+                )
+                // In the this case, we can use 'shell' option of spawn
+                :  [/*process.env.SHELL || process.env.ComSpec || */'sh', /* process.env.ComSpec && /d /s /c */'-c']
+            const cmd = Array.isArray(this.config.command) ? this.config.command : shell.concat(this.config.command)
             spawnCmd = cmd[0]
             spawnArgs = cmd.slice(1)
         }
