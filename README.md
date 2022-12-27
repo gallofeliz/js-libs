@@ -23,5 +23,6 @@ The workflow is :
 
 ```
 	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i
-
+	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i --no-save ts-node
+	sudo docker run --rm -it -v $(pwd):/workdir --init --workdir /workdir node:lts-alpine node_modules/.bin/ts-node test/process.ts
 ```

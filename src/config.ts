@@ -7,6 +7,9 @@ import {extname, resolve, dirname} from 'path'
 import {Logger} from './logger'
 import validate, {SchemaObject} from './validate'
 
+/**
+ * Refacto to do in this module
+ */
 interface ConfigOpts<UserProvidedConfig, Config> {
     mandatoryFile?: boolean
     filename?: string
@@ -112,8 +115,6 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
                               }
                             },
                         ]
-
-
 
                         const doc = YAML.parseDocument(
                             doEnvsubst(fs.readFileSync(filename, 'utf8')),
