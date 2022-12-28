@@ -4,8 +4,9 @@
 name: Node.js Package
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - v**
 
 jobs:
   publish:
@@ -19,6 +20,7 @@ jobs:
         with:
           node-version: lts/*
           registry-url: https://npm.pkg.github.com/
+      - run: npm i
       - run: npm run build
       - run: npm publish
         env:
