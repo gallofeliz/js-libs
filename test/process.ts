@@ -6,8 +6,7 @@ import { once, EventEmitter } from 'events'
 ;(async() => {
 
     const errorsCount = await runProcess<number>({
-        cmd: 'echo',
-        args: ['There are 3 errors here !'],
+        command: ['echo', 'There are 3 errors here !'],
         logger,
         outputType: 'text',
         outputTransformation: "$number($match(/(\\d+) errors/).groups[0])",
@@ -15,6 +14,17 @@ import { once, EventEmitter } from 'events'
     }, true)
 
     console.log(errorsCount, typeof errorsCount) // number !
+
+    console.log(
+        await runProcess<number>({
+            command: 'echo "There are 3 errors here !"',
+            shell: ['bash', '-e', '-x', '-c'],
+            logger,
+            outputType: 'text',
+            outputTransformation: "$number($match(/(\\d+) errors/).groups[0])",
+            resultSchema: { type: 'number' }
+        }, true)
+    )
 
     // return
 

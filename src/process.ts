@@ -7,7 +7,7 @@ import jsonata from 'jsonata'
 import Readable from 'stream'
 import validate, { Schema } from './validate'
 
-export interface ReferenceProcessConfig {
+export interface ProcessConfig {
     logger: Logger
     command: string | string[]
     shell?: string | string[]
@@ -23,14 +23,6 @@ export interface ReferenceProcessConfig {
     inputType?: 'raw' | 'json'
     retries?: number
     resultSchema?: Schema
-}
-
-export type LegacyProcessConfig = Omit<ReferenceProcessConfig, 'command'> & { cmd: string, args?: string[] }
-
-export type ProcessConfig = ReferenceProcessConfig | LegacyProcessConfig
-
-function isLegacyProcessConfig(config: ProcessConfig): config is LegacyProcessConfig {
-    return !!(config as LegacyProcessConfig).cmd
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
@@ -88,27 +80,22 @@ export class Process<Result extends any> extends EventEmitter {
         let spawnCmd: string
         let spawnArgs: string[]
 
-        if (isLegacyProcessConfig(this.config)) {
-            this.logger.notice('Deprecated cmd/args, use command instead')
-            spawnCmd = this.config.cmd
-            spawnArgs = this.config.args || []
-        } else {
-            const shell: string[] = this.config.shell
-                ? (
-                    Array.isArray(this.config.shell)
-                    ? this.config.shell
-                    // Test is cmd.exe (and powershell ?)
-                    : [this.config.shell, '-c']
-                )
-                // In the this case, we can use 'shell' option of spawn
-                :  [/*process.env.SHELL || process.env.ComSpec || */'sh', /* process.env.ComSpec && /d /s /c */'-c']
-            const cmd = Array.isArray(this.config.command) ? this.config.command : shell.concat(this.config.command)
-            spawnCmd = cmd[0]
-            spawnArgs = cmd.slice(1)
-        }
+        const shell: string[] = this.config.shell
+            ? (
+                Array.isArray(this.config.shell)
+                ? this.config.shell
+                // Test is cmd.exe (and powershell ?)
+                : [this.config.shell, '-c']
+            )
+            // In the this case, we can use 'shell' option of spawn
+            :  [/*process.env.SHELL || process.env.ComSpec || */'sh', /* process.env.ComSpec && /d /s /c */'-c']
+        const cmd = Array.isArray(this.config.command) ? this.config.command : shell.concat(this.config.command)
+        spawnCmd = cmd[0]
+        spawnArgs = cmd.slice(1)
 
         this.logger.info('Starting process', {
-            ...isLegacyProcessConfig(this.config) ? { cmd: this.config.cmd, args: this.config.args || [] } : { command: this.config.command } ,
+            // Todo : add spawn informations
+            command: this.config.command,
             env: this.config.env,
             cwd: this.config.cwd
         })
