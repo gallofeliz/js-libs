@@ -22,10 +22,10 @@ jobs:
           scope: '@gallofeliz'
       - run: npm i
       - run: npm run build
+      - run: npm version ${{github.ref_name}} --allow-same-version --no-git-tag-version
+      - run: npm pack --pack-destination build
       - uses: softprops/action-gh-release@v1
         #if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            package.json
-            package-lock.json
+          files: build/*
           token: ${{secrets.GITHUB_TOKEN}}
