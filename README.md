@@ -1,5 +1,7 @@
 # js-libs
 
+Github NPM packages doesn't allow install without TOKEN and so is useless. Use release assets instead (for example https://github.com/gallofeliz/js-libs/releases/download/v0.1.5/gallofeliz-js-libs-0.1.5.tgz).
+
 ## Notes
 
 - for the moment, the build is done on installation.
