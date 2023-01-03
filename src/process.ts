@@ -1,30 +1,34 @@
 import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
-import { sizeToKiB, AbortError, Duration, durationToSeconds } from './utils'
+import { AbortError, Duration, durationToMilliSeconds } from './utils'
 const { nextTick } = process
+import jsonata from 'jsonata'
+import Readable from 'stream'
+import validate, { Schema } from './validate'
 
 export interface ProcessConfig {
     logger: Logger
+    command: string | string[]
+    shell?: string | string[]
     abortSignal?: AbortSignal
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
-    cmd: string
-    args?: string[]
+    outputTransformation?: string
     cwd?: string
     env?: {[k: string]: string}
     killSignal?: NodeJS.Signals
     timeout?: Duration
-
-    // retries?: number
-    // stdIn?: any
-    // inputStream?: any
+    inputData?: NodeJS.ReadableStream | any
+    inputType?: 'raw' | 'json'
+    retries?: number
+    resultSchema?: Schema
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
-function runProcess(config: ProcessConfig, asPromise: true): Promise<any>
-function runProcess(config: ProcessConfig, asPromise?: false): Process
-function runProcess(config: ProcessConfig, asPromise: boolean = false): Process | Promise<any> {
+function runProcess<Result extends any>(config: ProcessConfig, asPromise: true): Promise<Result>
+function runProcess<Result extends any>(config: ProcessConfig, asPromise?: false): Process<Result>
+function runProcess<Result extends any>(config: ProcessConfig, asPromise: boolean = false): Process<Result> | Promise<Result> {
     const proc = new Process(config)
 
     if (!asPromise) {
@@ -36,7 +40,7 @@ function runProcess(config: ProcessConfig, asPromise: boolean = false): Process 
 
 export default runProcess
 
-export class Process extends EventEmitter {
+export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
     protected logger: Logger
     protected process?: ChildProcess
@@ -49,6 +53,10 @@ export class Process extends EventEmitter {
 
         if (this.config.outputStream && this.config.outputType) {
             throw new Error('Incompatible both outputType and outputStream')
+        }
+
+        if (config.retries) {
+            this.logger.notice('retries configuration not handled yet')
         }
 
         this.run()
@@ -69,9 +77,25 @@ export class Process extends EventEmitter {
             return
         }
 
+        let spawnCmd: string
+        let spawnArgs: string[]
+
+        const shell: string[] = this.config.shell
+            ? (
+                Array.isArray(this.config.shell)
+                ? this.config.shell
+                // Test is cmd.exe (and powershell ?)
+                : [this.config.shell, '-c']
+            )
+            // In the this case, we can use 'shell' option of spawn
+            :  [/*process.env.SHELL || process.env.ComSpec || */'sh', /* process.env.ComSpec && /d /s /c */'-c']
+        const cmd = Array.isArray(this.config.command) ? this.config.command : shell.concat(this.config.command)
+        spawnCmd = cmd[0]
+        spawnArgs = cmd.slice(1)
+
         this.logger.info('Starting process', {
-            cmd: this.config.cmd,
-            args: this.config.args || [],
+            // Todo : add spawn informations
+            command: this.config.command,
             env: this.config.env,
             cwd: this.config.cwd
         })
@@ -83,17 +107,28 @@ export class Process extends EventEmitter {
         }
 
         const process = spawn(
-            this.config.cmd,
-            this.config.args || [],
+            spawnCmd,
+            spawnArgs,
             {
                 killSignal: this.config.killSignal || 'SIGINT',
-                ...this.config.env && { env: this.config.env },
+                env: this.config.env || {}, // keep process.env "secret"
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: this.abortController.signal,
-                timeout: this.config.timeout ? durationToSeconds(this.config.timeout) * 1000 : undefined
+                timeout: this.config.timeout ? durationToMilliSeconds(this.config.timeout) : undefined
             }
         )
         this.process = process
+
+        if (this.config.inputData instanceof Readable) {
+            this.config.inputData.pipe(process.stdin)
+        } else if (this.config.inputData) {
+            const data = this.config.inputType === 'json'
+                ? JSON.stringify(this.config.inputData)
+                : this.config.inputData
+            process.stdin.write(data, () => process.stdin.end())
+        } else {
+            process.stdin.end()
+        }
 
         let stdout: string = ''
 
@@ -135,7 +170,19 @@ export class Process extends EventEmitter {
             }
         }
 
-        return this.emit('finish', !this.config.outputStream ? this.getOutputData(stdout) : undefined)
+        if (this.config.outputStream) {
+            return this.emit('finish')
+        }
+
+        const output = this.getOutputData(stdout)
+        const result = this.config.outputTransformation
+            ? await jsonata(this.config.outputTransformation).evaluate(output)
+            : output
+
+        return this.emit('finish', this.config.resultSchema
+            ? validate<Result>(result, {schema: this.config.resultSchema})
+            : result as Result
+        )
     }
 
     protected getOutputData(output: string) {
@@ -148,7 +195,7 @@ export class Process extends EventEmitter {
         }
 
         if (['text'].includes(this.config.outputType || 'text')) {
-            return output
+            return output.trim()
         }
 
         if (this.config.outputType === 'multilineJson') {

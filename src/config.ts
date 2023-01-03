@@ -1,12 +1,15 @@
 import fs from 'fs'
 import YAML from 'yaml'
 import envsubst from '@tuplo/envsubst'
-import _ from 'lodash'
+import _, { valuesIn } from 'lodash'
 import {hostname} from 'os'
-import {extname, resolve} from 'path'
+import {extname, resolve, dirname} from 'path'
 import {Logger} from './logger'
-import {SchemaObject, default as Ajv} from 'ajv'
+import validate, {SchemaObject} from './validate'
 
+/**
+ * Refacto to do in this module
+ */
 interface ConfigOpts<UserProvidedConfig, Config> {
     mandatoryFile?: boolean
     filename?: string
@@ -16,8 +19,8 @@ interface ConfigOpts<UserProvidedConfig, Config> {
     defaultValues?: {[key: string]: any} // ex { 'api.port': 80 }
     finalizer?: (userProvidedConfig: UserProvidedConfig) => Config
     userProvidedConfigSchema?: SchemaObject
+    envsubst?: boolean
     //logger: Logger
-    // dockerSecrets
 }
 
 export default function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Config {
@@ -40,20 +43,95 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
 
     // Todo : add defaultFilename
 
+    function doEnvsubst(input: string) {
+        return opts.envsubst === false ? input : envsubst(input)
+    }
+
     if (filename) {
         try {
             switch(extname(filename)) {
                 case '.yml':
                 case '.yaml':
-                    userProvidedConfig = YAML.parse(
-                        envsubst(
-                            fs.readFileSync(filename, 'utf8')
+                    const ymlCwd = dirname(filename)
+
+                        function convertType(rawValue: any, type: 'auto' | 'string' | 'number' = 'auto') {
+                            if (type === 'auto') {
+                                if (!isNaN(rawValue)) {
+                                    type = 'number'
+                                } else {
+                                    type = 'string'
+                                }
+                            }
+
+                            switch(type) {
+                                case 'string':
+                                    return rawValue
+                                case 'number':
+                                    return parseFloat(rawValue)
+                                default:
+                                    throw new Error('Unexpected type')
+                            }
+                        }
+
+                        function env({name, default: defaut, type}: {name: string, default?: any, type?: 'auto' | 'string' | 'number' }) {
+                            return convertType(process.env[name] || defaut, type)
+                        }
+
+                        function include({filename, type}: {filename: string, type?: 'auto' | 'string' | 'number'}) {
+                            return convertType(
+                                fs.readFileSync(
+                                    resolve(ymlCwd, filename),
+                                    'utf8'
+                                ),
+                                type
+                            )
+                        }
+
+                        const customTags: YAML.Tags = [
+                            {
+                              tag: '!include',
+                              collection: 'map',
+                              resolve(value) {
+                                return include(value.toJSON())
+                              }
+                            },
+                            {
+                              tag: '!include',
+                              resolve(value: string) {
+                                return include({filename: value})
+                              }
+                            },
+                            {
+                              tag: '!env',
+                              collection: 'map',
+                              resolve(value) {
+                                return env(value.toJSON())
+                              }
+                            },
+                            {
+                              tag: '!env',
+                              resolve(value: string) {
+                                return env({name: value})
+                              }
+                            },
+                        ]
+
+                        const doc = YAML.parseDocument(
+                            doEnvsubst(fs.readFileSync(filename, 'utf8')),
+                            { customTags }
                         )
-                    )
+
+                        const warnOrErrors = doc.errors.concat(doc.warnings)
+
+                        if (warnOrErrors.length) {
+                            throw warnOrErrors[0]
+                        }
+
+                        userProvidedConfig = doc.toJS()
                     break
                 case '.json':
                     userProvidedConfig = JSON.parse(
-                        envsubst(
+                        doEnvsubst(
                             fs.readFileSync(filename, 'utf8')
                         )
                     )
@@ -78,15 +156,11 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
     })
 
     if (opts.userProvidedConfigSchema) {
-        const ajv = new Ajv({coerceTypes: true, removeAdditional: true, useDefaults: true})
-        if (!ajv.validate({...opts.userProvidedConfigSchema, additionalProperties: false}, userProvidedConfig)) {
-            const firstError = ajv.errors![0]
-            const message2 = 'Configuration '
-                + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
-                + firstError.message
-
-            throw new Error(message2)
-        }
+        userProvidedConfig = validate(userProvidedConfig, {
+            schema: {...opts.userProvidedConfigSchema, additionalProperties: false},
+            removeAdditional: true,
+            contextErrorMsg: 'Configuration'
+        })
     }
 
     if (opts.defaultValues) {

@@ -20,3 +20,15 @@ The workflow is :
 - The config is validated (end of user config) with schema
 - The config is completed with default values
 - The config is finalized (if provided)
+
+## todo
+
+update neDB with https://www.npmjs.com/package/@seald-io/nedb
+
+## Dev
+
+```
+	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i
+	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i --no-save ts-node
+	sudo docker run --rm -it -v $(pwd):/workdir --init --workdir /workdir node:lts-alpine node_modules/.bin/ts-node test/process.ts
+```

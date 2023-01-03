@@ -1,4 +1,4 @@
-import { durationToSeconds, Duration } from './utils'
+import { durationToMilliSeconds, Duration } from './utils'
 import chokidar from 'chokidar'
 import { Logger } from './logger'
 
@@ -27,8 +27,8 @@ export default class FsWatcher<Identity = any> {
         this.paths = paths
         this.logger = logger
         this.ignore = ignore || []
-        this.waitMinMs = waitMin ? durationToSeconds(waitMin) * 1000 : null
-        this.waitMaxMs = waitMax ? durationToSeconds(waitMax) * 1000 : this.waitMinMs
+        this.waitMinMs = waitMin ? durationToMilliSeconds(waitMin) : null
+        this.waitMaxMs = waitMax ? durationToMilliSeconds(waitMax) : this.waitMinMs
     }
 
     public getId() {
