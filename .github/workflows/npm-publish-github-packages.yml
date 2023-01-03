@@ -1,9 +1,9 @@
-name: Node.js Package
+name: Build
 
-on:
-  push:
-    tags:
-      - v**
+# on:
+#   push:
+#     tags:
+#       - v**
 
 jobs:
   publish:
@@ -18,12 +18,15 @@ jobs:
           registry-url: https://npm.pkg.github.com/
           scope: '@gallofeliz'
       - run: npm i
-      - run: npm run build
+      - run: npm run test
+      - run: tsc
+      - run: mv dist/src/* .
+      - run: rm -R dist
       - run: npm version ${{github.ref_name}} --allow-same-version --no-git-tag-version
       - run: mkdir build
       - run: npm pack --pack-destination build
       - uses: softprops/action-gh-release@v1
-        #if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: build/*
           token: ${{secrets.GITHUB_TOKEN}}

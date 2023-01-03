@@ -1,4 +1,4 @@
-import runProcess, { ReferenceProcessConfig } from './process'
+import runProcess, { ProcessConfig } from './process'
 import httpRequest, { HttpRequestConfig } from './http-request'
 import { Logger } from './logger'
 import { Schema } from './validate'
@@ -15,7 +15,7 @@ export type HttpUserConfig = { type: 'http' }
 	>
 
 export type CommandUserConfig = { type: 'command' }
-	& Pick<ReferenceProcessConfig,
+	& Pick<ProcessConfig,
 		'command' | 'cwd' | 'env' | 'timeout' | 'retries' | 'outputType'
 		| 'outputTransformation' | 'killSignal' | 'inputType'
 	>
@@ -55,7 +55,7 @@ export default async function communicate<Result extends any>(config: UserCommun
 				...httpDataMapping
 			})
 		case 'command':
-			let cmdDataMapping: Partial<ReferenceProcessConfig> = {}
+			let cmdDataMapping: Partial<ProcessConfig> = {}
 
 			// Give ability to data as arg ?
 			if (config.data) {
