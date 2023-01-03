@@ -21,6 +21,10 @@ The workflow is :
 - The config is completed with default values
 - The config is finalized (if provided)
 
+## todo
+
+update neDB with https://www.npmjs.com/package/@seald-io/nedb
+
 ## Dev
 
 ```
