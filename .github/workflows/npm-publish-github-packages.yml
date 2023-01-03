@@ -3,10 +3,8 @@ name: Build
 on:
   push
 
-# How to split that ??
-
 jobs:
-  publish:
+  shouldBeSplitted:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,11 +17,12 @@ jobs:
           scope: '@gallofeliz'
       - run: npm i
       - run: npm run test
-      - if: startsWith(github.ref, 'refs/tags/v')
-        run: |
+      - run: |
           tsc
           mv dist/src/* .
           rm -R dist
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
           npm version ${{github.ref_name}} --allow-same-version --no-git-tag-version
           mkdir build
           npm pack --pack-destination build
