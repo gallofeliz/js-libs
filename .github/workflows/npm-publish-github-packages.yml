@@ -15,18 +15,23 @@ jobs:
           node-version: lts/*
           registry-url: https://npm.pkg.github.com/
           scope: '@gallofeliz'
-      - run: npm i
-      - run: npm run test
-      - run: |
+      - name: Install deps
+        run: npm i
+      - name: Run tests
+        run: npm run test
+      - name: Build
+        run: |
           tsc
           mv dist/src/* .
           rm -R dist
-      - if: startsWith(github.ref, 'refs/tags/v')
+      - name: Package
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           npm version ${{github.ref_name}} --allow-same-version --no-git-tag-version
           mkdir build
           npm pack --pack-destination build
-      - uses: softprops/action-gh-release@v1
+      - name: Publish
+        uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: build/*
