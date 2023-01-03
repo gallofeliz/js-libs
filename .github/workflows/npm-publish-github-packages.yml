@@ -3,8 +3,7 @@ name: Build
 on:
   push
 
-#     tags:
-#       - v**
+# How to split that ??
 
 jobs:
   publish:
@@ -20,12 +19,14 @@ jobs:
           scope: '@gallofeliz'
       - run: npm i
       - run: npm run test
-      - run: tsc
-      - run: mv dist/src/* .
-      - run: rm -R dist
-      - run: npm version ${{github.ref_name}} --allow-same-version --no-git-tag-version
-      - run: mkdir build
-      - run: npm pack --pack-destination build
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+        tsc
+        mv dist/src/* .
+        rm -R dist
+        npm version ${{github.ref_name}} --allow-same-version --no-git-tag-version
+        mkdir build
+        npm pack --pack-destination build
       - uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/v')
         with:
