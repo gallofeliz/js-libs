@@ -20,7 +20,7 @@ export interface HttpRequestConfig {
    headers?: Record<any, string>
    params?: Record<string, string | string[]> | [string, string][]
    bodyData?: NodeJS.ReadableStream | any
-   bodyType?: 'raw' | 'json' | 'form'
+   bodyType?: 'text' | 'json' | 'form' | string
    auth?: {
       username: string
       password: string
@@ -63,6 +63,10 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
 
     if (request.bodyData) {
         switch (request.bodyType) {
+            case 'text':
+                gotOpts.body = request.bodyData
+                gotOpts.headers = {...(gotOpts.headers || {}), 'Content-Type': 'text/plain'}
+                break
             case 'json':
                 gotOpts.json = request.bodyData
                 break
@@ -71,6 +75,9 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
                 break
             default:
                 gotOpts.body = request.bodyData
+                if (request.bodyType) {
+                    gotOpts.headers = {...(gotOpts.headers || {}), 'Content-Type': request.bodyType}
+                }
         }
     }
 

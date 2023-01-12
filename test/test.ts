@@ -1,7 +1,62 @@
+import createLogger from '../src/logger'
+import HttpServer from '../src/http-server'
+import httpRequest from '../src/http-request'
+
+const logger = createLogger('info')
+
+const server = new HttpServer({
+    port: 8080,
+    logger,
+    api: {
+        routes: [
+            {
+                method: 'POST',
+                path: '/test',
+                async handler(req, res) {
+                    res.send(req.body)
+                }
+            }
+        ]
+    }
+})
+
+server.start()
+
+setTimeout(async () => {
+
+    console.log('object json test', await httpRequest({
+        logger,
+        url: 'http://localhost:8080/test',
+        method: 'POST',
+        bodyData: {test: 'yes'},
+        bodyType: 'json',
+        responseType: 'text'
+    }))
+
+    console.log('string json test', await httpRequest({
+        logger,
+        url: 'http://localhost:8080/test',
+        method: 'POST',
+        bodyData: 'test',
+        bodyType: 'json',
+        responseType: 'text'
+    }))
+
+    console.log('string text test', await httpRequest({
+        logger,
+        url: 'http://localhost:8080/test',
+        method: 'POST',
+        bodyData: 'test',
+        bodyType: 'text',
+        responseType: 'text'
+    }))
+
+    server.stop()
+
+}, 200)
+
 // import runProcess from '../src/process'
 // import { once } from 'events'
-// import createLogger from '../src/logger'
-// import HttpServer from '../src/http-server'
 // import loadConfig from '../src/config'
 
 // console.log(loadConfig({filename: __dirname + '/config.yml', envPrefix: 'app', defaultValues: { 'machin2.port': 443 }}))

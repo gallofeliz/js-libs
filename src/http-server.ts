@@ -2,7 +2,12 @@ import { Logger } from './logger'
 import express from 'express'
 import { Server } from 'http'
 import basicAuth from 'express-basic-auth'
-import { json as jsonParser } from 'body-parser'
+import {
+    json as jsonParser,
+    text as textParser,
+    urlencoded as urlencodedParser,
+    raw as rawParser
+} from 'body-parser'
 import { basename } from 'path'
 import { Socket } from 'net'
 import HtpasswdValidator from 'htpasswd-verify'
@@ -44,7 +49,17 @@ export default class HttpServer {
 
         this.configureAuth()
 
-        this.app.use(jsonParser())
+        this.app.use(jsonParser({
+            strict: false
+        }))
+
+        this.app.use(textParser())
+
+        this.app.use(urlencodedParser({
+            extended: true
+        }))
+
+        this.app.use(rawParser())
 
         this.app.use(morgan('tiny', {stream: {
             write: (message: string) => this.logger.info(message.trim())
