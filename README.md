@@ -23,7 +23,8 @@ The workflow is :
 
 ## todo
 
-update neDB with https://www.npmjs.com/package/@seald-io/nedb
+- Update neDB with https://www.npmjs.com/package/@seald-io/nedb or other (LOKI ?)
+- See to generate from API openAPI doc
 
 ## Dev
 
