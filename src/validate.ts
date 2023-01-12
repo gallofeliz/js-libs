@@ -10,12 +10,19 @@ export interface ValidateConfig {
 
 export default function validate<Data extends any>(data:Data, config: ValidateConfig): Data {
     const ajv = new Ajv({
-        coerceTypes: data instanceof Object ? true : false,
+        coerceTypes: true,
         removeAdditional: !!config.removeAdditional,
         useDefaults: true
     })
-    data = clone(data) // Don't modify caller data !
-    if (!ajv.validate(config.schema, data)) {
+    const wrapData = {data: clone(data)} // Don't modify caller data !
+    const wrapSchema = {
+        type: 'object',
+        properties: {
+            data: config.schema
+        }
+    }
+
+    if (!ajv.validate(wrapSchema, wrapData)) {
         const firstError = ajv.errors![0]
         const message = (config.contextErrorMsg ? config.contextErrorMsg + ' ' : '')
             + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
@@ -23,5 +30,6 @@ export default function validate<Data extends any>(data:Data, config: ValidateCo
 
         throw new Error(message)
     }
-    return data
+
+    return wrapData.data
 }

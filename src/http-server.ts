@@ -13,6 +13,7 @@ import { Socket } from 'net'
 import HtpasswdValidator from 'htpasswd-verify'
 import { once } from 'events'
 import morgan from 'morgan'
+import validate, { Schema, SchemaObject } from './validate'
 
 export interface HttpServerConfig {
     port: number
@@ -29,6 +30,8 @@ export interface HttpServerConfig {
             method: string
             path: string
             handler: (req: express.Request, res: express.Response, next?: express.NextFunction) => any
+            inputBodySchema?: Schema
+            inputQuerySchema?: SchemaObject
         }>
     }
     logger: Logger
@@ -118,10 +121,27 @@ export default class HttpServer {
         this.config.api.routes.forEach(route => {
             apiRouter[route.method.toLowerCase() as 'all'](route.path, async (req, res, next) => {
                 try {
+
+                    if (route.inputQuerySchema) {
+                        req.query = validate(req.query, {
+                            schema: route.inputQuerySchema,
+                            contextErrorMsg: 'query'
+                        })
+                    }
+
+                    if (route.inputBodySchema) {
+                        req.body = validate(req.body, {
+                            schema: route.inputBodySchema,
+                            contextErrorMsg: 'body'
+                        })
+                    }
+
                     const response = await route.handler(req, res, next)
 
-                    if (response !== undefined) {
-                        res.send(response)
+                    if (response !== undefined && !res.finished) {
+                        // Quick Fix because expressjs try to send statusCode
+                        // Todo : handle output type
+                        res.send(typeof response === 'number' ? response.toString() : response)
                     }
                 } catch (e) {
                     next(e)
