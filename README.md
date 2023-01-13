@@ -24,8 +24,9 @@ The workflow is :
 ## todo
 
 - Update neDB with https://www.npmjs.com/package/@seald-io/nedb or other (LOKI ?)
-- See to generate from API openAPI doc
+- See to generate from API openAPI doc (exclude internal routes, generate an enpoint with json/yaml openAPI and one with UI)
 - See jobs/process/others abort(abortController?) on res.close (http), maybe outputStream closes for process ; maybe a mechanism on httpServer for global
+- See process pipe between two processes
 
 ## Dev
 
