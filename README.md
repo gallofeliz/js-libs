@@ -29,7 +29,8 @@ The workflow is :
 - See process pipe between two processes
 - Add uid on logs for example for process 
 - Better mapping with json schema for config and env (for example DOOR_OPENVALUE should match door.openValue)
-- Server : auto format output ? (json etc) depending on request supported type
+- http server : auto format output ? (json etc) depending on request supported type
+- http server : auth by route
 
 ## Dev
 
