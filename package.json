@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "sh -ec 'for test in test/*.ts; do ts-node $test; done'"
+    "test": "sh -ec 'for test in $(find test src -iname \"*.ts\" -ipath \"*test*\"); do ts-node $test; done'"
   },
   "repository": {
     "type": "git",
@@ -31,6 +31,7 @@
     "mingo": "^6.0.6",
     "morgan": "^1.10.0",
     "nedb": "^1.8.0",
+    "object-observer": "^5.1.6",
     "safe-stable-stringify": "^2.3.1",
     "tsconfig-loader": "^1.1.0",
     "uuid": "^8.3.2",
