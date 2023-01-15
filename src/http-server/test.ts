@@ -1,6 +1,6 @@
-import createLogger from '../src/logger'
-import HttpServer from '../src/http-server'
-import httpRequest from '../src/http-request'
+import createLogger from '../logger'
+import HttpServer from '../http-server'
+import httpRequest from '../http-request'
 
 const logger = createLogger('info')
 

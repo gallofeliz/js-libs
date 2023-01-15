@@ -1,4 +1,4 @@
-import { Logger } from './logger'
+import { Logger } from '../logger'
 import express from 'express'
 import { Server } from 'http'
 import basicAuth from 'express-basic-auth'
@@ -13,7 +13,7 @@ import { Socket } from 'net'
 import HtpasswdValidator from 'htpasswd-verify'
 import { once } from 'events'
 import morgan from 'morgan'
-import validate, { Schema, SchemaObject } from './validate'
+import validate, { Schema, SchemaObject } from '../validate'
 import { extendErrors } from 'ajv/dist/compile/errors'
 import { flatten, intersection } from 'lodash'
 
@@ -32,7 +32,7 @@ export interface HttpServerConfig {
     webUi?: {
         filesPath: string
         auth?: {
-            required: boolean
+            required?: boolean
             roles?: string[]
         }
     }
@@ -45,7 +45,7 @@ export interface HttpServerConfig {
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             auth?: {
-                required: boolean
+                required?: boolean
                 roles?: string[]
             }
         }>
@@ -197,7 +197,7 @@ export default class HttpServer {
             if (needAuth) {
                 apiRouter[route.method.toLowerCase() as 'all'](route.path, basicAuth({
                     authorizer: (inputUsername: string, inputPassword: string) => {
-                        return this.auth!.validate(inputUsername, inputPassword, this.config.webUi!.auth!.roles || [])
+                        return this.auth!.validate(inputUsername, inputPassword, route.auth?.roles || [])
                     },
                     challenge: true
                 }))
