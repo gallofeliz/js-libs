@@ -25,6 +25,7 @@ interface User {
 
 export interface HttpServerConfig {
     port: number
+    host?: string
     auth?: {
         users: User[]
         extendedRoles?: Record<string, string[]>
@@ -158,7 +159,7 @@ export default class HttpServer {
         if (this.server) {
             return
         }
-        this.server = this.app.listen(this.config.port)
+        this.server = this.app.listen(this.config.port, this.config.host || '0.0.0.0')
 
         this.server.on('connection', (conn) => {
             const key = conn.remoteAddress + ':' + conn.remotePort;

@@ -30,7 +30,7 @@ The workflow is :
 - Add uid on logs for example for process 
 - Better mapping with json schema for config and env (for example DOOR_OPENVALUE should match door.openValue)
 - http server : auto format output ? (json etc) depending on request supported type
-- http server : auth by route
+- http server : special public role replaces required auth ?
 
 ## Dev
 
