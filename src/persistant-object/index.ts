@@ -1,56 +1,107 @@
 import { Observable, Change,  } from 'object-observer'
 import { readFile, writeFile } from 'fs/promises'
+import { watch } from 'fs'
+import { EventEmitter } from 'events'
 
-export interface PersistantObjectHandler {
-    load(): Promise<Object|void>
-    save(object: Object, changes: Change[]): Promise<void>
+interface Obj extends Object {}
+type ObservableObject<Obj> = EventEmitter&Obj
+
+/**
+ *
+ * Should be good to have observable deep object like myobject.user.on('change') for myboject.user = { firstname, lastname } for example
+ * A config live update
+ *
+ */
+
+export function createObservableObject<O extends Obj>(obj: Obj = {}): ObservableObject<O> {
+    const original = new EventEmitter
+
+    Object.assign(original, obj)
+
+    const observable = Observable.from(original, { async: true })
+
+    const ignoreProperties = ['_eventsCount', '_events', '_maxListeners', ...Object.keys(EventEmitter.prototype)]
+
+    Object.defineProperties(observable, ignoreProperties.reduce((properties, property) => ({...properties, [property]: {enumerable: false}}), {}))
+
+    Observable.observe(observable, changes => {
+        const filteredChanges = changes.filter((change: any) => !ignoreProperties.includes(change.path[0]))
+        if (filteredChanges.length === 0) {
+            return
+        }
+        (observable as EventEmitter).emit('change', filteredChanges)
+    })
+
+    return observable as ObservableObject<O>
 }
 
-export class PersistantObjectFileHandler {
-    protected filename
+export async function configureFileAutoSaveObservableObject<OO extends ObservableObject<Obj>>(obsObject: OO, filename: string): Promise<OO> {
 
-    constructor(filename: string) {
-        this.filename = filename
+    async function saveFileContent() {
+        await writeFile(filename, JSON.stringify(obsObject, undefined, 4), { encoding: 'utf8' })
     }
 
-    async load() {
+    obsObject.on('change', (changes) => {
+        saveFileContent()
+    })
+
+    await saveFileContent()
+
+    return obsObject
+}
+
+export async function configureFileAutoLoadObservableObject<OO extends ObservableObject<Obj>>(obsObject: OO, filename: string, watchChanges?: boolean, abortSignal?: AbortSignal): Promise<OO> {
+
+    async function getFileContent(maybeWriting = false) {
         try {
-            return JSON.parse(await readFile(this.filename, { encoding: 'utf8' }))
+            const content = await readFile(filename, { encoding: 'utf8' })
+            if (!content && maybeWriting) {
+                return
+            }
+            return JSON.parse(content)
         } catch (e: any) {
             if (e.code === 'ENOENT') {
+                return
+            }
+            if (e.name === 'SyntaxError' && maybeWriting) {
                 return
             }
             throw e
         }
     }
 
-    async save(object: Object, changes: Change[]) {
-        // No matter changes with files, we will update all the file
-        await writeFile(this.filename, JSON.stringify(object), { encoding: 'utf8' })
+    const fileContent = await getFileContent()
+
+    if (fileContent) {
+        Object.assign(obsObject, fileContent)
     }
+
+    if (watchChanges) {
+        if (!fileContent) {
+            await writeFile(filename, '{}')
+        }
+        watch(filename, { signal: abortSignal }, async (a, b) => {
+            const fileContent = await getFileContent(true)
+
+            if (!fileContent || JSON.stringify(obsObject) === JSON.stringify(fileContent)) {
+                return
+            }
+
+            Object.assign(obsObject, fileContent)
+        })
+    }
+
+    return obsObject
 }
 
-class PersistantObject {
-    protected handler: PersistantObjectHandler
-    constructor(handler: PersistantObjectHandler) {
-        this.handler = handler
-    }
-
-    protected onChange(changes: Change[]) {
-        this.handler.save(this, changes)
-    }
-}
-
-export default async function createPersistantObject<T>(initialValue: T, handler: PersistantObjectHandler): Promise<T> {
-    const loadedValue = await handler.load()
-
-    const observable = Observable.from(loadedValue || {}, { async: true })
-
-    Observable.observe(observable, changes => handler.save(observable, changes))
-
-    if (!loadedValue) {
-    	Object.assign(observable, initialValue)
-    }
-
-    return observable as T
+export async function createFilePersistantObservableObject<O extends Obj>(obj: O, filename: string, watchChanges?: boolean, abortSignal?: AbortSignal): Promise<ObservableObject<O>> {
+    return await configureFileAutoSaveObservableObject(
+        await configureFileAutoLoadObservableObject(
+            createObservableObject(obj || {}),
+            filename,
+            watchChanges,
+            abortSignal
+        ),
+        filename
+    )
 }
