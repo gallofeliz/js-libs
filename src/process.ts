@@ -2,9 +2,10 @@ import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
 import { AbortError, Duration, durationToMilliSeconds } from './utils'
-const { nextTick } = process
+const { nextTick, env: processEnv } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
+import { pick } from 'lodash'
 import validate, { Schema } from './validate'
 
 export interface ProcessConfig {
@@ -93,10 +94,13 @@ export class Process<Result extends any> extends EventEmitter {
         spawnCmd = cmd[0]
         spawnArgs = cmd.slice(1)
 
+        const passEnvKeys = ['PATH', 'USER', 'HOME']
+        const env = {...pick(processEnv, passEnvKeys), ...this.config.env || {}}
+
         this.logger.info('Starting process', {
             // Todo : add spawn informations
             command: this.config.command,
-            env: this.config.env,
+            env,
             cwd: this.config.cwd
         })
 
@@ -111,7 +115,7 @@ export class Process<Result extends any> extends EventEmitter {
             spawnArgs,
             {
                 killSignal: this.config.killSignal || 'SIGINT',
-                env: this.config.env || {}, // keep process.env "secret"
+                env,
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: this.abortController.signal,
                 timeout: this.config.timeout ? durationToMilliSeconds(this.config.timeout) : undefined

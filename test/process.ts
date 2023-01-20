@@ -5,6 +5,12 @@ import { once, EventEmitter } from 'events'
 
 ;(async() => {
 
+    const envs = await runProcess<string>({
+        logger,
+        command: 'env',
+        outputType: 'text'
+    }, true)
+
     const errorsCount = await runProcess<number>({
         command: ['echo', 'There are 3 errors here !'],
         logger,
