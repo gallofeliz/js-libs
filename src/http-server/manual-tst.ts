@@ -21,13 +21,25 @@ const server = new HttpServer({
     api: {
         routes: [
             {
+                path: '/sleep',
+                auth: {
+                    required: false
+                },
+                async handler({abortSignal, res}) {
+                    abortSignal.addEventListener('abort', () => {
+                        console.log('Adios')
+                    })
+                    return res
+                }
+            },
+            {
                 method: 'GET',
                 path: '/talki/:name',
                 auth: {
                     roles: ['talk']
                 },
                 async handler({params}) {
-                    return params.name
+                    return 'hello ' + params.name
                 }
             },
             {

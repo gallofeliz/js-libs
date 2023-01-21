@@ -32,6 +32,7 @@ interface RouteHandlerParameters<Params, Query, Body> {
     body: Body
     query: Query
     uuid: string
+    abortSignal: AbortSignal
 }
 
 export interface HttpServerConfig {
@@ -51,7 +52,7 @@ export interface HttpServerConfig {
     api?: {
         prefix?: string
         routes: Array<{
-            method: string
+            method?: string
             path: string
             handler/*<Params, Query, Body, OutputBody>*/(parameters: RouteHandlerParameters<any, any, any>): Promise<any>
             inputBodySchema?: Schema
@@ -144,8 +145,8 @@ export default class HttpServer {
 
         this.app.use(morgan(':uuid :method :url :status :res[content-length] - :response-time ms', {stream: {
             write: (message: string) => {
-                const [uuid, logParts] = message.trim().split(' ')
-                this.logger.info(logParts, { serverRequestUuid: uuid })
+                const [uuid, ...logParts] = message.trim().split(' ')
+                this.logger.info(logParts.join(' '), { serverRequestUuid: uuid })
             }
         }}))
 
@@ -218,9 +219,10 @@ export default class HttpServer {
 
         this.config.api.routes.forEach(route => {
             const needAuth = this.auth ? route.auth?.required !== false : false
+            const method = route.method?.toLowerCase() || 'get'
 
             if (needAuth) {
-                apiRouter[route.method.toLowerCase() as 'all'](route.path, basicAuth({
+                apiRouter[method as 'all'](route.path, basicAuth({
                     authorizer: (inputUsername: string, inputPassword: string) => {
                         return this.auth!.validate(inputUsername, inputPassword, route.auth?.roles || [])
                     },
@@ -228,7 +230,7 @@ export default class HttpServer {
                 }))
             }
 
-            apiRouter[route.method.toLowerCase() as 'all'](route.path, async (req, res, next) => {
+            apiRouter[method as 'all'](route.path, async (req, res, next) => {
                 try {
                     const logger = this.logger.child({ serverRequestUuid: (req as any).uuid })
 
@@ -246,9 +248,16 @@ export default class HttpServer {
                         })
                     }
 
+                    const reqAbortController = new AbortController
+
+                    req.once('close', () => {
+                        reqAbortController.abort()
+                    })
+
                     const response = await route.handler({
                         req,
                         res,
+                        abortSignal: reqAbortController.signal,
                         logger,
                         params: req.params,
                         body: req.body,
