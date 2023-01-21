@@ -57,6 +57,7 @@ export interface HttpServerConfig {
             handler/*<Params, Query, Body, OutputBody>*/(parameters: RouteHandlerParameters<any, any, any>): Promise<any>
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
+            inputParamsSchema?: SchemaObject
             auth?: {
                 required?: boolean
                 roles?: string[]
@@ -233,6 +234,13 @@ export default class HttpServer {
             apiRouter[method as 'all'](route.path, async (req, res, next) => {
                 try {
                     const logger = this.logger.child({ serverRequestUuid: (req as any).uuid })
+
+                    if (route.inputParamsSchema) {
+                        req.params = validate(req.params, {
+                            schema: route.inputParamsSchema,
+                            contextErrorMsg: 'params'
+                        })
+                    }
 
                     if (route.inputQuerySchema) {
                         req.query = validate(req.query, {

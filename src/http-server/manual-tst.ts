@@ -34,13 +34,18 @@ const server = new HttpServer({
             },
             {
                 method: 'GET',
-                path: '/talki/:name',
+                inputParamsSchema: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'number' }
+                    }
+                },
+                path: '/talki/:id',
                 auth: {
                     roles: ['talk']
                 },
                 async handler({params, logger}) {
-                    logger.info('http://sddfds:sdsf@dsfsdffs/ rtsp://sdfsdf:sdfssf@sdfsdf.fr', {user: 'sdfsfds', password: 'sdfsfsd'})
-                    return 'hello ' + params.name
+                    return 'hello member n°' + params.id
                 }
             },
             {
