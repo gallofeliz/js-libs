@@ -8,9 +8,9 @@ child.on('log', (log) => {
     console.log('child log', log)
 })
 
-logger.info('The message', {the: 'data', password: 'secrettttt'})
+logger.info('The message', {the: 'data', password: 'secrettttt', array: [1, '2', new Date]})
 
-child.info('New message', {message: 'I want to hack'})
+child.info('New message', {message: 'I want to hack the https://admin:admin@mydomain/destroy'})
 
 // new Promise((resolve, reject) => reject(new Error('badoooom')))
 

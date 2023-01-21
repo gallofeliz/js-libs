@@ -38,7 +38,8 @@ const server = new HttpServer({
                 auth: {
                     roles: ['talk']
                 },
-                async handler({params}) {
+                async handler({params, logger}) {
+                    logger.info('http://sddfds:sdsf@dsfsdffs/ rtsp://sdfsdf:sdfssf@sdfsdf.fr', {user: 'sdfsfds', password: 'sdfsfsd'})
                     return 'hello ' + params.name
                 }
             },

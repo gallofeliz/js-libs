@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import { mapValues, cloneDeep, last, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
+import obfuscate from './obfuscator'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
 const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
@@ -65,17 +66,15 @@ export class JsonConsoleTransport extends BaseTransport {
 
 export class Logger extends EventEmitter {
     protected metadata: Object
-    protected secrets: string[]
     protected level: LogLevel
     protected transports: Transport[]
 
     /**
         Add bumble events ? But so use parent transport ?
     **/
-    public constructor({level, secrets, metadata, transports, logUnhandled}: LoggerOpts = {}) {
+    public constructor({level, metadata, transports, logUnhandled}: LoggerOpts = {}) {
         super()
         this.level = level || getLowerLevel()
-        this.secrets = secrets || ['password', 'key', 'secret', 'auth', 'token', 'credential']
         this.metadata = metadata || {}
         this.transports = transports || []
 
@@ -119,7 +118,6 @@ export class Logger extends EventEmitter {
     public child(metadata?: Object) {
         return new Logger({
             level: this.level,
-            secrets: this.secrets,
             metadata: {...this.metadata, ...(metadata || {})},
             transports: this.transports,
             logUnhandled: false
@@ -130,12 +128,12 @@ export class Logger extends EventEmitter {
             return
         }
 
-        const log = sanitize({
+        const log = obfuscate({
             ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
             timestamp: new Date,
             level,
             message,
-        }, this.secrets)
+        })
 
         this.emit('log', log) //, cb)
 
@@ -157,35 +155,6 @@ function ensureNotKeys(object: Object, keys: string[]): Object {
     })
 }
 
-function sanitize(variable: any, secrets: string[]): any {
-    if (typeof variable === 'object') {
-        if (variable instanceof Error) {
-            return {
-                name: variable.name,
-                message: variable.message,
-                stack: variable.stack
-            }
-        }
-        for (const key in variable) {
-            if (typeof key !== 'string') {
-                continue
-            }
-            if (typeof variable[key] === 'object') {
-                variable[key] = sanitize(variable[key], secrets)
-                continue
-            }
-            for (const secret of secrets) {
-                if (key.toLowerCase().includes(secret)) {
-                    variable[key] = '***'
-                }
-            }
-
-        }
-
-    }
-
-    return variable
-}
 
 export default function createLogger(level: LogLevel) {
     return new Logger({
