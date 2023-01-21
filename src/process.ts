@@ -7,6 +7,7 @@ import jsonata from 'jsonata'
 import Readable from 'stream'
 import { pick } from 'lodash'
 import validate, { Schema } from './validate'
+import { v4 as uuid } from 'uuid'
 
 export interface ProcessConfig {
     logger: Logger
@@ -54,7 +55,7 @@ export class Process<Result extends any> extends EventEmitter {
     constructor(config: ProcessConfig) {
         super()
         this.config = config // clone to avoid modify the original ?
-        this.logger = config.logger
+        this.logger = config.logger.child({ processUid: uuid() })
 
         if (this.config.inputData instanceof Process) {
             if (this.config.inputData.config.outputType || this.config.inputData.config.outputStream) {

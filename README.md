@@ -26,7 +26,6 @@ The workflow is :
 - Update neDB with https://www.npmjs.com/package/@seald-io/nedb or other (LOKI ?)
 - See to generate from API openAPI doc (exclude internal routes, generate an enpoint with json/yaml openAPI and one with UI)
 - See jobs/process/others abort(abortController?) on res.close (http), maybe outputStream closes for process ; maybe a mechanism on httpServer for global
-- See process pipe between two processes
 - Add uid on logs for example for process 
 - Better mapping with json schema for config and env (for example DOOR_OPENVALUE should match door.openValue)
 - http server : auto format output ? (json etc) depending on request supported type

@@ -1,5 +1,5 @@
 import { EventEmitter, once } from 'events'
-import { v4 as uuid4 } from 'uuid'
+import { v4 as uuid } from 'uuid'
 import { Logger } from './logger'
 import _ from 'lodash'
 import { Duration, durationToMilliSeconds } from './utils'
@@ -43,7 +43,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
     protected state: JobState = 'new'
     protected result?: Result
     protected error?: Error
-    protected uuid: string = uuid4()
+    protected uuid: string = uuid()
     protected createdAt: Date = new Date
     protected startedAt?: Date
     protected endedAt?: Date

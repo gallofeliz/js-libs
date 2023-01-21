@@ -24,7 +24,7 @@ export default class FnScheduler<Identity = any> {
         this.fn = fn
         this.schedules = schedules
         this.runOnStart = runOnStart
-        this.logger = logger
+        this.logger = logger.child({ fnSchedulerId: id })
     }
 
     public getId() {
@@ -80,7 +80,7 @@ export default class FnScheduler<Identity = any> {
             await this.fn()
         } catch (e) {
             // Thanks to async/await I can cheat with no promise ahah
-            this.logger.error('Fn call fails', {id: this.id, error: e})
+            this.logger.error('Fn call fails', {error: e})
         }
     }
 }

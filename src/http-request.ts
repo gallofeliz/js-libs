@@ -4,6 +4,7 @@ import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
 import validate, { Schema } from './validate'
+import { v4 as uuid } from 'uuid'
 
 /** @type integer */
 type integer = number
@@ -33,6 +34,7 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
       throw new AbortError
     }
 
+    logger = logger.child({ httpRequestUid: uuid() })
     let url = request.url
 
     if (request.params) {

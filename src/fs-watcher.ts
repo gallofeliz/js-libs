@@ -25,7 +25,7 @@ export default class FsWatcher<Identity = any> {
         this.id = id
         this.fn = fn
         this.paths = paths
-        this.logger = logger
+        this.logger =  logger.child({ fsWatcherId: id })
         this.ignore = ignore || []
         this.waitMinMs = waitMin ? durationToMilliSeconds(waitMin) : null
         this.waitMaxMs = waitMax ? durationToMilliSeconds(waitMax) : this.waitMinMs
@@ -74,7 +74,7 @@ export default class FsWatcher<Identity = any> {
             await this.fn()
         } catch (e) {
             // Thanks to async/await I can cheat with no promise ahah
-            this.logger.error('Fn call fails', {id: this.id, error: e})
+            this.logger.error('Fn call fails', {error: e})
         }
     }
 

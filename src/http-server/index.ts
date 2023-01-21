@@ -1,5 +1,5 @@
 import { Logger } from '../logger'
-import express from 'express'
+import express, { Router } from 'express'
 import { Server } from 'http'
 import basicAuth from 'express-basic-auth'
 import {
@@ -16,11 +16,19 @@ import morgan from 'morgan'
 import validate, { Schema, SchemaObject } from '../validate'
 import { extendErrors } from 'ajv/dist/compile/errors'
 import { flatten, intersection } from 'lodash'
+import { v4 as uuid } from 'uuid'
 
 interface User {
     username: string
     password: string
     roles: string[]
+}
+
+interface RouteHandlerParameters {
+    req: express.Request,
+    res: express.Response,
+    next?: express.NextFunction
+    logger: Logger
 }
 
 export interface HttpServerConfig {
@@ -42,7 +50,7 @@ export interface HttpServerConfig {
         routes: Array<{
             method: string
             path: string
-            handler: (req: express.Request, res: express.Response, next?: express.NextFunction) => any
+            handler: (parameters: RouteHandlerParameters) => any
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             auth?: {
@@ -121,8 +129,21 @@ export default class HttpServer {
 
         this.app.use(rawParser())
 
-        this.app.use(morgan('tiny', {stream: {
-            write: (message: string) => this.logger.info(message.trim())
+        this.app.use((req, res, next) => {
+            (req as any).uuid = uuid()
+            next()
+        })
+
+        morgan.token('uuid', function getId (req) {
+          return (req as any).uuid
+        })
+
+
+        this.app.use(morgan(':uuid :method :url :status :res[content-length] - :response-time ms', {stream: {
+            write: (message: string) => {
+                const [uuid, logParts] = message.trim().split(' ')
+                this.logger.info(logParts, { serverRequestUuid: uuid })
+            }
         }}))
 
         if (this.config.auth) {
@@ -206,6 +227,7 @@ export default class HttpServer {
 
             apiRouter[route.method.toLowerCase() as 'all'](route.path, async (req, res, next) => {
                 try {
+                    const logger = this.logger.child({ serverRequestUuid: (req as any).uuid })
 
                     if (route.inputQuerySchema) {
                         req.query = validate(req.query, {
@@ -221,7 +243,12 @@ export default class HttpServer {
                         })
                     }
 
-                    const response = await route.handler(req, res, next)
+                    const response = await route.handler({
+                        req,
+                        res,
+                        next,
+                        logger
+                    })
 
                     if (response !== undefined && !res.finished) {
                         // Quick Fix because expressjs try to send statusCode
