@@ -44,8 +44,8 @@ const server = new HttpServer({
                 auth: {
                     roles: ['talk']
                 },
-                async handler({params, logger}) {
-                    return 'hello member n°' + params.id
+                async handler({urlParams}) {
+                    return 'hello member n°' + urlParams.id
                 }
             },
             {
@@ -54,8 +54,11 @@ const server = new HttpServer({
                 auth: {
                     roles: ['danse', 'walk']
                 },
-                async handler({req, res}) {
-                    res.send('yes')
+                async handler() {
+                    return {
+                        code: 201,
+                        body: 'I am walki'
+                    }
                 }
             },
             {

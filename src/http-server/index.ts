@@ -1,6 +1,6 @@
 import { Logger } from '../logger'
-import express, { Router } from 'express'
-import { Server } from 'http'
+import express, { Router, Response } from 'express'
+import { OutgoingHttpHeaders, Server, IncomingHttpHeaders } from 'http'
 import basicAuth from 'express-basic-auth'
 import {
     json as jsonParser,
@@ -17,6 +17,7 @@ import validate, { Schema, SchemaObject } from '../validate'
 import { extendErrors } from 'ajv/dist/compile/errors'
 import { flatten, intersection } from 'lodash'
 import { v4 as uuid } from 'uuid'
+import stream from 'stream'
 
 interface User {
     username: string
@@ -24,16 +25,39 @@ interface User {
     roles: string[]
 }
 
-interface RouteHandlerParameters<Params, Query, Body> {
-    req: express.Request,
-    res: express.Response,
-    logger: Logger
-    params: Params
-    body: Body
+export interface HttpServerHandlerParameters<UrlParams extends any, Query extends any, InputBody extends any, OutputBody extends any> {
+    rawReq: express.Request
+    urlParams: UrlParams
     query: Query
-    uuid: string
+    body: Body
     abortSignal: AbortSignal
+    headers: IncomingHttpHeaders
+    uuid: string
+    logger: Logger
+    rawRes: express.Response
+    response(error: Error, status?: number): HttpServerErrorResponse
+    response(body: stream.Writable, contentType: string, status?: number): HttpServerResponse<OutputBody>
+    response(body?: OutputBody, status?: number): HttpServerResponse<OutputBody>
 }
+
+export interface HttpServerResponse<OutputBody extends any> {
+    status: number
+    headers: OutgoingHttpHeaders
+    body: OutputBody
+}
+
+function isHttpServerResponse(dontKnow: any): dontKnow is HttpServerResponse<any> {
+    return dontKnow
+        && typeof dontKnow === 'object'
+        && dontKnow.status && dontKnow.headers && dontKnow.body
+}
+
+export interface HttpServerErrorResponse extends Error, HttpServerResponse<any> {}
+
+// export type HttpServerHandler = <UrlParams extends any, Query extends any, InputBody extends any, OutputBody extends any>
+//     (params: HttpServerHandlerParameters<UrlParams, Query, InputBody, OutputBody>) => Promise<HttpServerResponse<OutputBody> | OutputBody>
+
+export type HttpServerHandler = (params: HttpServerHandlerParameters<any, any, any, any>) => Promise<HttpServerResponse<any> | any>
 
 export interface HttpServerConfig {
     port: number
@@ -54,7 +78,7 @@ export interface HttpServerConfig {
         routes: Array<{
             method?: string
             path: string
-            handler/*<Params, Query, Body, OutputBody>*/(parameters: RouteHandlerParameters<any, any, any>): Promise<any>
+            handler: HttpServerHandler
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
@@ -232,62 +256,115 @@ export default class HttpServer {
             }
 
             apiRouter[method as 'all'](route.path, async (req, res, next) => {
+                const uuid = (req as any).uuid
+                const logger = this.logger.child({ serverRequestUuid: uuid })
+
+                const reqAbortController = new AbortController
+
+                req.once('close', () => {
+                    reqAbortController.abort()
+                })
+
+                const createErrorResponse = (error: Error, status?: number): HttpServerErrorResponse => {
+                    const errorResponse = error as HttpServerErrorResponse
+                    errorResponse.status = status || 500
+                    errorResponse.headers = {}
+                    errorResponse.body = error.message
+
+                    return errorResponse
+                }
+
+                const createSuccessResponse = (body?: any, status?: number, headers: OutgoingHttpHeaders = {}): HttpServerResponse<any> => {
+                    return {
+                        status: status || (body === undefined ? 204 : 200),
+                        headers,
+                        body
+                    }
+                }
+
+                const createResponse = (...args: any[]) => {
+                    if (args[0] instanceof Error) {
+                        return createErrorResponse(args[0], args[1])
+                    }
+
+                    if (args[0] instanceof stream.Writable) {
+                        return createSuccessResponse(args[0], args[2], {'Content-Type': args[2]})
+                    }
+
+                    return createSuccessResponse(args[0], args[1])
+                }
+
+                let httpServerHandlerParameters: HttpServerHandlerParameters<any, any, any, any>
+
                 try {
-                    if (route.inputParamsSchema) {
-                        req.params = validate(req.params, {
-                            schema: route.inputParamsSchema,
-                            contextErrorMsg: 'params'
-                        })
+                    httpServerHandlerParameters = {
+                        rawReq: req,
+                        rawRes: res,
+                        logger,
+                        urlParams: route.inputParamsSchema
+                            ? validate(req.params, {
+                                schema: route.inputParamsSchema,
+                                contextErrorMsg: 'params'
+                            })
+                            : req.params,
+                        query: route.inputQuerySchema
+                            ? validate(req.query, {
+                                schema: route.inputQuerySchema,
+                                contextErrorMsg: 'query'
+                            })
+                            : req.query,
+                        body: route.inputBodySchema
+                            ? validate(req.body, {
+                                schema: route.inputBodySchema,
+                                contextErrorMsg: 'body'
+                            })
+                            : req.body,
+                        abortSignal: reqAbortController.signal,
+                        headers: req.headers,
+                        uuid,
+                        response: createResponse as HttpServerHandlerParameters<any, any, any, any>['response']
                     }
 
-                    if (route.inputQuerySchema) {
-                        req.query = validate(req.query, {
-                            schema: route.inputQuerySchema,
-                            contextErrorMsg: 'query'
-                        })
-                    }
-
-                    if (route.inputBodySchema) {
-                        req.body = validate(req.body, {
-                            schema: route.inputBodySchema,
-                            contextErrorMsg: 'body'
-                        })
-                    }
                 } catch (e) {
                     res.status(400).send((e as Error).message)
+                    return
                 }
+
+                let response
 
                 try {
-                    const logger = this.logger.child({ serverRequestUuid: (req as any).uuid })
-
-                    const reqAbortController = new AbortController
-
-                    req.once('close', () => {
-                        reqAbortController.abort()
-                    })
-
-                    const response = await route.handler({
-                        req,
-                        res,
-                        abortSignal: reqAbortController.signal,
-                        logger,
-                        params: req.params,
-                        body: req.body,
-                        query: req.query,
-                        uuid: (req as any).uuid
-                    })
-
-                    if (!res.finished && response !== res) {
-                        if (response === undefined) {
-                            res.status(201).end()
-                        } else {
-                            //if (req.accepts('json')) {
-                            res.json(response).end()
-                        }
-                    }
+                    response = await route.handler(httpServerHandlerParameters)
                 } catch (e) {
-                    next(e)
+                    if (isHttpServerResponse(e)) {
+                        response = e
+                    } else {
+                        next(e)
+                        return
+                    }
                 }
+
+                if (res.finished) {
+                    // Do nothing
+                    return
+                }
+
+                if (response instanceof stream.Writable) {
+                    // Do nothing
+                    return
+                }
+
+                if (!isHttpServerResponse(response)) {
+                    response = createSuccessResponse(response)
+                }
+
+                res.status(response.status)
+                for (const headerName in response.headers) {
+                    res.setHeader(headerName, response.headers[headerName] as string)
+                }
+                if (response.body !== undefined) {
+                    res.json(response.body)
+                }
+                res.end()
             })
         })
     }
