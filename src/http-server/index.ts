@@ -233,8 +233,6 @@ export default class HttpServer {
 
             apiRouter[method as 'all'](route.path, async (req, res, next) => {
                 try {
-                    const logger = this.logger.child({ serverRequestUuid: (req as any).uuid })
-
                     if (route.inputParamsSchema) {
                         req.params = validate(req.params, {
                             schema: route.inputParamsSchema,
@@ -255,6 +253,12 @@ export default class HttpServer {
                             contextErrorMsg: 'body'
                         })
                     }
+                } catch (e) {
+                    res.status(400).send((e as Error).message)
+                }
+
+                try {
+                    const logger = this.logger.child({ serverRequestUuid: (req as any).uuid })
 
                     const reqAbortController = new AbortController
 
