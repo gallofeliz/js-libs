@@ -22,12 +22,12 @@ const server = new HttpServer({
         routes: [
             {
                 method: 'GET',
-                path: '/talki',
+                path: '/talki/:name',
                 auth: {
                     roles: ['talk']
                 },
-                async handler(req, res) {
-                    res.send('yes')
+                async handler({params}) {
+                    return params.name
                 }
             },
             {
@@ -36,7 +36,7 @@ const server = new HttpServer({
                 auth: {
                     roles: ['danse', 'walk']
                 },
-                async handler(req, res) {
+                async handler({req, res}) {
                     res.send('yes')
                 }
             },
@@ -46,7 +46,7 @@ const server = new HttpServer({
                 auth: {
                     roles: ['danse', 'sing']
                 },
-                async handler(req, res) {
+                async handler({req, res}) {
                     res.send('yes')
                 }
             },
@@ -56,7 +56,7 @@ const server = new HttpServer({
                 auth: {
                     required: false
                 },
-                async handler(req, res) {
+                async handler({req, res}) {
                     res.send(server.getAuth()!.validate('papa', req.params.pass, ['bizounours']))
                 }
             },

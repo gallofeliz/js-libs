@@ -24,11 +24,14 @@ interface User {
     roles: string[]
 }
 
-interface RouteHandlerParameters {
+interface RouteHandlerParameters<Params, Query, Body> {
     req: express.Request,
     res: express.Response,
-    next?: express.NextFunction
     logger: Logger
+    params: Params
+    body: Body
+    query: Query
+    uuid: string
 }
 
 export interface HttpServerConfig {
@@ -50,7 +53,7 @@ export interface HttpServerConfig {
         routes: Array<{
             method: string
             path: string
-            handler: (parameters: RouteHandlerParameters) => any
+            handler/*<Params, Query, Body, OutputBody>*/(parameters: RouteHandlerParameters<any, any, any>): Promise<any>
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             auth?: {
@@ -246,14 +249,20 @@ export default class HttpServer {
                     const response = await route.handler({
                         req,
                         res,
-                        next,
-                        logger
+                        logger,
+                        params: req.params,
+                        body: req.body,
+                        query: req.query,
+                        uuid: (req as any).uuid
                     })
 
-                    if (response !== undefined && !res.finished) {
-                        // Quick Fix because expressjs try to send statusCode
-                        // Todo : handle output type
-                        res.send(typeof response === 'number' ? response.toString() : response)
+                    if (!res.finished && response !== res) {
+                        if (response === undefined) {
+                            res.status(201).end()
+                        } else {
+                            //if (req.accepts('json')) {
+                            res.json(response).end()
+                        }
                     }
                 } catch (e) {
                     next(e)
