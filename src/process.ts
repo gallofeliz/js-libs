@@ -13,14 +13,14 @@ export interface ProcessConfig {
     command: string | string[]
     shell?: string | string[]
     abortSignal?: AbortSignal
-    outputStream?: NodeJS.WritableStream
+    outputStream?: NodeJS.WritableStream | Process<any>
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     outputTransformation?: string
     cwd?: string
     env?: {[k: string]: string}
     killSignal?: NodeJS.Signals
     timeout?: Duration
-    inputData?: NodeJS.ReadableStream | any
+    inputData?: NodeJS.ReadableStream | Process<any> | any
     inputType?: 'raw' | 'json'
     retries?: number
     resultSchema?: Schema
@@ -41,26 +41,71 @@ function runProcess<Result extends any>(config: ProcessConfig, asPromise: boolea
 
 export default runProcess
 
+/**
+ * Needs remove events listeners for GC ?
+ */
 export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
     protected logger: Logger
     protected process?: ChildProcess
     protected abortController = new AbortController
+    protected processPipeError?: Error
 
     constructor(config: ProcessConfig) {
         super()
-        this.config = config
+        this.config = config // clone to avoid modify the original ?
         this.logger = config.logger
+
+        if (this.config.inputData instanceof Process) {
+            if (this.config.inputData.config.outputType || this.config.inputData.config.outputStream) {
+                throw new Error('Input data is process with output')
+            }
+            this.config.inputData.config.outputStream = this
+
+            this.shareAbortSignal(this.config.inputData)
+
+            this.config.inputData.once('error', (e) => {
+                // this.process!.kill('SIGKILL')
+                // this.emit('error', e)
+                this.processPipeError = e
+            })
+        }
+
+        if (this.config.outputStream instanceof Process) {
+            if (this.config.outputStream.config.inputData || this.config.outputStream.config.inputType) {
+                throw new Error('Output stream is process with input')
+            }
+            this.config.outputStream.config.inputData = this
+
+            this.shareAbortSignal(this.config.outputStream)
+
+            this.once('error', (e) => {
+                (this.config.outputStream as Process<any>).processPipeError = e
+            })
+        }
 
         if (this.config.outputStream && this.config.outputType) {
             throw new Error('Incompatible both outputType and outputStream')
+        }
+
+        if ((this.config.inputData instanceof Process || this.config.inputData instanceof ReadableStream) && this.config.inputType) {
+            throw new Error('Incompatible both inputType and inputData stream or process')
         }
 
         if (config.retries) {
             this.logger.notice('retries configuration not handled yet')
         }
 
-        this.run()
+        nextTick(() => this.run())
+    }
+
+    protected shareAbortSignal(process2: Process<any>) {
+        if (!process2.config.abortSignal) {
+            process2.config.abortSignal = this.config.abortSignal
+        }
+        if (!this.config.abortSignal) {
+            this.config.abortSignal = process2.config.abortSignal
+        }
     }
 
     public abort() {
@@ -74,7 +119,7 @@ export class Process<Result extends any> extends EventEmitter {
 
     protected async run() {
         if (this.config.abortSignal?.aborted) {
-            nextTick(() => this.emit('error', new AbortError))
+            this.emit('error', new AbortError)
             return
         }
 
@@ -123,7 +168,12 @@ export class Process<Result extends any> extends EventEmitter {
         )
         this.process = process
 
-        if (this.config.inputData instanceof Readable) {
+        if (this.config.inputData instanceof Process) {
+            if (this.config.inputData.process) {
+                this.logger.info('Redirecting inputStream from other process')
+                this.config.inputData.process.stdout!.pipe(process.stdin)
+            }
+        } else if (this.config.inputData instanceof Readable) {
             this.config.inputData.pipe(process.stdin)
         } else if (this.config.inputData) {
             const data = this.config.inputType === 'json'
@@ -137,8 +187,15 @@ export class Process<Result extends any> extends EventEmitter {
         let stdout: string = ''
 
         if (this.config.outputStream) {
-            this.logger.info('Redirecting outputStream')
-            process.stdout.pipe(this.config.outputStream)
+            if (this.config.outputStream instanceof Process) {
+                if (this.config.outputStream.process) {
+                    this.logger.info('Redirecting outputStream to other process')
+                    process.stdout.pipe(this.config.outputStream.process.stdin!)
+                }
+            } else {
+                this.logger.info('Redirecting outputStream')
+                process.stdout.pipe(this.config.outputStream)
+            }
         } else {
             process.stdout.on('data', (data) => {
                 const strData = data.toString()
@@ -165,6 +222,9 @@ export class Process<Result extends any> extends EventEmitter {
             this.logger.info('exitCode ' + exitCode)
             if (exitCode > 0) {
                 throw new Error('Process error : ' + stderr)
+            }
+            if (this.processPipeError) {
+                throw new Error('ProcessPipeError : ' + this.processPipeError.message)
             }
         } catch (e) {
             return this.emit('error', e)

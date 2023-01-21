@@ -3,7 +3,100 @@ import createLogger from '../src/logger'
 const logger = createLogger('info')
 import { once, EventEmitter } from 'events'
 
-;(async() => {
+;import { abort } from 'process';
+(async() => {
+
+    console.log(await runProcess({
+        inputData: runProcess({
+            logger,
+            command: 'md5sum | awk \'{print $1}\'',
+            inputData: runProcess({
+                logger,
+                command: ['echo', 'hello']
+            })
+        }),
+        logger,
+        command: ['wc', '-c'],
+        outputType: 'text',
+        outputTransformation: '$join(["There is ", $string(),  " words"])'
+    }, true))
+
+    console.log(await runProcess({
+        inputData: runProcess({
+            logger,
+            command: 'echo 1 2 3'
+        }),
+        logger,
+        command: 'wc -w',
+        outputType: 'text'
+    }, true))
+
+    const p1 = runProcess({
+        logger,
+        command: 'wc -w',
+        outputType: 'text'
+    })
+
+    const p2 = runProcess({
+        logger,
+        command: 'echo 1 2 3 4 5',
+        outputStream: p1
+    })
+
+    console.log((await once(p1, 'finish'))[0])
+
+    try {
+        console.log('result is', await runProcess({
+            inputData: runProcess({
+                logger,
+                command: 'echos 1 2 3',
+                //abortSignal: abortController.signal
+            }),
+            logger,
+            command: 'wc -w',
+            outputType: 'text'
+        }, true))
+    } catch (e) {
+        console.log('received error', e)
+    }
+
+    const abortController = new AbortController
+
+    setTimeout(() => abortController.abort(), 10)
+
+    try {
+        console.log('result is', await runProcess({
+            inputData: runProcess({
+                logger,
+                command: 'echo 1 2 3',
+                abortSignal: abortController.signal
+            }),
+            logger,
+            command: 'wc -w',
+            outputType: 'text'
+        }, true))
+    } catch (e) {
+        console.log('received error', e)
+    }
+
+    try {
+        const p1b = runProcess({
+            logger,
+            command: 'wc -w',
+            outputType: 'text'
+        })
+
+        const p2b = runProcess({
+            logger,
+            command: 'echos 1 2 3 4 5',
+            outputStream: p1b
+        })
+
+        console.log((await once(p1b, 'finish'))[0])
+
+    } catch (e) {
+        console.log('received error', e)
+    }
 
     const envs = await runProcess<string>({
         logger,
