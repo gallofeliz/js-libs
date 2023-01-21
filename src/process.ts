@@ -170,6 +170,9 @@ export class Process<Result extends any> extends EventEmitter {
 
         if (this.config.inputData instanceof Process) {
             if (this.config.inputData.process) {
+                if (!this.config.inputData.process.stdout!.readable) {
+                    this.emit('error', Error('Unable to redirecting outputStream from other process'))
+                }
                 this.logger.info('Redirecting inputStream from other process')
                 this.config.inputData.process.stdout!.pipe(process.stdin)
             }
@@ -189,6 +192,10 @@ export class Process<Result extends any> extends EventEmitter {
         if (this.config.outputStream) {
             if (this.config.outputStream instanceof Process) {
                 if (this.config.outputStream.process) {
+                    if (!this.config.outputStream.process.stdin!.writable) {
+                        this.emit('error', Error('Unable to redirecting outputStream to other process'))
+                        return
+                    }
                     this.logger.info('Redirecting outputStream to other process')
                     process.stdout.pipe(this.config.outputStream.process.stdin!)
                 }

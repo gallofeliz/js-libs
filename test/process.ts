@@ -6,6 +6,45 @@ import { once, EventEmitter } from 'events'
 ;import { abort } from 'process';
 (async() => {
 
+    const p5 = runProcess({
+        logger,
+        command: 'wc -w',
+        outputType: 'text'
+    })
+
+    process.nextTick(async () => {
+        try {
+            const p2 = runProcess({
+                logger,
+                command: 'echo 1 2 3 4 5',
+                outputStream: p5
+            })
+           console.log((await once(p5, 'finish'))[0])
+
+        } catch (e) {
+            console.log('received error', e)
+        }
+    })
+
+        const inputProcess = runProcess({
+            logger,
+            command: 'echo 1 2 3'
+        })
+
+        setTimeout(async () => {
+            try {
+                console.log(await runProcess({
+                    inputData: inputProcess,
+                    logger,
+                    command: 'wc -w',
+                    outputType: 'text'
+                }, true))
+            } catch (e) {
+                console.log('received error', e)
+            }
+
+        }, 50)
+
     console.log(await runProcess({
         inputData: runProcess({
             logger,
