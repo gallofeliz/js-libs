@@ -1,6 +1,7 @@
 import createLogger from '../logger'
 import HttpServer from '../http-server'
 import httpRequest from '../http-request'
+import runProcess from '../process'
 
 const logger = createLogger('info')
 
@@ -21,17 +22,30 @@ const server = new HttpServer({
     api: {
         routes: [
             {
-                path: '/sleep',
+                path: '/process',
                 auth: {
                     required: false
                 },
-                async handler({abortSignal, res}) {
-                    abortSignal.addEventListener('abort', () => {
-                        console.log('Adios')
+                async handler({logger}) {
+                    runProcess({
+                        command: 'ls',
+                        logger
                     })
-                    return res
+
                 }
             },
+            // {
+            //     path: '/sleep',
+            //     auth: {
+            //         required: false
+            //     },
+            //     async handler({abortSignal, rawRes}) {
+            //         abortSignal.addEventListener('abort', () => {
+            //             console.log('Adios')
+            //         })
+            //         return rawRes
+            //     }
+            // },
             {
                 method: 'GET',
                 inputParamsSchema: {
@@ -44,43 +58,43 @@ const server = new HttpServer({
                 auth: {
                     roles: ['talk']
                 },
-                async handler({urlParams}) {
-                    return 'hello member n°' + urlParams.id
+                async handler(req, res) {
+                    res.send('hello member n°' + req.params.id)
                 }
             },
-            {
-                method: 'GET',
-                path: '/walki',
-                auth: {
-                    roles: ['danse', 'walk']
-                },
-                async handler() {
-                    return {
-                        code: 201,
-                        body: 'I am walki'
-                    }
-                }
-            },
-            {
-                method: 'GET',
-                path: '/moki',
-                auth: {
-                    roles: ['danse', 'sing']
-                },
-                async handler({req, res}) {
-                    res.send('yes')
-                }
-            },
-            {
-                method: 'GET',
-                path: '/public/:pass',
-                auth: {
-                    required: false
-                },
-                async handler({req, res}) {
-                    res.send(server.getAuth()!.validate('papa', req.params.pass, ['bizounours']))
-                }
-            },
+            // {
+            //     method: 'GET',
+            //     path: '/walki',
+            //     auth: {
+            //         roles: ['danse', 'walk']
+            //     },
+            //     async handler() {
+            //          {
+            //             code: 201,
+            //             body: 'I am walki'
+            //         }
+            //     }
+            // },
+            // {
+            //     method: 'GET',
+            //     path: '/moki',
+            //     auth: {
+            //         roles: ['danse', 'sing']
+            //     },
+            //     async handler({req, res}) {
+            //         res.send('yes')
+            //     }
+            // },
+            // {
+            //     method: 'GET',
+            //     path: '/public/:pass',
+            //     auth: {
+            //         required: false
+            //     },
+            //     async handler({req, res}) {
+            //         res.send(server.getAuth()!.validate('papa', req.params.pass, ['bizounours']))
+            //     }
+            // },
 
         ]
     }

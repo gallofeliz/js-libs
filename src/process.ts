@@ -49,7 +49,6 @@ export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
     protected logger: Logger
     protected process?: ChildProcess
-    protected abortController = new AbortController
     protected processPipeError?: Error
 
     constructor(config: ProcessConfig) {
@@ -109,15 +108,6 @@ export class Process<Result extends any> extends EventEmitter {
         }
     }
 
-    public abort() {
-        if (!this.process || this.process.exitCode !== null || this.process.killed) {
-            return
-        }
-        this.logger.info('Abort Killing')
-        //this.process.kill('SIGINT')
-        this.abortController.abort()
-    }
-
     protected async run() {
         if (this.config.abortSignal?.aborted) {
             this.emit('error', new AbortError)
@@ -150,12 +140,6 @@ export class Process<Result extends any> extends EventEmitter {
             cwd: this.config.cwd
         })
 
-        const onSignalAbort = () => this.abort()
-
-        if (this.config.abortSignal) {
-            this.config.abortSignal.addEventListener('abort', onSignalAbort, {once: true})
-        }
-
         const process = spawn(
             spawnCmd,
             spawnArgs,
@@ -163,7 +147,7 @@ export class Process<Result extends any> extends EventEmitter {
                 killSignal: this.config.killSignal || 'SIGINT',
                 env,
                 ...this.config.cwd && { cwd: this.config.cwd },
-                signal: this.abortController.signal,
+                signal: this.config.abortSignal,
                 timeout: this.config.timeout ? durationToMilliSeconds(this.config.timeout) : undefined
             }
         )
@@ -236,10 +220,6 @@ export class Process<Result extends any> extends EventEmitter {
             }
         } catch (e) {
             return this.emit('error', e)
-        } finally {
-            if (this.config.abortSignal) {
-                this.config.abortSignal.removeEventListener('abort', onSignalAbort)
-            }
         }
 
         if (this.config.outputStream) {

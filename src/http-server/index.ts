@@ -1,5 +1,5 @@
 import { Logger } from '../logger'
-import express, { Router, Response } from 'express'
+import express, { Router } from 'express'
 import { OutgoingHttpHeaders, Server, IncomingHttpHeaders } from 'http'
 import basicAuth from 'express-basic-auth'
 import {
@@ -18,6 +18,7 @@ import { extendErrors } from 'ajv/dist/compile/errors'
 import { flatten, intersection } from 'lodash'
 import { v4 as uuid } from 'uuid'
 import stream from 'stream'
+import { HttpRequestConfig } from '../http-request'
 
 interface User {
     username: string
@@ -25,39 +26,18 @@ interface User {
     roles: string[]
 }
 
-export interface HttpServerHandlerParameters<UrlParams extends any, Query extends any, InputBody extends any, OutputBody extends any> {
-    rawReq: express.Request
-    urlParams: UrlParams
-    query: Query
-    body: Body
-    abortSignal: AbortSignal
-    headers: IncomingHttpHeaders
+interface HttpServerRequest extends express.Request {
     uuid: string
+    abortSignal: AbortSignal
     logger: Logger
-    rawRes: express.Response
-    response(error: Error, status?: number): HttpServerErrorResponse
-    response(body: stream.Writable, contentType: string, status?: number): HttpServerResponse<OutputBody>
-    response(body?: OutputBody, status?: number): HttpServerResponse<OutputBody>
 }
 
-export interface HttpServerResponse<OutputBody extends any> {
-    status: number
-    headers: OutgoingHttpHeaders
-    body: OutputBody
+interface HttpServerResponse extends express.Response {
+    /**
+     * Send content
+     */
+    send(content: any): this
 }
-
-function isHttpServerResponse(dontKnow: any): dontKnow is HttpServerResponse<any> {
-    return dontKnow
-        && typeof dontKnow === 'object'
-        && dontKnow.status && dontKnow.headers && dontKnow.body
-}
-
-export interface HttpServerErrorResponse extends Error, HttpServerResponse<any> {}
-
-// export type HttpServerHandler = <UrlParams extends any, Query extends any, InputBody extends any, OutputBody extends any>
-//     (params: HttpServerHandlerParameters<UrlParams, Query, InputBody, OutputBody>) => Promise<HttpServerResponse<OutputBody> | OutputBody>
-
-export type HttpServerHandler = (params: HttpServerHandlerParameters<any, any, any, any>) => Promise<HttpServerResponse<any> | any>
 
 export interface HttpServerConfig {
     port: number
@@ -78,7 +58,7 @@ export interface HttpServerConfig {
         routes: Array<{
             method?: string
             path: string
-            handler: HttpServerHandler
+            handler(request: HttpServerRequest, response: HttpServerResponse): Promise<void>
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
@@ -144,40 +124,30 @@ export default class HttpServer {
         this.config = config
         this.logger = config.logger
 
-        this.app = express()
-
-        this.app.use(jsonParser({
-            strict: false
-        }))
-
-        this.app.use(textParser())
-
-        this.app.use(urlencodedParser({
-            extended: true
-        }))
-
-        this.app.use(rawParser())
-
-        this.app.use((req, res, next) => {
-            (req as any).uuid = uuid()
-            next()
-        })
-
-        morgan.token('uuid', function getId (req) {
-          return (req as any).uuid
-        })
-
-
-        this.app.use(morgan(':uuid :method :url :status :res[content-length] - :response-time ms', {stream: {
-            write: (message: string) => {
-                const [uuid, ...logParts] = message.trim().split(' ')
-                this.logger.info(logParts.join(' '), { serverRequestUuid: uuid })
-            }
-        }}))
+        morgan.token('uuid', (req: HttpServerRequest) => req.uuid)
 
         if (this.config.auth) {
             this.auth = new Auth(this.config.auth.users, this.config.auth.extendedRoles || {})
         }
+
+        this.app = express()
+            .disable('x-powered-by')
+            .use(jsonParser({
+                strict: false
+            }))
+            .use(textParser())
+            .use(urlencodedParser({ extended: true }))
+            .use(rawParser())
+            .use((req, res, next) => {
+                (req as HttpServerRequest).uuid = uuid()
+                next()
+            })
+            .use(morgan(':uuid :method :url :status :res[content-length] - :response-time ms', {stream: {
+                write: (message: string) => {
+                    const [uuid, ...logParts] = message.trim().split(' ')
+                    this.logger.info(logParts.join(' '), { serverRequestUuid: uuid })
+                }
+            }}))
 
         this.configureApi()
 
@@ -265,64 +235,27 @@ export default class HttpServer {
                     reqAbortController.abort()
                 })
 
-                const createErrorResponse = (error: Error, status?: number): HttpServerErrorResponse => {
-                    const errorResponse = error as HttpServerErrorResponse
-                    errorResponse.status = status || 500
-                    errorResponse.headers = {}
-                    errorResponse.body = error.message
-
-                    return errorResponse
-                }
-
-                const createSuccessResponse = (body?: any, status?: number, headers: OutgoingHttpHeaders = {}): HttpServerResponse<any> => {
-                    return {
-                        status: status || (body === undefined ? 204 : 200),
-                        headers,
-                        body
-                    }
-                }
-
-                const createResponse = (...args: any[]) => {
-                    if (args[0] instanceof Error) {
-                        return createErrorResponse(args[0], args[1])
-                    }
-
-                    if (args[0] instanceof stream.Writable) {
-                        return createSuccessResponse(args[0], args[2], {'Content-Type': args[2]})
-                    }
-
-                    return createSuccessResponse(args[0], args[1])
-                }
-
-                let httpServerHandlerParameters: HttpServerHandlerParameters<any, any, any, any>
-
                 try {
-                    httpServerHandlerParameters = {
-                        rawReq: req,
-                        rawRes: res,
-                        logger,
-                        urlParams: route.inputParamsSchema
-                            ? validate(req.params, {
-                                schema: route.inputParamsSchema,
-                                contextErrorMsg: 'params'
-                            })
-                            : req.params,
-                        query: route.inputQuerySchema
-                            ? validate(req.query, {
-                                schema: route.inputQuerySchema,
-                                contextErrorMsg: 'query'
-                            })
-                            : req.query,
-                        body: route.inputBodySchema
-                            ? validate(req.body, {
-                                schema: route.inputBodySchema,
-                                contextErrorMsg: 'body'
-                            })
-                            : req.body,
-                        abortSignal: reqAbortController.signal,
-                        headers: req.headers,
-                        uuid,
-                        response: createResponse as HttpServerHandlerParameters<any, any, any, any>['response']
+
+                    if (route.inputParamsSchema) {
+                        req.params = validate(req.params, {
+                            schema: route.inputParamsSchema,
+                            contextErrorMsg: 'params'
+                        })
+                    }
+
+                    if (route.inputQuerySchema) {
+                        req.query = validate(req.query, {
+                            schema: route.inputQuerySchema,
+                            contextErrorMsg: 'query'
+                        })
+                    }
+
+                    if (route.inputBodySchema) {
+                        req.body = validate(req.body, {
+                            schema: route.inputBodySchema,
+                            contextErrorMsg: 'body'
+                        })
                     }
 
                 } catch (e) {
@@ -330,41 +263,55 @@ export default class HttpServer {
                     return
                 }
 
-                let response
+                (req as HttpServerRequest).abortSignal = reqAbortController.signal
+
+                res.send = (content) => {
+
+                    var isCompatibleText = !content
+                        || typeof content === 'string'
+                        || typeof content === 'number'
+                        || content instanceof Date
+
+                    const accepts = isCompatibleText
+                        ? ['text/plain', 'json']
+                        : ['json', 'multipart/form-data']
+
+                    if (!req.acceptsCharsets('utf8') || !req.acceptsEncodings('identity')) {
+                        res.status(406).end()
+                        return res
+                    }
+
+                    switch(req.accepts(accepts)) {
+                        case 'text/plain':
+                            res.contentType('text/plain; charset=utf-8')
+                            res.write(content.toString())
+                            break
+                        case 'json':
+                            res.contentType('application/json; charset=utf-8')
+                            res.write(JSON.stringify(content))
+                            break
+                        case 'multipart/form-data':
+                            throw new Error('Not implemented yet')
+                        default:
+                            res.status(406)
+                    }
+
+                    res.end()
+
+                    return res
+                }
 
                 try {
-                    response = await route.handler(httpServerHandlerParameters)
+                    await route.handler(req as HttpServerRequest, res as HttpServerResponse)
                 } catch (e) {
-                    if (isHttpServerResponse(e)) {
-                        response = e
-                    } else {
-                        next(e)
-                        return
-                    }
-                }
-
-                if (res.finished) {
-                    // Do nothing
+                    next(e)
                     return
                 }
 
-                if (response instanceof stream.Writable) {
-                    // Do nothing
+                if (!res.finished) {
+                    res.end()
                     return
                 }
-
-                if (!isHttpServerResponse(response)) {
-                    response = createSuccessResponse(response)
-                }
-
-                res.status(response.status)
-                for (const headerName in response.headers) {
-                    res.setHeader(headerName, response.headers[headerName] as string)
-                }
-                if (response.body !== undefined) {
-                    res.json(response.body)
-                }
-                res.end()
             })
         })
     }
