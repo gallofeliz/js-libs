@@ -50,6 +50,7 @@ export interface HttpServerConfig {
         extendedRoles?: Record<string, string[]>
         anonymRoles?: string | string[]
         realm?: string
+        defaultRoutesRoles?: string | string[]
     }
     webUi?: {
         filesPath: string
@@ -67,7 +68,7 @@ export interface HttpServerConfig {
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
             auth?: {
-                roles?: string | string[]
+                roles?: string | string[] | ((request: HttpServerRequest<any>) => string | string[])
             }
         }>
     }
@@ -220,7 +221,7 @@ export default class HttpServer {
                 this.config.auth
                     ? authMiddleware({
                         realm: this.config.auth.realm || 'app',
-                        routeRoles: this.config.webUi.auth?.roles || [],
+                        routeRoles: this.config.webUi.auth?.roles || this.config.auth.defaultRoutesRoles || [],
                         anonymRoles: this.config.auth.anonymRoles || [],
                         authenticator: this.authenticator,
                         authorizator: this.authorizator
@@ -284,11 +285,16 @@ export default class HttpServer {
         this.config.api.routes.forEach(route => {
             const method = route.method?.toLowerCase() || 'get'
 
+            if (typeof route.auth?.roles === 'function') {
+                throw Error('Generating roles depending to request is not implemented et should be with wildcard support'
+                    + ' (example read-book-* matches with read-book-36 with url is GET /books/36')
+            }
+
             apiRouter[method as 'all'](route.path,
                 this.config.auth
                     ? authMiddleware({
                         realm: this.config.auth.realm || 'app',
-                        routeRoles: route.auth?.roles || [],
+                        routeRoles: route.auth?.roles || this.config.auth.defaultRoutesRoles || [],
                         anonymRoles: this.config.auth.anonymRoles || [],
                         authenticator: this.authenticator,
                         authorizator: this.authorizator
