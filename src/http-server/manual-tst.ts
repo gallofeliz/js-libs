@@ -23,9 +23,6 @@ const server = new HttpServer({
         routes: [
             {
                 path: '/process',
-                auth: {
-                    required: false
-                },
                 async handler({logger}) {
                     runProcess({
                         command: 'ls',

@@ -236,6 +236,14 @@ export default class HttpServer {
         });
     }
 
+    public getAuthorizator() {
+        return this.authorizator
+    }
+
+    public getConfig() {
+        return this.config
+    }
+
     public async start() {
         if (this.server) {
             return
@@ -274,107 +282,108 @@ export default class HttpServer {
         this.app.use('/' + (this.config.api.prefix ? this.config.api.prefix.replace(/^\//, '') : ''), apiRouter)
 
         this.config.api.routes.forEach(route => {
-            const needAuth = this.auth ? route.auth?.required !== false : false
             const method = route.method?.toLowerCase() || 'get'
 
-            if (needAuth) {
-                apiRouter[method as 'all'](route.path, basicAuth({
-                    authorizer: (inputUsername: string, inputPassword: string) => {
-                        return this.auth!.validate(inputUsername, inputPassword, route.auth?.roles || [])
-                    },
-                    challenge: true
-                }))
-            }
+            apiRouter[method as 'all'](route.path,
+                this.config.auth
+                    ? authMiddleware({
+                        realm: this.config.auth.realm || 'app',
+                        routeRoles: route.auth?.roles || [],
+                        anonymRoles: this.config.auth.anonymRoles || [],
+                        authenticator: this.authenticator,
+                        authorizator: this.authorizator
+                    })
+                    : nothingMiddleware(),
+                async (req, res, next) => {
+                    const uuid = (req as any).uuid
+                    const logger = this.logger.child({ serverRequestUuid: uuid })
 
-            apiRouter[method as 'all'](route.path, async (req, res, next) => {
-                const uuid = (req as any).uuid
-                const logger = this.logger.child({ serverRequestUuid: uuid })
+                    const reqAbortController = new AbortController
 
-                const reqAbortController = new AbortController
+                    req.once('close', () => {
+                        reqAbortController.abort()
+                    })
 
-                req.once('close', () => {
-                    reqAbortController.abort()
-                })
+                    try {
 
-                try {
+                        if (route.inputParamsSchema) {
+                            req.params = validate(req.params, {
+                                schema: route.inputParamsSchema,
+                                contextErrorMsg: 'params'
+                            })
+                        }
 
-                    if (route.inputParamsSchema) {
-                        req.params = validate(req.params, {
-                            schema: route.inputParamsSchema,
-                            contextErrorMsg: 'params'
-                        })
+                        if (route.inputQuerySchema) {
+                            req.query = validate(req.query, {
+                                schema: route.inputQuerySchema,
+                                contextErrorMsg: 'query'
+                            })
+                        }
+
+                        if (route.inputBodySchema) {
+                            req.body = validate(req.body, {
+                                schema: route.inputBodySchema,
+                                contextErrorMsg: 'body'
+                            })
+                        }
+
+                    } catch (e) {
+                        res.status(400).send((e as Error).message)
+                        return
                     }
 
-                    if (route.inputQuerySchema) {
-                        req.query = validate(req.query, {
-                            schema: route.inputQuerySchema,
-                            contextErrorMsg: 'query'
-                        })
-                    }
+                    (req as HttpServerRequest).abortSignal = reqAbortController.signal
 
-                    if (route.inputBodySchema) {
-                        req.body = validate(req.body, {
-                            schema: route.inputBodySchema,
-                            contextErrorMsg: 'body'
-                        })
-                    }
+                    res.send = (content) => {
 
-                } catch (e) {
-                    res.status(400).send((e as Error).message)
-                    return
-                }
+                        var isCompatibleText = !content
+                            || typeof content === 'string'
+                            || typeof content === 'number'
+                            || content instanceof Date
 
-                (req as HttpServerRequest).abortSignal = reqAbortController.signal
+                        const accepts = isCompatibleText
+                            ? ['text/plain', 'json']
+                            : ['json', 'multipart/form-data']
 
-                res.send = (content) => {
+                        if (!req.acceptsCharsets('utf8') || !req.acceptsEncodings('identity')) {
+                            res.status(406).end()
+                            return res
+                        }
 
-                    var isCompatibleText = !content
-                        || typeof content === 'string'
-                        || typeof content === 'number'
-                        || content instanceof Date
+                        switch(req.accepts(accepts)) {
+                            case 'text/plain':
+                                res.contentType('text/plain; charset=utf-8')
+                                res.write(content.toString())
+                                break
+                            case 'json':
+                                res.contentType('application/json; charset=utf-8')
+                                res.write(JSON.stringify(content))
+                                break
+                            case 'multipart/form-data':
+                                throw new Error('Not implemented yet')
+                            default:
+                                res.status(406)
+                        }
 
-                    const accepts = isCompatibleText
-                        ? ['text/plain', 'json']
-                        : ['json', 'multipart/form-data']
+                        res.end()
 
-                    if (!req.acceptsCharsets('utf8') || !req.acceptsEncodings('identity')) {
-                        res.status(406).end()
                         return res
                     }
 
-                    switch(req.accepts(accepts)) {
-                        case 'text/plain':
-                            res.contentType('text/plain; charset=utf-8')
-                            res.write(content.toString())
-                            break
-                        case 'json':
-                            res.contentType('application/json; charset=utf-8')
-                            res.write(JSON.stringify(content))
-                            break
-                        case 'multipart/form-data':
-                            throw new Error('Not implemented yet')
-                        default:
-                            res.status(406)
+                    try {
+                        await route.handler(req as HttpServerRequest, res as HttpServerResponse)
+                    } catch (e) {
+                        next(e)
+                        return
                     }
 
-                    res.end()
-
-                    return res
+                    if (!res.finished) {
+                        logger.notice('Route handler ended but res open ; closing for conveniance')
+                        res.end()
+                        return
+                    }
                 }
-
-                try {
-                    await route.handler(req as HttpServerRequest, res as HttpServerResponse)
-                } catch (e) {
-                    next(e)
-                    return
-                }
-
-                if (!res.finished) {
-                    logger.notice('Route handler ended but res open ; closing for conveniance')
-                    res.end()
-                    return
-                }
-            })
+            )
         })
     }
 }
