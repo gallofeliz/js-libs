@@ -1,7 +1,6 @@
 import { Logger } from '../logger'
 import express, { Router } from 'express'
 import { OutgoingHttpHeaders, Server, IncomingHttpHeaders } from 'http'
-import basicAuth from 'express-basic-auth'
 import {
     json as jsonParser,
     text as textParser,
@@ -19,13 +18,8 @@ import { flatten, intersection } from 'lodash'
 import { v4 as uuid } from 'uuid'
 import stream from 'stream'
 import { HttpRequestConfig } from '../http-request'
-import * as expressCore from 'express-serve-static-core';
-
-interface User {
-    username: string
-    password: string
-    roles: string[]
-}
+import * as expressCore from 'express-serve-static-core'
+import auth from 'basic-auth'
 
 export type HttpServerRequest<
     Params = expressCore.ParamsDictionary,
@@ -38,9 +32,10 @@ export type HttpServerRequest<
     params: Params
     query: Query
     body: Body
+    user: User | null
 }
 
-export interface HttpServerResponse<Body extends any = any> extends express.Response {
+export interface HttpServerResponse<Body = any> extends express.Response {
     /**
      * Send content
      */
@@ -53,12 +48,13 @@ export interface HttpServerConfig {
     auth?: {
         users: User[]
         extendedRoles?: Record<string, string[]>
+        anonymRoles?: string | string[]
+        realm?: string
     }
     webUi?: {
         filesPath: string
         auth?: {
-            required?: boolean
-            roles?: string[]
+            roles?: string | string[]
         }
     }
     api?: {
@@ -71,52 +67,112 @@ export interface HttpServerConfig {
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
             auth?: {
-                required?: boolean
-                roles?: string[]
+                roles?: string | string[]
             }
         }>
     }
     logger: Logger
 }
 
-class Auth {
+interface User {
+    username: string
+    password: string
+    roles: string | string[]
+}
+
+class Authenticator {
     protected users: User[]
-    protected extendedRoles: Record<string, string[]>
     protected htpasswordValidator: HtpasswdValidator
 
-    constructor(users: User[], extendedRoles: Record<string, string[]>) {
+    constructor(users: User[]) {
         this.users = users
-        this.extendedRoles = extendedRoles
         this.htpasswordValidator = new HtpasswdValidator(
             this.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {})
         )
     }
 
-    public validate(user: string, pass: string, acceptedRoles: string[]): boolean {
-        if (!this.userAuth(user, pass)) {
-            return false
+    public authenticate(username: string, password: string): User | null {
+        if (this.htpasswordValidator.verify(username, password)) {
+            return this.users.find(u => u.username === username)!
         }
 
-        if (!this.rolesCheck(this.users.find(u => u.username === user)!.roles, acceptedRoles)) {
-            return false
-        }
+        return null
+    }
+}
 
-        return true
+class Authorizator {
+    protected extendedRoles: Record<string, string[]>
+
+    constructor(extendedRoles: Record<string, string[]>) {
+        this.extendedRoles = extendedRoles
     }
 
-    public userAuth(user: string, pass: string): boolean {
-        return this.htpasswordValidator.verify(user, pass)
+    public isAutorised(userRoles: string | string[], roles: string | string[]): boolean {
+       const userExtendedRoles = this.extendRoles(userRoles)
+       const testedExtendedRoles = this.extendRoles(roles)
+
+       if (userExtendedRoles.includes('*') || testedExtendedRoles.includes('*')) {
+          return true
+       }
+
+       if (intersection(userExtendedRoles, testedExtendedRoles).length > 0) {
+          return true
+       }
+
+       // const userWillcardExtendeRoles = userExtendedRoles.filter(r => r.includes('*'))
+       // const testedWillcardExtendeRoles = testedExtendedRoles.filter(r => r.includes('*'))
+
+       return false
     }
 
-    public rolesCheck(rolesA: string[], rolesB: string[]): boolean {
-        return intersection(this.extendRoles(rolesA), this.extendRoles(rolesB)).length > 0
-    }
-
-    protected extendRoles(roles: string[]): string[] {
+    protected extendRoles(roles: string | string[]): string[] {
+        roles = Array.isArray(roles) ? roles : [roles]
         if (intersection(roles, Object.keys(this.extendedRoles)).length === 0) {
             return roles
         }
         return this.extendRoles(flatten(roles.map(role => this.extendedRoles[role] || role)))
+    }
+}
+
+function nothingMiddleware() {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => next()
+}
+
+function authMiddleware(
+    {realm, anonymRoles, routeRoles, authenticator, authorizator}:
+    {realm: string, anonymRoles: string | string[], routeRoles: string | string[], authenticator: Authenticator, authorizator: Authorizator}
+) {
+    function demandAuth(res: express.Response) {
+        res.set('WWW-Authenticate', 'Basic realm="'+realm+'"').status(401).end()
+    }
+
+    return function (req: express.Request, res: express.Response, next: express.NextFunction) {
+        const userPassFromHeaders = auth(req)
+
+        if (!userPassFromHeaders) {
+            // Anonym
+            if (!authorizator.isAutorised(anonymRoles, routeRoles)) {
+                return demandAuth(res)
+            }
+
+            (req as HttpServerRequest).user = null
+        } else {
+            // Not anonym
+            const user = authenticator.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
+
+            if (!user) {
+                return demandAuth(res)
+            }
+
+            if (!authorizator.isAutorised(user.roles, routeRoles)) {
+                res.status(403).end()
+                return
+            }
+
+            (req as HttpServerRequest).user = user
+        }
+
+        next()
     }
 }
 
@@ -126,7 +182,8 @@ export default class HttpServer {
     protected server?: Server
     protected connections: Record<string, Socket> = {}
     protected config: HttpServerConfig
-    protected auth?: Auth
+    protected authenticator: Authenticator
+    protected authorizator: Authorizator
 
     constructor(config: HttpServerConfig) {
         this.config = config
@@ -134,9 +191,8 @@ export default class HttpServer {
 
         morgan.token('uuid', (req: HttpServerRequest) => req.uuid)
 
-        if (this.config.auth) {
-            this.auth = new Auth(this.config.auth.users, this.config.auth.extendedRoles || {})
-        }
+        this.authenticator = new Authenticator(this.config.auth?.users || [])
+        this.authorizator = new Authorizator(this.config.auth?.extendedRoles || {})
 
         this.app = express()
             .disable('x-powered-by')
@@ -160,27 +216,24 @@ export default class HttpServer {
         this.configureApi()
 
         if (this.config.webUi) {
-            const needAuth = this.auth ? this.config.webUi.auth?.required !== false : false
-            if (needAuth) {
-                this.app.use('/', basicAuth({
-                    authorizer: (inputUsername: string, inputPassword: string) => {
-                        return this.auth!.validate(inputUsername, inputPassword, this.config.webUi!.auth!.roles || [])
-                    },
-                    challenge: true
-                }))
-            }
-            this.app.use('/', express.static(this.config.webUi.filesPath))
+            this.app.use('/',
+                this.config.auth
+                    ? authMiddleware({
+                        realm: this.config.auth.realm || 'app',
+                        routeRoles: this.config.webUi.auth?.roles || [],
+                        anonymRoles: this.config.auth.anonymRoles || [],
+                        authenticator: this.authenticator,
+                        authorizator: this.authorizator
+                    })
+                    : nothingMiddleware(),
+                express.static(this.config.webUi.filesPath)
+            )
         }
 
         this.app.use((err: Error, req: any, res: any, next: any) => {
             this.logger.notice('Http Server error', { e: err })
             res.status(500).send(err.toString());
         });
-
-    }
-
-    public getAuth() {
-        return this.auth
     }
 
     public async start() {

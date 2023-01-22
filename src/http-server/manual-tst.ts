@@ -64,13 +64,13 @@ const server = new HttpServer({
                 auth: {
                     roles: ['talk']
                 },
-                async handler(req: HttpServerRequest<{id: number}, {onlyIt: boolean}>, res: HttpServerResponse<string>) {
-                    if (req.query.onlyIt) {
-                        res.send(req.params.id.toString())
+                async handler({query, params}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
+                    if (query.onlyIt) {
+                        send(params.id.toString())
                         return
                     }
 
-                    res.send('hello member n°' + req.params.id)
+                    send('hello member n°' + params.id)
 
                 }
             },
