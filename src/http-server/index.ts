@@ -27,18 +27,24 @@ interface User {
     roles: string[]
 }
 
-export interface HttpServerRequest<Params extends any = expressCore.ParamsDictionary> extends express.Request<Params> {
+export type HttpServerRequest<
+    Params = expressCore.ParamsDictionary,
+    Query = expressCore.Query,
+    Body = any
+> = express.Request & {
     uuid: string
     abortSignal: AbortSignal
     logger: Logger
     params: Params
+    query: Query
+    body: Body
 }
 
-export interface HttpServerResponse extends express.Response {
+export interface HttpServerResponse<Body extends any = any> extends express.Response {
     /**
      * Send content
      */
-    send(content: any): this
+    send(content: Body): this
 }
 
 export interface HttpServerConfig {

@@ -54,12 +54,24 @@ const server = new HttpServer({
                         id: { type: 'number' }
                     }
                 },
+                inputQuerySchema: {
+                    type: 'object',
+                    properties: {
+                        onlyIt: { type: 'boolean' }
+                    }
+                },
                 path: '/talki/:id',
                 auth: {
                     roles: ['talk']
                 },
-                async handler(req: HttpServerRequest<{id: number}>, res: HttpServerResponse) {
+                async handler(req: HttpServerRequest<{id: number}, {onlyIt: boolean}>, res: HttpServerResponse<string>) {
+                    if (req.query.onlyIt) {
+                        res.send(req.params.id.toString())
+                        return
+                    }
+
                     res.send('hello member n°' + req.params.id)
+
                 }
             },
             // {
