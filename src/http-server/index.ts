@@ -19,6 +19,7 @@ import { flatten, intersection } from 'lodash'
 import { v4 as uuid } from 'uuid'
 import stream from 'stream'
 import { HttpRequestConfig } from '../http-request'
+import * as expressCore from 'express-serve-static-core';
 
 interface User {
     username: string
@@ -26,13 +27,14 @@ interface User {
     roles: string[]
 }
 
-interface HttpServerRequest extends express.Request {
+export interface HttpServerRequest<Params extends any = expressCore.ParamsDictionary> extends express.Request<Params> {
     uuid: string
     abortSignal: AbortSignal
     logger: Logger
+    params: Params
 }
 
-interface HttpServerResponse extends express.Response {
+export interface HttpServerResponse extends express.Response {
     /**
      * Send content
      */
@@ -58,7 +60,7 @@ export interface HttpServerConfig {
         routes: Array<{
             method?: string
             path: string
-            handler(request: HttpServerRequest, response: HttpServerResponse): Promise<void>
+            handler(request: HttpServerRequest<any>, response: HttpServerResponse): Promise<void>
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
@@ -309,6 +311,7 @@ export default class HttpServer {
                 }
 
                 if (!res.finished) {
+                    logger.notice('Route handler ended but res open ; closing for conveniance')
                     res.end()
                     return
                 }

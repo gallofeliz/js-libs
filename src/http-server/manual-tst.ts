@@ -1,5 +1,5 @@
 import createLogger from '../logger'
-import HttpServer from '../http-server'
+import HttpServer, { HttpServerRequest, HttpServerResponse } from '../http-server'
 import httpRequest from '../http-request'
 import runProcess from '../process'
 
@@ -58,7 +58,7 @@ const server = new HttpServer({
                 auth: {
                     roles: ['talk']
                 },
-                async handler(req, res) {
+                async handler(req: HttpServerRequest<{id: number}>, res: HttpServerResponse) {
                     res.send('hello member n°' + req.params.id)
                 }
             },
