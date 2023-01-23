@@ -200,11 +200,6 @@ export default class HttpServer {
         this.config = config
         this.logger = config.logger
 
-        morgan.token('uuid', (req: HttpServerRequest) => req.uuid)
-        morgan.token('aborted', (req: HttpServerRequest) => {
-            return req.abortSignal.aborted.toString()
-        })
-
         this.authenticator = new Authenticator(this.config.auth?.users || [])
         this.authorizator = this.config.auth
             ? new Authorizator(this.config.auth.autorisationsPolicies || {}, this.config.auth.anonymAutorisations || [])
@@ -230,12 +225,21 @@ export default class HttpServer {
 
                 next()
             })
-            .use(morgan(':uuid :method :url :status (:aborted) :response-time ms', {stream: {
-                write: (message: string) => {
-                    const [uuid, ...logParts] = message.trim().split(' ')
-                    this.logger.info(logParts.join(' '), { serverRequestUuid: uuid })
-                }
-            }}))
+            // I think we can remove morgan ...
+            .use(morgan((tokens, req, res) => {
+                this.logger.info('httpServer response', {
+                    serverRequestUuid: (req as HttpServerRequest).uuid,
+                    aborted: (req as HttpServerRequest).abortSignal.aborted,
+                    status: res.statusCode,
+                    user: (req as HttpServerRequest).user?.username || null,
+                    method: req.method,
+                    url: tokens.url(req, res),
+                    responseTime: parseFloat(tokens['response-time'](req, res) as string),
+                    totalTime: parseFloat(tokens['total-time'](req, res) as string),
+                })
+
+                return ''
+            }, {stream: { write: () => {} }}))
 
         this.configureApi()
 
