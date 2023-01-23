@@ -73,13 +73,13 @@ const server = new HttpServer({
                 auth: {
                     autorisations: ['talki-read']
                 },
-                async handler({query, params}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
+                async handler({query, params, user}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
                     if (query.onlyIt) {
                         send(params.id.toString())
                         return
                     }
 
-                    send('hello member n°' + params.id)
+                    send('hello ' + user!.username + ', you want talki n°' + params.id)
 
                 }
             },

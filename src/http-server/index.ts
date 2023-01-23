@@ -239,8 +239,8 @@ export default class HttpServer {
 
         this.app.use((err: Error, req: any, res: any, next: any) => {
             this.logger.notice('Http Server error', { e: err })
-            res.status(500).send(err.toString());
-        });
+            res.status(500).end()
+        })
     }
 
     public getAuthorizator() {
@@ -254,12 +254,12 @@ export default class HttpServer {
         this.server = this.app.listen(this.config.port, this.config.host || '0.0.0.0')
 
         this.server.on('connection', (conn) => {
-            const key = conn.remoteAddress + ':' + conn.remotePort;
-            this.connections[key] = conn;
+            const key = conn.remoteAddress + ':' + conn.remotePort
+            this.connections[key] = conn
             conn.on('close', () => {
-                delete this.connections[key];
-            });
-        });
+                delete this.connections[key]
+            })
+        })
 
         await once(this.server, 'listening')
     }
