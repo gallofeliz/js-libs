@@ -23,11 +23,11 @@ const server = new HttpServer({
             {
                 username: 'non',
                 password: 'non',
-                autorisations: ['book-read']
+                autorisations: ['book-read', 'talki-read']
             }
         ],
         autorisationsPolicies: {
-            manager: ['talki-read'],
+            manager: ['talki-read', 'talki-write'],
             admin: '*'
         }
     },
@@ -40,7 +40,6 @@ const server = new HttpServer({
                         command: 'ls',
                         logger
                     })
-
                 }
             },
             // {
@@ -55,6 +54,34 @@ const server = new HttpServer({
             //         return rawRes
             //     }
             // },
+            {
+                path: '/abortable',
+                auth: {
+                    autorisations: '*'
+                },
+                async handler({abortSignal}, res) {
+                    await runProcess({
+                        command: 'while true ; do sleep 1 ; echo Hello ; done',
+                        logger,
+                        outputStream: res,
+                        abortSignal
+                    }, true)
+                }
+            },
+            {
+                path: '/stream',
+                auth: {
+                    autorisations: '*'
+                },
+                async handler({logger}, res) {
+                    res.contentType('text/plain')
+                    await runProcess({
+                        command: ['ls', '-la'],
+                        logger,
+                        outputStream: res
+                    }, true)
+                }
+            },
             {
                 method: 'GET',
                 inputParamsSchema: {
@@ -73,13 +100,15 @@ const server = new HttpServer({
                 auth: {
                     autorisations: ['talki-read']
                 },
-                async handler({query, params, user}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
+                async handler({query, params, user, authorizator}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
                     if (query.onlyIt) {
                         send(params.id.toString())
                         return
                     }
 
-                    send('hello ' + user!.username + ', you want talki n°' + params.id)
+                    const isAuthorizedToTalkiWrite = authorizator.isAutorised(user, 'talki-write')
+
+                    send('hello ' + user!.username + ', you want talki n°' + params.id + ' ; you are autorized to talki-write : ' + isAuthorizedToTalkiWrite.toString())
 
                 }
             },

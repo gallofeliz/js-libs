@@ -33,6 +33,7 @@ export type HttpServerRequest<
     query: Query
     body: Body
     user: User | null
+    authorizator: Authorizator
 }
 
 export interface HttpServerResponse<Body = any> extends express.Response {
@@ -45,6 +46,7 @@ export interface HttpServerResponse<Body = any> extends express.Response {
 export interface HttpServerConfig {
     port: number
     host?: string
+    //aboutEndpoint => return { name: package.json['name'], version: package.json['version']}
     auth?: {
         users: User[]
         autorisationsPolicies?: Record<string, string | string[]>
@@ -55,7 +57,7 @@ export interface HttpServerConfig {
     webUi?: {
         filesPath: string
         auth?: {
-            roles?: string | string[]
+            autorisations?: string | string[]
         }
     }
     api?: {
@@ -68,6 +70,7 @@ export interface HttpServerConfig {
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
             auth?: {
+                //forceAuthentication?: boolean -> ensure req.user will be not null
                 autorisations: string | string[]
                 //roles?: string | string[] | ((request: HttpServerRequest<any>) => string | string[])
             }
@@ -142,9 +145,9 @@ class Authorizator {
     }
 }
 
-function nothingMiddleware() {
-    return (req: express.Request, res: express.Response, next: express.NextFunction) => next()
-}
+// function nothingMiddleware() {
+//     return (req: express.Request, res: express.Response, next: express.NextFunction) => next()
+// }
 
 function authMiddleware(
     {realm, routeRoles, authenticator, authorizator}:
@@ -198,9 +201,14 @@ export default class HttpServer {
         this.logger = config.logger
 
         morgan.token('uuid', (req: HttpServerRequest) => req.uuid)
+        morgan.token('aborted', (req: HttpServerRequest) => {
+            return req.abortSignal.aborted.toString()
+        })
 
         this.authenticator = new Authenticator(this.config.auth?.users || [])
-        this.authorizator = new Authorizator(this.config.auth?.autorisationsPolicies || {}, this.config.auth?.anonymAutorisations || [])
+        this.authorizator = this.config.auth
+            ? new Authorizator(this.config.auth.autorisationsPolicies || {}, this.config.auth.anonymAutorisations || [])
+            : new Authorizator({}, '*')
 
         this.app = express()
             .disable('x-powered-by')
@@ -211,10 +219,18 @@ export default class HttpServer {
             .use(urlencodedParser({ extended: true }))
             .use(rawParser())
             .use((req, res, next) => {
+                (req as HttpServerRequest).authorizator = this.authorizator;
                 (req as HttpServerRequest).uuid = uuid()
+                const reqAbortController = new AbortController;
+                (req as HttpServerRequest).abortSignal = reqAbortController.signal
+
+                res.once('close', () => {
+                    reqAbortController.abort()
+                })
+
                 next()
             })
-            .use(morgan(':uuid :method :url :status :res[content-length] - :response-time ms', {stream: {
+            .use(morgan(':uuid :method :url :status (:aborted) :response-time ms', {stream: {
                 write: (message: string) => {
                     const [uuid, ...logParts] = message.trim().split(' ')
                     this.logger.info(logParts.join(' '), { serverRequestUuid: uuid })
@@ -225,14 +241,14 @@ export default class HttpServer {
 
         if (this.config.webUi) {
             this.app.use('/',
-                this.config.auth
-                    ? authMiddleware({
-                        realm: this.config.auth.realm || 'app',
-                        routeRoles: this.config.webUi.auth?.roles || this.config.auth.defaultRoutesAutorisations || [],
-                        authenticator: this.authenticator,
-                        authorizator: this.authorizator
-                    })
-                    : nothingMiddleware(),
+                authMiddleware({
+                    realm: this.config.auth?.realm || 'app',
+                    routeRoles: this.config.auth
+                        ? this.config.webUi.auth?.autorisations || this.config.auth.defaultRoutesAutorisations || []
+                        : '*',
+                    authenticator: this.authenticator,
+                    authorizator: this.authorizator
+                }),
                 express.static(this.config.webUi.filesPath)
             )
         }
@@ -288,23 +304,18 @@ export default class HttpServer {
             const method = route.method?.toLowerCase() || 'get'
 
             apiRouter[method as 'all'](route.path,
-                this.config.auth
-                    ? authMiddleware({
-                        realm: this.config.auth.realm || 'app',
-                        routeRoles: route.auth?.autorisations || this.config.auth.defaultRoutesAutorisations || [],
-                        authenticator: this.authenticator,
-                        authorizator: this.authorizator
-                    })
-                    : nothingMiddleware(),
+                authMiddleware({
+                    realm: this.config.auth?.realm || 'app',
+                    routeRoles: this.config.auth
+                        ? route.auth?.autorisations || this.config.auth.defaultRoutesAutorisations || []
+                        : '*',
+                    authenticator: this.authenticator,
+                    authorizator: this.authorizator
+                }),
                 async (req, res, next) => {
                     const uuid = (req as any).uuid
                     const logger = this.logger.child({ serverRequestUuid: uuid })
-
-                    const reqAbortController = new AbortController
-
-                    req.once('close', () => {
-                        reqAbortController.abort()
-                    })
+                    ;(req as HttpServerRequest).logger = logger
 
                     try {
 
@@ -333,8 +344,6 @@ export default class HttpServer {
                         res.status(400).send((e as Error).message)
                         return
                     }
-
-                    (req as HttpServerRequest).abortSignal = reqAbortController.signal
 
                     res.send = (content) => {
 
@@ -374,13 +383,17 @@ export default class HttpServer {
 
                     try {
                         await route.handler(req as HttpServerRequest, res as HttpServerResponse)
+
                     } catch (e) {
+                        if ((req as HttpServerRequest).abortSignal.aborted && (e as any).code === 'ABORT_ERR') {
+                            // nothing to do : res and req are closed
+                            return
+                        }
                         next(e)
                         return
                     }
 
                     if (!res.finished) {
-                        logger.notice('Route handler ended but res open ; closing for conveniance')
                         res.end()
                         return
                     }
