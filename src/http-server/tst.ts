@@ -12,10 +12,9 @@ const server = new HttpServer({
             {
                 method: 'POST',
                 path: '/test',
-                async handler({req, res, logger}) {
-                    console.log(typeof req.body)
+                async handler({body, logger}, res) {
                     logger.info('I am the test handler')
-                    return req.body
+                    res.send(body)
                 },
                 inputBodySchema: {
                     oneOf: [
