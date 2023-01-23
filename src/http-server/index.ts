@@ -47,10 +47,10 @@ export interface HttpServerConfig {
     host?: string
     auth?: {
         users: User[]
-        extendedRoles?: Record<string, string[]>
-        anonymRoles?: string | string[]
+        autorisationsPolicies?: Record<string, string | string[]>
+        anonymAutorisations?: string | string[]
         realm?: string
-        defaultRoutesRoles?: string | string[]
+        defaultRoutesAutorisations?: string | string[]
     }
     webUi?: {
         filesPath: string
@@ -68,7 +68,8 @@ export interface HttpServerConfig {
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
             auth?: {
-                roles?: string | string[] | ((request: HttpServerRequest<any>) => string | string[])
+                autorisations: string | string[]
+                //roles?: string | string[] | ((request: HttpServerRequest<any>) => string | string[])
             }
         }>
     }
@@ -78,7 +79,7 @@ export interface HttpServerConfig {
 interface User {
     username: string
     password: string
-    roles: string | string[]
+    autorisations: string | string[]
 }
 
 class Authenticator {
@@ -102,15 +103,21 @@ class Authenticator {
 }
 
 class Authorizator {
-    protected extendedRoles: Record<string, string[]>
+    protected autorisationsPolicies: Record<string, string | string[]>
+    protected anonymAutorisations: string[]
 
-    constructor(extendedRoles: Record<string, string[]>) {
-        this.extendedRoles = extendedRoles
+    constructor(autorisationsPolicies: Record<string, string | string[]>, anonymAutorisations: string | string[]) {
+        this.autorisationsPolicies = autorisationsPolicies
+        this.anonymAutorisations = Array.isArray(anonymAutorisations) ? anonymAutorisations : [anonymAutorisations]
     }
 
-    public isAutorised(userRoles: string | string[], roles: string | string[]): boolean {
-       const userExtendedRoles = this.extendRoles(userRoles)
+    public isAutorised(user: User | null, roles: string | string[]): boolean {
+       const userExtendedRoles = this.extendRoles(user ? user.autorisations : this.anonymAutorisations)
        const testedExtendedRoles = this.extendRoles(roles)
+
+       if (userExtendedRoles.length === 0 || testedExtendedRoles.length === 0) {
+          return false
+       }
 
        if (userExtendedRoles.includes('*') || testedExtendedRoles.includes('*')) {
           return true
@@ -128,10 +135,10 @@ class Authorizator {
 
     protected extendRoles(roles: string | string[]): string[] {
         roles = Array.isArray(roles) ? roles : [roles]
-        if (intersection(roles, Object.keys(this.extendedRoles)).length === 0) {
+        if (intersection(roles, Object.keys(this.autorisationsPolicies)).length === 0) {
             return roles
         }
-        return this.extendRoles(flatten(roles.map(role => this.extendedRoles[role] || role)))
+        return this.extendRoles(flatten(roles.map(role => this.autorisationsPolicies[role] || role)))
     }
 }
 
@@ -140,8 +147,8 @@ function nothingMiddleware() {
 }
 
 function authMiddleware(
-    {realm, anonymRoles, routeRoles, authenticator, authorizator}:
-    {realm: string, anonymRoles: string | string[], routeRoles: string | string[], authenticator: Authenticator, authorizator: Authorizator}
+    {realm, routeRoles, authenticator, authorizator}:
+    {realm: string, routeRoles: string | string[], authenticator: Authenticator, authorizator: Authorizator}
 ) {
     function demandAuth(res: express.Response) {
         res.set('WWW-Authenticate', 'Basic realm="'+realm+'"').status(401).end()
@@ -152,7 +159,7 @@ function authMiddleware(
 
         if (!userPassFromHeaders) {
             // Anonym
-            if (!authorizator.isAutorised(anonymRoles, routeRoles)) {
+            if (!authorizator.isAutorised(null, routeRoles)) {
                 return demandAuth(res)
             }
 
@@ -165,7 +172,7 @@ function authMiddleware(
                 return demandAuth(res)
             }
 
-            if (!authorizator.isAutorised(user.roles, routeRoles)) {
+            if (!authorizator.isAutorised(user, routeRoles)) {
                 res.status(403).end()
                 return
             }
@@ -193,7 +200,7 @@ export default class HttpServer {
         morgan.token('uuid', (req: HttpServerRequest) => req.uuid)
 
         this.authenticator = new Authenticator(this.config.auth?.users || [])
-        this.authorizator = new Authorizator(this.config.auth?.extendedRoles || {})
+        this.authorizator = new Authorizator(this.config.auth?.autorisationsPolicies || {}, this.config.auth?.anonymAutorisations || [])
 
         this.app = express()
             .disable('x-powered-by')
@@ -221,8 +228,7 @@ export default class HttpServer {
                 this.config.auth
                     ? authMiddleware({
                         realm: this.config.auth.realm || 'app',
-                        routeRoles: this.config.webUi.auth?.roles || this.config.auth.defaultRoutesRoles || [],
-                        anonymRoles: this.config.auth.anonymRoles || [],
+                        routeRoles: this.config.webUi.auth?.roles || this.config.auth.defaultRoutesAutorisations || [],
                         authenticator: this.authenticator,
                         authorizator: this.authorizator
                     })
@@ -239,10 +245,6 @@ export default class HttpServer {
 
     public getAuthorizator() {
         return this.authorizator
-    }
-
-    public getConfig() {
-        return this.config
     }
 
     public async start() {
@@ -285,17 +287,11 @@ export default class HttpServer {
         this.config.api.routes.forEach(route => {
             const method = route.method?.toLowerCase() || 'get'
 
-            if (typeof route.auth?.roles === 'function') {
-                throw Error('Generating roles depending to request is not implemented et should be with wildcard support'
-                    + ' (example read-book-* matches with read-book-36 with url is GET /books/36')
-            }
-
             apiRouter[method as 'all'](route.path,
                 this.config.auth
                     ? authMiddleware({
                         realm: this.config.auth.realm || 'app',
-                        routeRoles: route.auth?.roles || this.config.auth.defaultRoutesRoles || [],
-                        anonymRoles: this.config.auth.anonymRoles || [],
+                        routeRoles: route.auth?.autorisations || this.config.auth.defaultRoutesAutorisations || [],
                         authenticator: this.authenticator,
                         authorizator: this.authorizator
                     })

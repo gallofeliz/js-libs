@@ -9,14 +9,26 @@ const server = new HttpServer({
     port: 8080,
     logger,
     auth: {
-        users: [{
-            username: 'papa',
-            password: 'papa',
-            roles: ['bizounours', 'bigboss']
-        }],
-        extendedRoles: {
-            bigboss: ['smallboss'],
-            smallboss: ['talk', 'walk']
+        users: [
+            {
+                username: 'user',
+                password: 'pass',
+                autorisations: ['manager'] // ressources ? [{ auth: 'read-book', ressources: ['1', '2'] }] or ['read-book-1', 'read-book-1']
+            },
+            {
+                username: 'boss',
+                password: 'boss',
+                autorisations: ['admin']
+            },
+            {
+                username: 'non',
+                password: 'non',
+                autorisations: ['book-read']
+            }
+        ],
+        autorisationsPolicies: {
+            manager: ['talki-read'],
+            admin: '*'
         }
     },
     api: {
@@ -59,7 +71,7 @@ const server = new HttpServer({
                 },
                 path: '/talki/:id',
                 auth: {
-                    roles: ['talk']
+                    autorisations: ['talki-read']
                 },
                 async handler({query, params}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
                     if (query.onlyIt) {
