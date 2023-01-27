@@ -1,37 +1,90 @@
+import traverse from 'traverse'
+import { cloneDeep } from 'lodash'
 
-const stringRegexes = [
-    /(?<=\/\/[^:]+:)[^@]+(?=@)/g
+export type ObfuscatorProcessor<T = any> = (data: T, obfuscateString: string) => T | string
+export type ObfuscatorMatcher = (data: any) => boolean
+
+export function createObjectValuesByKeysObfuscatorProcessor<T>(keyMatches: Array<string | RegExp | ObfuscatorMatcher>): ObfuscatorProcessor<T> {
+    return (data: T, obfuscateString: string) => {
+        if (data instanceof Object) {
+            for (const key in data) {
+                keyMatches.forEach(keyMatch => {
+                    if (typeof keyMatch === 'string' && typeof key === 'string') {
+                        if (key.toLowerCase() === keyMatch.toLowerCase()) {
+                            (data as Record<string, any>)[key] = obfuscateString
+                        }
+                        return
+                    }
+                    if (keyMatch instanceof RegExp && typeof key === 'string') {
+                        if (key.match(keyMatch)) {
+                            (data as Record<string, any>)[key] = obfuscateString
+                        }
+                        return
+                    }
+                    if (keyMatch instanceof Function) {
+                        if (keyMatch(key)) {
+                            (data as Record<any, any>)[key] = obfuscateString
+                        }
+                    }
+                })
+            }
+        }
+        return data
+    }
+}
+
+export function createValuesObfuscatorProcessor<T>(valueMatches: Array<string | RegExp | ObfuscatorMatcher>): ObfuscatorProcessor<T> {
+    return (data: T, obfuscateString: string) => {
+        for (const valueMatch of valueMatches) {
+            if (typeof valueMatch === 'string' && typeof data === 'string') {
+                if (data.toLowerCase() === valueMatch.toLowerCase()) {
+                    return obfuscateString
+                }
+            }
+            if (valueMatch instanceof RegExp && typeof data === 'string') {
+                if (data.match(valueMatch)) {
+                    return data.replace(valueMatch, obfuscateString)
+                }
+            }
+            if (valueMatch instanceof Function) {
+                if (valueMatch(data)) {
+                    return obfuscateString
+                }
+            }
+        }
+
+        return data
+    }
+}
+
+
+class Obfuscator {
+    protected processors: ObfuscatorProcessor[]
+    protected obfuscateString: string
+
+    constructor(processors: ObfuscatorProcessor[] = defaultProcessors, obfuscateString: string = '***') {
+        this.processors = processors
+        this.obfuscateString = obfuscateString
+    }
+    obfuscate<T>(data: T): T extends Object ? T : T | string  {
+        const wrap = cloneDeep({data})
+
+        traverse(wrap).forEach((data: any) => {
+            for (const processor of this.processors) {
+                data = processor(data, this.obfuscateString)
+            }
+            return data
+        })
+
+        return wrap.data as any
+    }
+}
+
+export const defaultProcessors = [
+    createValuesObfuscatorProcessor([/(?<=\/\/[^:]+:)[^@]+(?=@)/g]),
+    createObjectValuesByKeysObfuscatorProcessor(['password', 'key', 'secret', 'auth', 'token', 'credential'])
 ]
 
-const secrets = ['password', 'key', 'secret', 'auth', 'token', 'credential']
-
-export default function obfuscate(variable: any): any {
-    if (variable instanceof Error) {
-        return {
-            name: variable.name,
-            message: variable.message,
-            stack: variable.stack
-        }
-    }
-
-    if (typeof variable === 'string') {
-    	return stringRegexes.reduce((obfuscated, stringRegex) => obfuscated.replace(stringRegex, '***'), variable)
-    }
-
-    if (Array.isArray(variable)) {
-    	return variable.map(obfuscate)
-    }
-
-    if (typeof variable === 'object') {
-        for (const key in variable) {
-            if (typeof key === 'string' && secrets.includes(key.toLowerCase())) {
-        		variable[key] = '***'
-        		continue
-            }
-            variable[key] = obfuscate(variable[key])
-        }
-
-    }
-
-    return variable
+export function obfuscate<T>(data: T, processors?: ObfuscatorProcessor[], obfuscateString?: string): T extends Object ? T : T | string {
+    return (new Obfuscator(processors, obfuscateString)).obfuscate(data)
 }

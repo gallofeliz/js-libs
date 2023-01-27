@@ -2,7 +2,8 @@ import { EventEmitter } from 'events'
 import { mapValues, cloneDeep, last, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
-import obfuscate from './obfuscator'
+import { obfuscate } from './obfuscator'
+import traverse from 'traverse'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
 const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
@@ -128,12 +129,23 @@ export class Logger extends EventEmitter {
             return
         }
 
-        const log = obfuscate({
+        const data = traverse({
             ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
             timestamp: new Date,
             level,
             message,
+        }).map((v) => {
+            if (v instanceof Error) {
+                return {
+                    name: v.name,
+                    message: v.message,
+                    stack: v.stack
+                }
+            }
+            return v
         })
+
+        const log = obfuscate(data)
 
         this.emit('log', log) //, cb)
 
