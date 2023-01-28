@@ -11,6 +11,9 @@ type ObservableObject<Obj> = EventEmitter&Obj
  * Should be good to have observable deep object like myobject.user.on('change') for myboject.user = { firstname, lastname } for example
  * A config live update
  *
+ *
+ * Use https://github.com/sindresorhus/on-change if validation needed (for config ?)
+ *
  */
 
 export function createObservableObject<O extends Obj>(obj: Obj = {}): ObservableObject<O> {

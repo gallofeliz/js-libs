@@ -52,6 +52,19 @@ const server = new HttpServer({
                 }
             },
             {
+                path: '/process-error',
+                auth: {
+                    autorisations: '*'
+                },
+                async handler({logger}, res) {
+                    res.header('Content-Disposition', 'attachment; filename="image.jpeg"')
+                    await runProcess({
+                        command: 'badboom',
+                        logger
+                    }, true)
+                }
+            },
+            {
                 path: '/process',
                 async handler({logger}) {
                     runProcess({
@@ -87,13 +100,21 @@ const server = new HttpServer({
             //     }
             // },
             {
+                method: 'POST',
                 path: '/abortable',
                 auth: {
                     autorisations: '*'
                 },
-                async handler({abortSignal, logger}, res) {
+                inputBodySchema: {
+                    type: 'string'
+                },
+                outputBodySchema: {
+                    type: 'string'
+                },
+                outputContentType: 'text/plain',
+                async handler({abortSignal, logger, body}, res) {
                     await runProcess({
-                        command: 'while true ; do sleep 1 ; echo Hello ; done',
+                        command: 'while true ; do sleep 1 ; echo ' + body + ' ; done',
                         logger,
                         outputStream: res,
                         abortSignal

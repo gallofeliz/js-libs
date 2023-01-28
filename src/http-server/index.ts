@@ -1,6 +1,6 @@
 import { Logger } from '../logger'
 import express, { Router } from 'express'
-import { OutgoingHttpHeaders, Server, IncomingHttpHeaders } from 'http'
+import { OutgoingHttpHeaders, Server, IncomingHttpHeaders, request } from 'http'
 import {
     json as jsonParser,
     text as textParser,
@@ -20,7 +20,7 @@ import stream from 'stream'
 import { HttpRequestConfig } from '../http-request'
 import * as expressCore from 'express-serve-static-core'
 import auth from 'basic-auth'
-import { OpenApi, OpenApiOperation, OpenApiSchema } from 'openapi-v3'
+import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
 import swaggerUi from 'swagger-ui-express'
 
 
@@ -76,10 +76,11 @@ export interface HttpServerConfig {
             method?: string
             path: string
             handler(request: HttpServerRequest<any>, response: HttpServerResponse): Promise<void>
-            inputBodySchema?: Schema
+            inputBodySchema?: SchemaObject
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
-            outputBodySchema?: Schema
+            outputBodySchema?: SchemaObject
+            inputContentType?: string
             outputContentType?: string
             auth?: {
                 //forceAuthentication?: boolean -> ensure req.user will be not null
@@ -269,7 +270,7 @@ export default class HttpServer {
             )
         }
 
-        this.app.use((err: Error, req: any, res: any, next: any) => {
+        this.app.use((err: Error, req: any, res: express.Response, next: any) => {
             this.logger.notice('Http Server error', { e: err })
             res.status(500).end()
         })
@@ -294,6 +295,7 @@ export default class HttpServer {
         })
 
         await once(this.server, 'listening')
+        this.logger.info('Ready')
     }
 
     public stop() {
@@ -386,19 +388,65 @@ export default class HttpServer {
 
             const swaggerOutputBodySchema: OpenApiSchema = (route.outputBodySchema as OpenApiSchema) || {};
 
+            const swaggerResponseContent: OpenApiResponse['content'] = {};
+
+            if (route.outputContentType) {
+                swaggerResponseContent[route.outputContentType] = {schema: swaggerOutputBodySchema}
+            } else {
+                if (!swaggerOutputBodySchema.type) {
+                    swaggerResponseContent['*/*'] = {schema: swaggerOutputBodySchema}
+                } else {
+                    if (['string', 'number'].includes(swaggerOutputBodySchema.type)) {
+                        swaggerResponseContent['text/plain'] = { schema: swaggerOutputBodySchema }
+                        swaggerResponseContent['application/json'] = { schema: swaggerOutputBodySchema }
+                    } else {
+                        swaggerResponseContent['application/json'] = { schema: swaggerOutputBodySchema }
+                        swaggerResponseContent['text/yaml'] = { schema: swaggerOutputBodySchema }
+                        swaggerResponseContent['multipart/form-data'] = { schema: swaggerOutputBodySchema }
+                    }
+                }
+            }
+
+            let requestBody: OpenApiRequestBody | undefined = undefined;
+
+            if (route.inputContentType) {
+                requestBody = {
+                    required: true,
+                    content: {
+                        [route.inputContentType]: { schema: route.inputBodySchema as any}
+                    }
+                }
+            } else {
+                if (route.inputBodySchema) {
+                    if (['string', 'number'].includes(route.inputBodySchema.type)) {
+                        requestBody = {
+                            required: true,
+                            content: {
+                                'text/plain': { schema: route.inputBodySchema as any},
+                                'application/json': { schema: route.inputBodySchema as any }
+                            }
+                        }
+                    } else {
+                        requestBody = {
+                            required: true,
+                            content: {
+                                'application/json': { schema: route.inputBodySchema as any },
+                                'application/x-www-form-urlencoded': { schema: route.inputBodySchema as any },
+                            }
+                        }
+                    }
+                }
+            }
+
             (swaggerDocument.paths[swaggerRoutePath][method as 'get'] as OpenApiOperation) = {
                 description: route.description,
                 security: !this.config.auth || this.authorizator.isAutorised(null, route.auth?.autorisations || []) ? [] : [{basic: []}],
                 parameters,
+                requestBody,
                 responses: {
                     '200': {
                         description: '',
-                        content: route.outputContentType ? { [route.outputContentType]: {schema: swaggerOutputBodySchema} } : {
-                            '*/*': {schema: swaggerOutputBodySchema},
-                            'text/plain': {schema: swaggerOutputBodySchema},
-                            'application/json': {schema: swaggerOutputBodySchema},
-                            'text/yaml': {schema: swaggerOutputBodySchema},
-                        }
+                        content: swaggerResponseContent
                     }
                 }
             }
@@ -490,6 +538,12 @@ export default class HttpServer {
                     }
 
                     try {
+                        if (route.outputContentType) {
+                            res.once('pipe', () => {
+                                res.contentType(route.outputContentType as string)
+                            })
+                        }
+
                         await route.handler(req as HttpServerRequest, res as HttpServerResponse)
 
                     } catch (e) {
