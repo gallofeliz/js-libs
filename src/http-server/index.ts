@@ -20,6 +20,9 @@ import stream from 'stream'
 import { HttpRequestConfig } from '../http-request'
 import * as expressCore from 'express-serve-static-core'
 import auth from 'basic-auth'
+import { OpenApi, OpenApiOperation, OpenApiSchema } from 'openapi-v3'
+import swaggerUi from 'swagger-ui-express'
+
 
 export type HttpServerRequest<
     Params = expressCore.ParamsDictionary,
@@ -44,6 +47,8 @@ export interface HttpServerResponse<Body = any> extends express.Response {
 }
 
 export interface HttpServerConfig {
+    name?: string
+    version?: string
     port: number
     host?: string
     //aboutEndpoint => return { name: package.json['name'], version: package.json['version']}
@@ -60,15 +65,22 @@ export interface HttpServerConfig {
             autorisations?: string | string[]
         }
     }
+    swagger?: {
+        apiUrl?: string
+        uiUrl?: string
+    }
     api?: {
         prefix?: string
         routes: Array<{
+            description?: string
             method?: string
             path: string
             handler(request: HttpServerRequest<any>, response: HttpServerResponse): Promise<void>
             inputBodySchema?: Schema
             inputQuerySchema?: SchemaObject
             inputParamsSchema?: SchemaObject
+            outputBodySchema?: Schema
+            outputContentType?: string
             auth?: {
                 //forceAuthentication?: boolean -> ensure req.user will be not null
                 autorisations: string | string[]
@@ -301,11 +313,95 @@ export default class HttpServer {
             return
         }
 
+        const swaggerDocument: OpenApi = {
+              "openapi": "3.0.0",
+              "info": {
+                "title": this.config.name || 'API',
+                "version": this.config.version || 'Current'
+              },
+              "paths": {
+              }
+            }
+
+        if (this.config.auth) {
+            swaggerDocument.components = {
+                securitySchemes: {
+                    basic: {
+                        type: 'http',
+                        scheme: 'basic'
+                    }
+                }
+            }
+
+        }
+
+        this.app.use(this.config.swagger?.apiUrl || '/swagger-ui', swaggerUi.serve, swaggerUi.setup(null as any, {
+            swaggerOptions: {
+                url: this.config.swagger?.apiUrl || '/swagger'
+            }
+        }));
+        this.app.get(this.config.swagger?.apiUrl || '/swagger', (req, res) => {
+            res.send({
+                ...swaggerDocument,
+                servers: [{
+                    url: req.protocol + '://' + req.header('host')
+                }]
+            })
+        })
+
         const apiRouter = express.Router()
         this.app.use('/' + (this.config.api.prefix ? this.config.api.prefix.replace(/^\//, '') : ''), apiRouter)
 
         this.config.api.routes.forEach(route => {
             const method = route.method?.toLowerCase() || 'get'
+            const swaggerRoutePath = route.path.replace(/:([a-z]+)/gi, '{$1}')
+
+            if (!swaggerDocument.paths[swaggerRoutePath]) {
+                swaggerDocument.paths[swaggerRoutePath] = {}
+            }
+
+            const parameters: OpenApiOperation['parameters'] = [];
+
+            if (route.inputQuerySchema) {
+                Object.keys(route.inputQuerySchema.properties).forEach(key => {
+                    parameters.push({
+                        name: key,
+                        in: 'query',
+                        required: (route.inputQuerySchema!.required || []).includes(key),
+                        schema: route.inputQuerySchema!.properties[key]
+                    })
+                })
+            }
+
+            if (route.inputParamsSchema) {
+                Object.keys(route.inputParamsSchema.properties).forEach(key => {
+                    parameters.push({
+                        name: key,
+                        in: 'path',
+                        required: true,
+                        schema: route.inputParamsSchema!.properties[key]
+                    })
+                })
+            }
+
+            const swaggerOutputBodySchema: OpenApiSchema = (route.outputBodySchema as OpenApiSchema) || {};
+
+            (swaggerDocument.paths[swaggerRoutePath][method as 'get'] as OpenApiOperation) = {
+                description: route.description,
+                security: !this.config.auth || this.authorizator.isAutorised(null, route.auth?.autorisations || []) ? [] : [{basic: []}],
+                parameters,
+                responses: {
+                    '200': {
+                        description: '',
+                        content: route.outputContentType ? { [route.outputContentType]: {schema: swaggerOutputBodySchema} } : {
+                            '*/*': {schema: swaggerOutputBodySchema},
+                            'text/plain': {schema: swaggerOutputBodySchema},
+                            'application/json': {schema: swaggerOutputBodySchema},
+                            'text/yaml': {schema: swaggerOutputBodySchema},
+                        }
+                    }
+                }
+            }
 
             apiRouter[method as 'all'](route.path,
                 authMiddleware({
@@ -351,6 +447,10 @@ export default class HttpServer {
 
                     res.send = (content) => {
 
+                        if (route.outputContentType) {
+                            throw new Error('Not handled')
+                        }
+
                         var isCompatibleText = !content
                             || typeof content === 'string'
                             || typeof content === 'number'
@@ -358,7 +458,7 @@ export default class HttpServer {
 
                         const accepts = isCompatibleText
                             ? ['text/plain', 'json']
-                            : ['json', 'multipart/form-data']
+                            : ['json', 'multipart/form-data', 'yaml']
 
                         if (!req.acceptsCharsets('utf8') || !req.acceptsEncodings('identity')) {
                             res.status(406).end()
@@ -376,6 +476,10 @@ export default class HttpServer {
                                 break
                             case 'multipart/form-data':
                                 throw new Error('Not implemented yet')
+                            case 'yaml':
+                                res.contentType('text/yaml; charset=utf-8')
+                                res.write(require('yaml').stringify(content))
+                                break
                             default:
                                 res.status(406)
                         }

@@ -7,6 +7,7 @@ const logger = createLogger('info')
 
 const server = new HttpServer({
     port: 8080,
+    name: 'My Test API',
     logger,
     auth: {
         users: [
@@ -26,6 +27,7 @@ const server = new HttpServer({
                 autorisations: ['book-read', 'talki-read']
             }
         ],
+        anonymAutorisations: ['PUBLIC'],
         autorisationsPolicies: {
             manager: ['talki-read', 'talki-write'],
             admin: '*'
@@ -34,11 +36,41 @@ const server = new HttpServer({
     api: {
         routes: [
             {
+                description: 'Welcome route !',
+                path: '/welcome',
+                auth: {
+                    autorisations: ['PUBLIC']
+                },
+                outputBodySchema: {
+                    type: 'object',
+                    properties: {
+                        message: {type: 'string'}
+                    }
+                },
+                async handler(_, {send}) {
+                    send({message: 'Welcome !'})
+                }
+            },
+            {
                 path: '/process',
                 async handler({logger}) {
                     runProcess({
                         command: 'ls',
                         logger
+                    })
+                }
+            },
+            {
+                path: '/image',
+                auth: {
+                    autorisations: '*'
+                },
+                outputContentType: 'image/jpeg',
+                async handler({logger}, res) {
+                    await httpRequest({
+                        logger,
+                        responseStream: res,
+                        url: 'https://www.poulesenville.com/wp-content/uploads/elementor/thumbs/img-0549-owvoi9sxmd60uttg8x4baqvc5dldoncb52q86velg0.jpeg'
                     })
                 }
             },
@@ -59,7 +91,7 @@ const server = new HttpServer({
                 auth: {
                     autorisations: '*'
                 },
-                async handler({abortSignal}, res) {
+                async handler({abortSignal, logger}, res) {
                     await runProcess({
                         command: 'while true ; do sleep 1 ; echo Hello ; done',
                         logger,
@@ -95,6 +127,9 @@ const server = new HttpServer({
                     properties: {
                         onlyIt: { type: 'boolean' }
                     }
+                },
+                outputBodySchema: {
+                    type: 'string'
                 },
                 path: '/talki/:id',
                 auth: {

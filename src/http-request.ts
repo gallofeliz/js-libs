@@ -5,6 +5,7 @@ import jsonata from 'jsonata'
 import querystring from 'querystring'
 import validate, { Schema } from './validate'
 import { v4 as uuid } from 'uuid'
+import { pipeline } from 'stream/promises'
 
 /** @type integer */
 type integer = number
@@ -14,6 +15,7 @@ export interface HttpRequestConfig {
    abortSignal?: AbortSignal
    url: string
    method?: Method
+   responseStream?: NodeJS.WritableStream
    responseType?: 'text' | 'json' | 'auto'
    responseTransformation?: string
    timeout?: Duration
@@ -32,6 +34,10 @@ export interface HttpRequestConfig {
 export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
     if (abortSignal?.aborted) {
       throw new AbortError
+    }
+
+    if (request.responseStream && request.responseType) {
+        throw new Error('Unable to stream and responseType')
     }
 
     logger = logger.child({ httpRequestUid: uuid() })
@@ -83,12 +89,21 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
         }
     }
 
+    if (request.responseStream) {
+        gotOpts.isStream = true
+    }
+
     const gotRequest = got(gotOpts) as CancelableRequest<Response<string>>
 
     const onSignalAbort = () => gotRequest.cancel()
     abortSignal?.addEventListener('abort', onSignalAbort)
 
     try {
+        if (request.responseStream) {
+            await pipeline(gotRequest as any, request.responseStream)
+            return undefined as Result
+        }
+
         const response = await gotRequest
 
         if (!request.responseType) {

@@ -38,6 +38,7 @@ export function createObservableObject<O extends Obj>(obj: Obj = {}): Observable
 export async function configureFileAutoSaveObservableObject<OO extends ObservableObject<Obj>>(obsObject: OO, filename: string): Promise<OO> {
 
     async function saveFileContent() {
+        // Use of https://github.com/npm/write-file-atomic to reduce watches call ?
         await writeFile(filename, JSON.stringify(obsObject, undefined, 4), { encoding: 'utf8' })
     }
 
