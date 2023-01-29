@@ -10,7 +10,7 @@ import validate, {SchemaObject} from './validate'
 /**
  * Refacto to do in this module
  */
-interface ConfigOpts<UserProvidedConfig, Config> {
+export interface ConfigOpts<UserProvidedConfig, Config> {
     mandatoryFile?: boolean
     filename?: string
     envFilename?: string
