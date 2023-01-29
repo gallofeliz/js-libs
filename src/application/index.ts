@@ -1,24 +1,32 @@
 import loadConfig, { ConfigOpts } from '../config'
-import { handleExitSignals } from '../exit-handle'
 import createLogger, { Logger } from '../logger'
 import exitHook from 'exit-hook'
+import { v4 as uuid } from 'uuid'
 
-export type Services<Config> = Record<keyof ServicesDefinition<Config>, any> & {
+export type InjectedServices<Config> = {
 	logger: Logger
 	config: Config
+	appName: string
+	appVersion: string
 }
+
+export type Services<Config> = Record<keyof ServicesDefinition<Config>, any> & InjectedServices<Config>
 
 export interface App {
 	abort(): void
 }
 
-export type ServicesDefinition<Config> = Record<string, ServiceDefinition<any, Config>>
+type ReservedServicesNames = keyof InjectedServices<any>
+
+export type ServicesDefinition<Config> = Record<Exclude<string, ReservedServicesNames>, ServiceDefinition<any, Config>>
 
 export type ServiceDefinition<T, Config> = (services: Services<Config>) => T
 
 export interface AppDefinition<Config> {
+	name?: string
+	version?: string
 	config: ConfigOpts<any, Config> | (() => Config)
-	logger?: { level?: string } | (() => Logger)
+	logger?: { level?: string } | ((config: Config) => Logger)
 	services: ServicesDefinition<Config>
 	run(services: Services<Config>, abortSignal: AbortSignal): void
 }
@@ -32,13 +40,19 @@ export async function runApp<Config>(appDefinition: AppDefinition<Config>) {
 		? appDefinition.config()
 		: loadConfig<any, any>(appDefinition.config)
 
-	const logger = appDefinition.logger instanceof Function
-		? appDefinition.logger()
-		: createLogger(appDefinition.logger?.level || config.log?.level)
+	const logger = (
+			appDefinition.logger instanceof Function
+			? appDefinition.logger(config)
+			: createLogger(appDefinition.logger?.level || config.log?.level)
+		).child({
+		appRunUuid: uuid()
+	})
 
 	const services: Services<Config> = {
 		config,
-		logger
+		logger,
+		appName: appDefinition.name || require('./package.json').name,
+		appVersion: appDefinition.version || require('./package.json').version
 	}
 
 	const buildingSymbol = Symbol('building')
@@ -71,7 +85,7 @@ export async function runApp<Config>(appDefinition: AppDefinition<Config>) {
 
 	const removeExitHook = exitHook(onProcessExit)
 
-	logger.info('Starting App', { config })
+	logger.info('Starting App', { config, name: services.appName, version: services.appVersion })
 
 	try {
 		await appDefinition.run(servicesProxy as any, abortSignal)

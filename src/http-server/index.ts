@@ -51,7 +51,6 @@ export interface HttpServerConfig {
     version?: string
     port: number
     host?: string
-    //aboutEndpoint => return { name: package.json['name'], version: package.json['version']}
     auth?: {
         users: User[]
         autorisationsPolicies?: Record<string, string | string[]>
@@ -65,12 +64,15 @@ export interface HttpServerConfig {
             autorisations?: string | string[]
         }
     }
-    swagger?: {
-        apiUrl?: string
-        uiUrl?: string
-    }
     api?: {
         prefix?: string
+        swagger?: {
+            apiPath?: string
+            uiPath?: string
+            auth?: {
+                autorisations?: string | string[]
+            }
+        }
         routes: Array<{
             description?: string
             method?: string
@@ -337,12 +339,16 @@ export default class HttpServer {
 
         }
 
-        this.app.use(this.config.swagger?.apiUrl || '/swagger-ui', swaggerUi.serve, swaggerUi.setup(null as any, {
+        const apiRouter = express.Router()
+        this.app.use('/' + (this.config.api.prefix ? this.config.api.prefix.replace(/^\//, '') : ''), apiRouter)
+
+        apiRouter.use(this.config.api.swagger?.uiPath || this.config.api.routes.some(r => r.path === '/') ? '/swagger-ui' : '/', swaggerUi.serve, swaggerUi.setup(null as any, {
             swaggerOptions: {
-                url: this.config.swagger?.apiUrl || '/swagger'
+                url: this.config.api.swagger?.apiPath || '/swagger'
             }
         }));
-        this.app.get(this.config.swagger?.apiUrl || '/swagger', (req, res) => {
+
+        apiRouter.get(this.config.api.swagger?.apiPath || '/swagger', (req, res) => {
             res.send({
                 ...swaggerDocument,
                 servers: [{
@@ -350,9 +356,6 @@ export default class HttpServer {
                 }]
             })
         })
-
-        const apiRouter = express.Router()
-        this.app.use('/' + (this.config.api.prefix ? this.config.api.prefix.replace(/^\//, '') : ''), apiRouter)
 
         this.config.api.routes.forEach(route => {
             const method = route.method?.toLowerCase() || 'get'
