@@ -1,0 +1,1 @@
+npx nyc mocha -r ts-node/register '**/*.test.ts' --ignore 'node_modules/**'
