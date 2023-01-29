@@ -1,4 +1,4 @@
-import { runApp } from '.'
+import { runApp, waitUntilAborted } from '.'
 import { Logger } from '../logger'
 import { tsToJsSchema } from '../typescript-transform-to-json-schema/transformer-def';
 
@@ -50,12 +50,20 @@ runApp<Config>({
 			return new Db(config.dbPath)
 		}
 	},
-	// Auto Start services ?
-	async start({userService}) {
+	async run({userService, logger}, abortSignal) {
 		userService.doAJob()
-	},
-	// Auto Stop Services ?
-	stop({userService}) {
+
+		abortSignal.addEventListener('abort', () => {
+			console.log('clean')
+		})
+
+		// setTimeout(() => {
+		// 	throw new Error('fyc')
+
+		// }, 500)
+
+		await waitUntilAborted(abortSignal)
+
 		userService.clean()
 	}
 })

@@ -1,10 +1,15 @@
 import loadConfig, { ConfigOpts } from '../config'
 import { handleExitSignals } from '../exit-handle'
 import createLogger, { Logger } from '../logger'
+import exitHook from 'exit-hook'
 
 export type Services<Config> = Record<keyof ServicesDefinition<Config>, any> & {
 	logger: Logger
 	config: Config
+}
+
+export interface App {
+	abort(): void
 }
 
 export type ServicesDefinition<Config> = Record<string, ServiceDefinition<any, Config>>
@@ -15,8 +20,11 @@ export interface AppDefinition<Config> {
 	config: ConfigOpts<any, Config> | (() => Config)
 	logger?: { level?: string } | (() => Logger)
 	services: ServicesDefinition<Config>
-	start(services: Services<Config>): void
-	stop?(services: Services<Config>): void
+	run(services: Services<Config>, abortSignal: AbortSignal): void
+}
+
+export function waitUntilAborted(signal: AbortSignal) {
+	return new Promise(resolve => signal.addEventListener('abort', resolve))
 }
 
 export async function runApp<Config>(appDefinition: AppDefinition<Config>) {
@@ -53,12 +61,26 @@ export async function runApp<Config>(appDefinition: AppDefinition<Config>) {
 		}
 	})
 
-	logger.info('Starting App')
-	appDefinition.start(servicesProxy as any)
-	handleExitSignals(() => {
-		logger.info('Stopping App')
-		if (appDefinition.stop) {
-			appDefinition.stop(servicesProxy as any)
-		}
-	})
+	const abortController = new AbortController
+	const abortSignal = abortController.signal
+
+	function onProcessExit() {
+		logger.info('App interruption')
+		abortController.abort()
+	}
+
+	const removeExitHook = exitHook(onProcessExit)
+
+	logger.info('Starting App', { config })
+
+	try {
+		await appDefinition.run(servicesProxy as any, abortSignal)
+		logger.info('App ended')
+		removeExitHook()
+	} catch (error) {
+		logger.crit('App error', {error})
+		removeExitHook()
+		abortController.abort() // I am not sure it is sementic correct but globally we want to abort the app run flow
+		throw error
+	}
 }
