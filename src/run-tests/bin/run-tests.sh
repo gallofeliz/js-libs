@@ -1,3 +1,7 @@
+#!/usr/bin/env bash
+
+set -e
+
 while getopts ":c:" o; do
     case "${o}" in
         c)
