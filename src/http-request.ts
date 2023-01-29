@@ -20,7 +20,7 @@ export interface HttpRequestConfig {
    responseTransformation?: string
    timeout?: Duration
    retries?: integer
-   headers?: Record<any, string>
+   headers?: Record<string, string | string[]>
    params?: Record<string, string | string[]> | [string, string][]
    bodyData?: NodeJS.ReadableStream | any
    bodyType?: 'text' | 'json' | 'form' | string
@@ -54,15 +54,20 @@ export default async function httpRequest<Result extends any>({abortSignal, logg
         url = urlObject.toString()
     }
 
-    const gotOpts: Options = {
+    const gotOpts: Partial<Options> = {
         method: request.method as Method || 'GET',
         url: url,
         timeout: { request: request.timeout ? durationToMilliSeconds(request.timeout) : undefined},
         retry: { limit: request.retries || 0},
-        headers: request.headers,
-        username: request.auth?.username,
-        password: request.auth?.password,
+        headers: request.headers || {},
+        ...(request.auth ? {
+            username: request.auth.username,
+            password: request.auth.password,
+        } : {}),
         hooks: {
+            init: [],
+            beforeRedirect: [],
+            beforeRetry: [],
             beforeRequest: [options  => { logger.info('Calling http request ' + options.url)}],
             afterResponse: [response => { logger.info('Http Request returned code ' + response.statusCode) ; return response }],
             beforeError: [error => { logger.info('Http Request returned error ' + error.message) ; return error }]
