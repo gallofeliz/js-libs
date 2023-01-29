@@ -24,3 +24,10 @@ export function saveUser(user: User) {
 	user.setId(50)
 	return user.getId()
 }
+
+export function loadUser(id: number) {
+	const user = new RealUser('Luke')
+	user.setId(id)
+
+	return user
+}
