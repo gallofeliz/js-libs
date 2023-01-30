@@ -282,7 +282,7 @@ export default class HttpServer {
         return this.authorizator
     }
 
-    public async start() {
+    public async start(/* abortSignal */) {
         if (this.server) {
             return
         }
@@ -298,6 +298,9 @@ export default class HttpServer {
 
         await once(this.server, 'listening')
         this.logger.info('Ready')
+
+        /* if abortSignal, await once(abort signal abort) ?
+        */
     }
 
     public stop() {

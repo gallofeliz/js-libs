@@ -22,6 +22,7 @@ export interface LoggerOpts {
     metadata?: Object
     transports?: Transport[]
     logUnhandled?: boolean
+    logWarnings?: boolean
 }
 
 export interface Log {
@@ -54,7 +55,6 @@ export abstract class BaseTransport implements Transport {
 }
 
 export class JsonConsoleTransport extends BaseTransport {
-
     public async _write(log: Log) {
         const strLog = stringify(log) + EOL
         if (['debug', 'info'].includes(log.level)) {
@@ -73,14 +73,18 @@ export class Logger extends EventEmitter {
     /**
         Add bumble events ? But so use parent transport ?
     **/
-    public constructor({level, metadata, transports, logUnhandled}: LoggerOpts = {}) {
+    public constructor({level, metadata, transports, logUnhandled, logWarnings}: LoggerOpts = {}) {
         super()
         this.level = level || getLowerLevel()
         this.metadata = metadata || {}
-        this.transports = transports || []
+        this.transports = transports || [new JsonConsoleTransport]
 
-        if (logUnhandled) {
+        if (logUnhandled !== false) {
             this.logUnhandled()
+        }
+
+        if (logWarnings !== false) {
+            this.logWarnings()
         }
     }
 
@@ -93,6 +97,9 @@ export class Logger extends EventEmitter {
             await this.crit('UncaughtException', {err, origin})
             process.exit(1)
         })
+    }
+
+    protected logWarnings() {
         process.on('warning', async (warning) => {
             await this.warning('Warning', {warning})
         })
@@ -168,10 +175,6 @@ function ensureNotKeys(object: Object, keys: string[]): Object {
 }
 
 
-export default function createLogger(level: LogLevel) {
-    return new Logger({
-        level,
-        transports: [new JsonConsoleTransport],
-        logUnhandled: true
-    })
+export default function createLogger(loggerOpts?: LoggerOpts) {
+    return new Logger(loggerOpts)
 }

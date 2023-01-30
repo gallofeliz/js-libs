@@ -1,4 +1,4 @@
-import { runApp, waitUntilAborted } from '.'
+import { runApp } from '.'
 import { Logger } from '../logger'
 import { tsToJsSchema } from '../typescript-transform-to-json-schema/transformer-def';
 
@@ -62,7 +62,7 @@ runApp<Config>({
 
 		// }, 500)
 
-		await waitUntilAborted(abortSignal)
+		await new Promise(resolve => setTimeout(resolve, 10000))
 
 		userService.clean()
 	}

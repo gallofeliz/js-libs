@@ -1,6 +1,5 @@
 import loadConfig, { ConfigOpts } from '../config'
-import createLogger, { Logger } from '../logger'
-import exitHook from 'exit-hook'
+import createLogger, { Logger, LoggerOpts } from '../logger'
 import { v4 as uuid } from 'uuid'
 
 export type InjectedServices<Config> = {
@@ -12,59 +11,38 @@ export type InjectedServices<Config> = {
 
 export type Services<Config> = Record<keyof ServicesDefinition<Config>, any> & InjectedServices<Config>
 
-export interface App {
-	abort(): void
-}
-
 type ReservedServicesNames = keyof InjectedServices<any>
 
 export type ServicesDefinition<Config> = Record<Exclude<string, ReservedServicesNames>, ServiceDefinition<any, Config>>
 
 export type ServiceDefinition<T, Config> = (services: Services<Config>) => T
 
+export type RunHandler<Config> = (services: Services<Config>, abortSignal: AbortSignal) => Promise<void> | void
+
 export interface AppDefinition<Config> {
 	name?: string
 	version?: string
 	config: ConfigOpts<any, Config> | (() => Config)
-	logger?: { level?: string } | ((config: Config) => Logger)
+	logger?: LoggerOpts | ((services: Partial<Services<Config>>) => Logger)
 	services: ServicesDefinition<Config>
-	run(services: Services<Config>, abortSignal: AbortSignal): void
+	run: RunHandler<Config>
 }
 
-export function waitUntilAborted(signal: AbortSignal) {
-	return new Promise(resolve => signal.addEventListener('abort', resolve))
-}
+// export function waitUntilAborted(signal: AbortSignal) {
+// 	return new Promise(resolve => signal.addEventListener('abort', resolve))
+// }
 
-export async function runApp<Config>(appDefinition: AppDefinition<Config>) {
-	const config = appDefinition.config instanceof Function
-		? appDefinition.config()
-		: loadConfig<any, any>(appDefinition.config)
-
-	const logger = (
-			appDefinition.logger instanceof Function
-			? appDefinition.logger(config)
-			: createLogger(appDefinition.logger?.level || config.log?.level)
-		).child({
-		appRunUuid: uuid()
-	})
-
-	const services: Services<Config> = {
-		config,
-		logger,
-		appName: appDefinition.name || require('./package.json').name,
-		appVersion: appDefinition.version || require('./package.json').version
-	}
-
+function createDiContainer(builtinServices: InjectedServices<any>, servicesDefinition: ServicesDefinition<any>): Services<any> {
 	const buildingSymbol = Symbol('building')
 
-	const servicesProxy = new Proxy(services, {
-		get(services, serviceName: string) {
+	return new Proxy(builtinServices, {
+		get(services: Services<any>, serviceName: string) {
 			if (!services[serviceName]) {
-				if (!appDefinition.services[serviceName]) {
+				if (!servicesDefinition[serviceName]) {
 					throw new Error('Unknown service ' + serviceName)
 				}
 				services[serviceName] = buildingSymbol
-				services[serviceName] = appDefinition.services[serviceName](servicesProxy)
+				services[serviceName] = servicesDefinition[serviceName](this as Services<any>)
 			}
 
 			if (services[serviceName] === buildingSymbol) {
@@ -74,27 +52,85 @@ export async function runApp<Config>(appDefinition: AppDefinition<Config>) {
 			return services[serviceName]
 		}
 	})
+}
 
-	const abortController = new AbortController
-	const abortSignal = abortController.signal
+class App<Config> {
+	//protected status: 'READY' | 'RUNNING' = 'READY'
+	protected alreadyRun: boolean = false
+	protected name: string
+	protected version: string
+	protected config: Config
+	protected logger: Logger
+	protected services: Services<Config>
+	protected runFn: RunHandler<Config>
 
-	function onProcessExit() {
-		logger.info('App interruption')
-		abortController.abort()
+	constructor(appDefinition: AppDefinition<Config>) {
+		this.name = appDefinition.name || require('./package.json').name
+		this.version = appDefinition.version  || require('./package.json').version
+
+		this.config = appDefinition.config instanceof Function
+			? appDefinition.config()
+			: loadConfig<any, any>(appDefinition.config)
+
+		this.logger = (
+				appDefinition.logger instanceof Function
+				? appDefinition.logger({config: this.config})
+				: createLogger(appDefinition.logger)
+			).child({
+				appRunUuid: uuid()
+			})
+
+		this.services = createDiContainer({
+			config: this.config,
+			logger: this.logger,
+			appName: this.name,
+			appVersion: this.version
+		}, appDefinition.services)
+
+		this.runFn = appDefinition.run
 	}
 
-	const removeExitHook = exitHook(onProcessExit)
+	public async run(abortSignal?: AbortSignal) {
+		if (this.alreadyRun) {
+			throw new Error('Application already run')
+		}
 
-	logger.info('Starting App', { config, name: services.appName, version: services.appVersion })
+		this.alreadyRun = true
 
-	try {
-		await appDefinition.run(servicesProxy as any, abortSignal)
-		logger.info('App ended')
-		removeExitHook()
-	} catch (error) {
-		logger.crit('App error', {error})
-		removeExitHook()
-		abortController.abort() // I am not sure it is sementic correct but globally we want to abort the app run flow
-		throw error
+		const abortController = new AbortController
+		abortSignal = this.linkSignalWithController(abortSignal, abortController)
+
+		const processSignalHandler = () => {
+			abortController.abort()
+		}
+
+		;['SIGTERM', 'SIGINT'].forEach(signal => process.on(signal, processSignalHandler))
+
+		try {
+			this.logger.info('Starting App', { config: this.config, name: this.name, version: this.version })
+			await this.runFn(this.services, abortSignal)
+			this.logger.info('App ended')
+			// process exit ?
+		} catch (e) {
+			this.logger.crit('App error', {error: e})
+			// Add clean up / beforeExitOnError ?
+			// Handle unhandled rejections ? process.prependListener
+			// if aborted, don't throw
+			throw e
+			// process exit ? => Add option ?
+		} finally {
+			['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
+		}
 	}
+
+	protected linkSignalWithController(abortSignal: AbortSignal | undefined, abortController: AbortController) {
+		if (abortSignal) {
+			abortSignal.addEventListener('abort', () => abortController.abort())
+		}
+		return abortController.signal
+	}
+}
+
+export async function runApp<Config>(appDefinition: AppDefinition<Config> & { abortSignal?: AbortSignal }) {
+	return await (new App(appDefinition)).run(appDefinition.abortSignal)
 }
