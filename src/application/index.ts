@@ -1,5 +1,5 @@
 import loadConfig, { ConfigOpts } from '../config'
-import createLogger, { Logger, LoggerOpts } from '../logger'
+import { Logger, LoggerOpts } from '../logger'
 import { v4 as uuid } from 'uuid'
 
 export type InjectedServices<Config> = {
@@ -17,7 +17,7 @@ export type ServicesDefinition<Config> = Record<Exclude<string, ReservedServices
 
 export type ServiceDefinition<T, Config> = (services: Services<Config>) => T
 
-export type RunHandler<Config> = (services: Services<Config>, abortSignal: AbortSignal) => Promise<void> | void
+export type RunHandler<Config> = (services: Services<Config>, abortSignal: AbortSignal) => void
 
 export interface AppDefinition<Config> {
 	name?: string
@@ -75,7 +75,7 @@ class App<Config> {
 		this.logger = (
 				appDefinition.logger instanceof Function
 				? appDefinition.logger({config: this.config})
-				: createLogger(appDefinition.logger)
+				: new Logger(appDefinition.logger)
 			).child({
 				appRunUuid: uuid()
 			})
@@ -101,26 +101,16 @@ class App<Config> {
 		abortSignal = this.linkSignalWithController(abortSignal, abortController)
 
 		const processSignalHandler = () => {
+			['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
 			abortController.abort()
 		}
 
 		;['SIGTERM', 'SIGINT'].forEach(signal => process.on(signal, processSignalHandler))
+		// Add clean up / beforeExitOnError ?
+		// Handle unhandled rejections ? process.prependListener
 
-		try {
-			this.logger.info('Starting App', { config: this.config, name: this.name, version: this.version })
-			await this.runFn(this.services, abortSignal)
-			this.logger.info('App ended')
-			// process exit ?
-		} catch (e) {
-			this.logger.crit('App error', {error: e})
-			// Add clean up / beforeExitOnError ?
-			// Handle unhandled rejections ? process.prependListener
-			// if aborted, don't throw
-			throw e
-			// process exit ? => Add option ?
-		} finally {
-			['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
-		}
+		this.logger.info('Running', { config: this.config, name: this.name, version: this.version })
+		this.runFn(this.services, abortSignal)
 	}
 
 	protected linkSignalWithController(abortSignal: AbortSignal | undefined, abortController: AbortController) {

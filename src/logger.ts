@@ -173,8 +173,3 @@ function ensureNotKeys(object: Object, keys: string[]): Object {
         return newKey
     })
 }
-
-
-export default function createLogger(loggerOpts?: LoggerOpts) {
-    return new Logger(loggerOpts)
-}
