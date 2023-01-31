@@ -35,14 +35,14 @@ export interface AppDefinition<Config> {
 function createDiContainer(builtinServices: InjectedServices<any>, servicesDefinition: ServicesDefinition<any>): Services<any> {
 	const buildingSymbol = Symbol('building')
 
-	return new Proxy(builtinServices, {
+	const myself = new Proxy({...builtinServices}, {
 		get(services: Services<any>, serviceName: string) {
 			if (!services[serviceName]) {
 				if (!servicesDefinition[serviceName]) {
 					throw new Error('Unknown service ' + serviceName)
 				}
 				services[serviceName] = buildingSymbol
-				services[serviceName] = servicesDefinition[serviceName](this as Services<any>)
+				services[serviceName] = servicesDefinition[serviceName](myself)
 			}
 
 			if (services[serviceName] === buildingSymbol) {
@@ -52,6 +52,8 @@ function createDiContainer(builtinServices: InjectedServices<any>, servicesDefin
 			return services[serviceName]
 		}
 	})
+
+	return myself
 }
 
 class App<Config> {
