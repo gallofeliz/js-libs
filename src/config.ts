@@ -1,11 +1,12 @@
 import fs, { existsSync } from 'fs'
 import YAML from 'yaml'
-import _, { valuesIn } from 'lodash'
+import { valuesIn, mapKeys, pickBy, each, set } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve, dirname} from 'path'
 import {Logger} from './logger'
 import validate, {SchemaObject} from './validate'
 import { parseFile as parseYmlFile } from './super-yaml'
+import FsWatcher from './fs-watcher'
 
 /**
  * Refacto to do in this module
@@ -18,30 +19,61 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     envDelimiter?: string
     finalizer?: (userProvidedConfig: UserProvidedConfig, logger: Logger) => Config
     logger: Logger
-    watchChanges?: boolean
+    watchChanges?: {
+        onChange: (config: Config) => void
+        // onError
+    }
+}
+
+function findGoodPath(userPath: string, schema: SchemaObject) {
+  const correctPath = []
+  let cursor = schema
+
+  for (const pathNode of userPath.split('.')) {
+
+    const [, key, arrI] = pathNode.match(/([^\[]+)(\[[0-9]?\])?/) || [, pathNode]
+
+    if (cursor.type === 'object') {
+      const targetK = Object.keys(cursor.properties).find(k => k.toLowerCase() === key.toLowerCase())
+
+      if (!targetK) {
+        return
+      }
+
+      if (arrI && cursor.properties[targetK].items) {
+        cursor = cursor.properties[targetK].items
+        correctPath.push(targetK + arrI)
+      } else {
+        cursor = cursor.properties[targetK]
+        correctPath.push(targetK)
+      }
+
+    }
+  }
+
+  return correctPath.join('.')
+}
+
+
+function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: string, prefix?: string, schema: SchemaObject}): Record<string, string> {
+    const fullPrefix = prefix ? prefix.toLowerCase() + (prefix.endsWith(delimiter) ? '' : delimiter) : null
+
+    const envs = (!fullPrefix ? process.env : pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix))) as Record<string, string>
+
+    // If prefix add warn if not found good path ?
+
+    return mapKeys(envs, (value, key) => {
+        return findGoodPath(key, schema)
+    })
 }
 
 export default function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Config {
-    if (opts.watchChanges) {
-        throw new Error('Not implemented yet')
-    }
-
     let userProvidedConfig: UserProvidedConfig = {} as UserProvidedConfig
     let filename = opts.defaultFilename
 
     if (opts.envFilename && process.env[opts.envFilename]) {
         filename = process.env[opts.envFilename]
     }
-
-    const envDelimiter = opts.envDelimiter || '_'
-    const fullPrefix = opts.envPrefix ? opts.envPrefix.toLowerCase() + (opts.envPrefix.endsWith(envDelimiter) ? '' : envDelimiter) : null
-
-    const envs = !fullPrefix ? process.env : _.pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix))
-
-    const envDict = _.mapKeys(envs, (value, key) => {
-        const goodCaseKey = key.toUpperCase() === key ? key.toLowerCase() : key
-        return goodCaseKey.substr(fullPrefix ? fullPrefix.length : 0).split(envDelimiter).join('.')
-    })
 
     if (filename) {
         const exists = existsSync(filename)
@@ -68,11 +100,16 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
                     throw new Error('Unhandled file type')
             }
         }
-
     }
 
-    _.each(envDict, (value, key) => {
-        _.set(userProvidedConfig, key, value)
+    const userEnvProvidedConfig = extractEnvConfigPathsValues({
+        delimiter: opts.envDelimiter || '_',
+        prefix: opts.envPrefix,
+        schema: opts.userProvidedConfigSchema
+    })
+
+    each(userEnvProvidedConfig, (value, key) => {
+        set(userProvidedConfig, key, value)
     })
 
     userProvidedConfig = validate(userProvidedConfig, {
@@ -85,7 +122,23 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
         return userProvidedConfig as any as Config
     }
 
-    return opts.finalizer(userProvidedConfig, opts.logger)
+    const config = opts.finalizer(userProvidedConfig, opts.logger)
+
+    if (opts.watchChanges && filename) {
+        // Here the problem is that included filename are not watched
+        new FsWatcher({
+            logger: opts.logger,
+            paths: [filename],
+            fn() {
+                const newConfig = loadConfig(opts)
+                Object.keys(config).forEach(k => { delete (config as any)[k] })
+                Object.assign(config, newConfig)
+                opts.watchChanges!.onChange(config)
+            }
+        })
+    }
+
+    return config
 }
 
 /*
