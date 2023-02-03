@@ -2,24 +2,17 @@
 
 **warning** version < 1 <=> At any moment the contracts change
 
-Github NPM packages doesn't allow install without TOKEN and so is useless. Use release assets instead (for example https://github.com/gallofeliz/js-libs/releases/download/v0.1.5/gallofeliz-js-libs-0.1.5.tgz).
+## Operations
+
+- `make test lib=xxx`
+- `make build lib=xxx`
+- `make deploy lib=xxx`
 
 ## Notes
 
 - for the moment, the build is done on installation.
 - files are generated in the root directory, I did'nt find how to specify a "require" directory
 - each file represents a module that can be exported to independant project (avoid to have a big index.js with big exports)
-
-## Config
-
-The workflow is :
-- The config is read from a file (if provided)
-- The config is completed with env variables (prefixed or not)
-- The config is not overrided by command line (for the moment)
-- The config is converted to the good type (with schema)
-- The config is validated (end of user config) with schema
-- The config is completed with default values
-- The config is finalized (if provided)
 
 ## todo
 
@@ -28,11 +21,3 @@ The workflow is :
 - Add uid on logs for example for process 
 - Better mapping with json schema for config and env (for example DOOR_OPENVALUE should match door.openValue)
 - http server : special public role replaces required auth ?
-
-## Dev
-
-```
-	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i
-	sudo docker run --rm -it -v $(pwd):/workdir --init --user $UID --workdir /workdir node:lts-alpine npm i --no-save ts-node
-	sudo docker run --rm -it -v $(pwd):/workdir --init --workdir /workdir node:lts-alpine node_modules/.bin/ts-node test/process.ts
-```

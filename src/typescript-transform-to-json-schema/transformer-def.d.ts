@@ -1,1 +1,1 @@
-export function tsToJsSchema<T extends object>(): Record<string, any>;
+export declare function tsToJsSchema<T extends object>(): Record<string, any>;

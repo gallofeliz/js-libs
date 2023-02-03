@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "sh -ec 'for test in $(find test src -iname \"*.ts\" -ipath \"*test*\" -not -path \"*run-tests*\"); do ts-node $test; done'"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
@@ -58,6 +58,7 @@
     "src/obfuscator",
     "src/super-yaml",
     "src/logger",
-    "src/config"
+    "src/config",
+    "src/persistant-object"
   ]
 }
