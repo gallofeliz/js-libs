@@ -1,5 +1,5 @@
-import loadConfig, { ConfigOpts } from '../config'
-import { Logger, LoggerOpts } from '../logger'
+import loadConfig, { ConfigOpts } from '@gallofeliz/config'
+import { Logger, LoggerOpts } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 
 export type InjectedServices<Config> = {

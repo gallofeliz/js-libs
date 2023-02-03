@@ -2,7 +2,7 @@ import { EventEmitter } from 'events'
 import { mapValues, cloneDeep, last, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
-import { Obfuscator, ObfuscatorProcessors } from './obfuscator'
+import { Obfuscator, ObfuscatorProcessors } from '@gallofeliz/obfuscator'
 import traverse from 'traverse'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
@@ -65,7 +65,18 @@ export class JsonConsoleTransport extends BaseTransport {
     }
 }
 
-export class Logger extends EventEmitter {
+export interface UniversalLogger {
+    crit(message: string, metadata?: Object): Promise<void>
+    error(message: string, metadata?: Object): Promise<void>
+    warning(message: string, metadata?: Object): Promise<void>
+    notice(message: string, metadata?: Object): Promise<void>
+    info(message: string, metadata?: Object): Promise<void>
+    debug(message: string, metadata?: Object): Promise<void>
+    child(metadata?: Object): UniversalLogger
+    log(level: LogLevel, message: string, metadata?: Object): Promise<void>
+}
+
+export class Logger extends EventEmitter implements UniversalLogger {
     protected metadata: Object
     protected level: LogLevel
     protected transports: Transport[]
@@ -133,7 +144,7 @@ export class Logger extends EventEmitter {
             logUnhandled: false
         })
     }
-    protected async log(level: LogLevel, message: string, metadata?: Object) {
+    public async log(level: LogLevel, message: string, metadata?: Object) {
         if (!shouldBeLogged(level, this.level)) {
             return
         }

@@ -1,0 +1,16 @@
+{
+  "name": "@gallofeliz/config",
+  "version": "0.1.0",
+  "description": "Sorry, but README to do.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@gallofeliz/super-yaml": "^0.1.0",
+    "lodash": "^4.17.21",
+    "yaml": "^2.2.1"
+  }
+}

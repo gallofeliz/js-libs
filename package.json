@@ -56,6 +56,8 @@
     "src/run-tests",
     "src/application",
     "src/obfuscator",
-    "src/super-yaml"
+    "src/super-yaml",
+    "src/logger",
+    "src/config"
   ]
 }
