@@ -1,7 +1,12 @@
 import { Observable } from 'object-observer'
 import { readFile, writeFile, access, constants } from 'fs/promises'
 
-export async function createFilePersistantObject<T>(filename: string, onSaveError: (error: Error)=>void): Promise<Partial<T>> {
+export interface CreateFilePersistantObjectOpts {
+    filename: string
+    onSaveError: (error: Error) => void
+}
+
+export async function createFilePersistantObject<T>({filename, onSaveError}: CreateFilePersistantObjectOpts): Promise<Partial<T>> {
     try {
         await access(filename, constants.W_OK)
     } catch (e) {
