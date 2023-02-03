@@ -1,5 +1,4 @@
-import { createFilePersistantObservableObject } from '.'
-import { writeFile } from 'fs/promises'
+import { createFilePersistantObject } from '.'
 
 interface MyState {
 	count: number
@@ -7,21 +6,15 @@ interface MyState {
 
 (async () => {
 
-	const abortC = new AbortController
+	const o = await createFilePersistantObject<MyState>('/tmp/count.json', function (e) { console.error(e) })
 
-	const o = await createFilePersistantObservableObject<MyState>({ count: 0 }, '/tmp/count.json', true, abortC.signal)
-
-	o.once('change', () => console.log('My object has changed !!!'))
+	if (!o.count) {
+		o.count = 0
+	}
 
 	console.log('The value is', o.count)
 
 	o.count++
 
 	console.log('The value is', o.count)
-
-	setTimeout(() => writeFile('/tmp/count.json', '{"count":'+(o.count + 10)+'}', {encoding: 'utf8'}), 250)
-
-	setTimeout(() => console.log('The value is', o.count), 500)
-
-	setTimeout(() => abortC.abort(), 1000)
 })()

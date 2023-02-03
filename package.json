@@ -17,7 +17,6 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
-    "@tuplo/envsubst": "^1.15.2",
     "ajv": "^8.11.0",
     "basic-auth": "^2.0.1",
     "body-parser": "^1.19.1",
@@ -55,6 +54,8 @@
   },
   "workspaces": [
     "src/run-tests",
-    "src/application"
+    "src/application",
+    "src/obfuscator",
+    "src/super-yaml"
   ]
 }

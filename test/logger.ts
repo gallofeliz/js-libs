@@ -1,6 +1,6 @@
-import createLogger from '../src/logger'
+import {Logger} from '../src/logger'
 
-const logger = createLogger('info')
+const logger = new Logger({level:'info'})
 
 const child = logger.child({child: true})
 
@@ -8,7 +8,16 @@ child.on('log', (log) => {
     console.log('child log', log)
 })
 
-logger.info('The message', {the: 'data', password: 'secrettttt', array: [1, '2', new Date]})
+const data: any = {the: 'data', password: 'secrettttt', array: [1, '2', new Date]}
+data.sub = {
+  hello: [{
+    world: {
+      data
+    }
+  }]
+}
+
+logger.info('The message', data)
 
 child.info('New message', {message: 'I want to hack the https://admin:admin@mydomain/destroy'})
 

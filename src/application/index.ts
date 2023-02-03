@@ -22,7 +22,7 @@ export type RunHandler<Config> = (services: Services<Config>, abortSignal: Abort
 export interface AppDefinition<Config> {
 	name?: string
 	version?: string
-	config: ConfigOpts<any, Config> | (() => Config)
+	config: (Omit<ConfigOpts<any, Config>, 'logger'> & { logger?: Logger }) | (() => Config)
 	logger?: LoggerOpts | ((services: Partial<Services<Config>>) => Logger)
 	services: ServicesDefinition<Config>
 	run: RunHandler<Config>
@@ -70,17 +70,38 @@ class App<Config> {
 		this.name = appDefinition.name || require('./package.json').name
 		this.version = appDefinition.version  || require('./package.json').version
 
-		this.config = appDefinition.config instanceof Function
-			? appDefinition.config()
-			: loadConfig<any, any>(appDefinition.config)
+		const defaultConfigArgs: Partial<ConfigOpts<any, any>> = {
+			defaultFilename: '/etc/' + this.name + '/config.yaml',
+			envFilename: this.name + '_CONFIG_PATH',
+			envPrefix: this.name
+		}
 
-		this.logger = (
-				appDefinition.logger instanceof Function
-				? appDefinition.logger({config: this.config})
-				: new Logger(appDefinition.logger)
-			).child({
-				appRunUuid: uuid()
+		if (appDefinition.logger instanceof Function) {
+
+			const tmpLogger: Logger = null as any as Logger
+
+			try {
+				this.config = appDefinition.config instanceof Function
+					? appDefinition.config()
+					: loadConfig<any, any>({...defaultConfigArgs, ...appDefinition.config, logger: tmpLogger})
+
+				this.logger = appDefinition.logger({config: this.config}).child({
+					appRunUuid: uuid()
+				})
+			} catch (e) {
+				e.logs = e
+				throw e
+			}
+			tmpLogger.transport.messages.forEach(msg => {
+				this.logger.info(msg)
 			})
+
+		} else {
+			this.logger = (new Logger(appDefinition.logger)).child({ appRunUuid: uuid() })
+			this.config = appDefinition.config instanceof Function
+				? appDefinition.config()
+				: loadConfig<any, any>({...defaultConfigArgs, ...appDefinition.config, logger: this.logger})
+		}
 
 		this.services = createDiContainer({
 			config: this.config,

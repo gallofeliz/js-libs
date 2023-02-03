@@ -282,10 +282,18 @@ export default class HttpServer {
         return this.authorizator
     }
 
-    public async start(/* abortSignal */) {
+    public async start(abortSignal?: AbortSignal) {
         if (this.server) {
+            abortSignal?.addEventListener('abort', () => {
+                this.stop()
+            })
             return
         }
+
+        if (abortSignal?.aborted) {
+            return
+        }
+
         this.server = this.app.listen(this.config.port, this.config.host || '0.0.0.0')
 
         this.server.on('connection', (conn) => {
@@ -297,15 +305,26 @@ export default class HttpServer {
         })
 
         await once(this.server, 'listening')
-        this.logger.info('Ready')
 
-        /* if abortSignal, await once(abort signal abort) ?
-        */
+        if (abortSignal?.aborted) {
+            this.stop()
+            return
+        }
+
+        abortSignal?.addEventListener('abort', () => {
+            this.stop()
+        })
+
+        this.logger.info('Ready')
     }
 
-    public stop() {
+    public async stop() {
         if (!this.server) {
             return
+        }
+
+        if (!this.server.listening) {
+            await once(this.server, 'listening')
         }
 
         this.server.close()
