@@ -4,7 +4,7 @@ import { Logger } from './logger'
 import _ from 'lodash'
 import { Duration, durationToMilliSeconds } from './utils'
 import { Query } from 'mingo'
-import Datastore from 'nedb'
+import Datastore from '@seald-io/nedb'
 import { promisify } from 'util'
 
 export type JobState = 'new' | 'running' | 'aborting' | ('done' | 'failed' | 'aborted' | 'canceled' /* = ended */)
