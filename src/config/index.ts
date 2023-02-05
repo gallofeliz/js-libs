@@ -1,12 +1,13 @@
 import fs, { existsSync } from 'fs'
 import YAML from 'yaml'
-import { valuesIn, mapKeys, pickBy, each, set } from 'lodash'
+import { valuesIn, mapKeys, pickBy, each, set, cloneDeep } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve, dirname} from 'path'
 import {Logger} from '../logger'
 import validate, {SchemaObject} from '../validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import FsWatcher from '../fs-watcher'
+import { compare, Operation, applyPatch } from 'fast-json-patch'
 
 /**
  * Refacto to do in this module
@@ -20,7 +21,7 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     finalizer?: (userProvidedConfig: UserProvidedConfig, logger: Logger) => Config
     logger: Logger
     watchChanges?: {
-        onChange: (config: Config) => void
+        onChange: (patch: Operation[], config: Config, previousConfig: Config) => void
         // onError
     }
 }
@@ -131,9 +132,18 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
             paths: [filename],
             fn() {
                 const newConfig = loadConfig(opts)
-                Object.keys(config).forEach(k => { delete (config as any)[k] })
-                Object.assign(config, newConfig)
-                opts.watchChanges!.onChange(config)
+                // Object.keys(config).forEach(k => { delete (config as any)[k] })
+                // Object.assign(config, newConfig)
+                const patch = compare(config, newConfig, false)
+
+                if (patch.length === 0) {
+                    return
+                }
+
+                const oldConfig = cloneDeep(config)
+                applyPatch(config, patch, true, true)
+
+                opts.watchChanges!.onChange(patch, config, oldConfig)
             }
         })
     }
