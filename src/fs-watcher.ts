@@ -2,12 +2,22 @@ import { durationToMilliSeconds, Duration } from './utils'
 import chokidar from 'chokidar'
 import { Logger } from './logger'
 
-interface WaitPending {
+export interface WaitPending {
     start: number
     timeout: NodeJS.Timeout
 }
 
-export default class FsWatcher<Identity = any> {
+export interface FsWatcherOpts { id?: any, fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration}
+
+export function watchFs({abortSignal, ...opts}: FsWatcherOpts & { abortSignal?: AbortSignal }) {
+    const fsWatcher = new FsWatcher(opts)
+
+    fsWatcher.start(abortSignal)
+
+    return fsWatcher
+}
+
+export class FsWatcher<Identity = any> {
     protected fn: Function
     protected id: Identity
     protected paths: string[]
@@ -19,8 +29,7 @@ export default class FsWatcher<Identity = any> {
     protected logger: Logger
 
     constructor(
-        { id, fn, logger, paths, ignore, waitMin, waitMax }:
-        { id?: any, fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration }
+        { id, fn, logger, paths, ignore, waitMin, waitMax }:FsWatcherOpts
     ) {
         this.id = id
         this.fn = fn
@@ -35,7 +44,12 @@ export default class FsWatcher<Identity = any> {
         return this.id
     }
 
-    public start() {
+    public start(abortSignal?: AbortSignal) {
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', () => {
+                this.stop()
+            })
+        }
         if (this.watcher) {
             return
         }

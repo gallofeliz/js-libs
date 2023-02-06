@@ -1,9 +1,11 @@
 import { Observable } from 'object-observer'
 import { readFile, writeFile, access, constants } from 'fs/promises'
+import { UniversalLogger } from '@gallofeliz/logger'
 
 export interface CreateFilePersistantObjectOpts {
     filename: string
-    onSaveError: (error: Error) => void
+    onSaveError?: (error: Error) => void
+    logger?: UniversalLogger
 }
 
 export async function createFilePersistantObject<T>({filename, onSaveError}: CreateFilePersistantObjectOpts): Promise<Partial<T>> {

@@ -15,6 +15,15 @@ build: clean test
 	cp -R dist/src/$(lib)/* /tmp/lib
 	rm /tmp/lib/*test*
 
-.PHONY: deploy
-deploy: build
-	cd /tmp/lib && false
+.PHONY: release
+deploy:
+	npm whoami
+	make build
+	npm version minor
+	git add -p
+	git tag -a ...
+	cp src/$(lib)/package.json /tmp/lib/
+	cp src/$(lib)/package-lock.json /tmp/lib/
+	npm publish --access public --token
+	npm logout
+	git push

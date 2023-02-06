@@ -6,8 +6,8 @@ import {extname, resolve, dirname} from 'path'
 import {Logger} from '../logger'
 import validate, {SchemaObject} from '../validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
-import FsWatcher from '../fs-watcher'
-import { compare, Operation, applyPatch } from 'fast-json-patch'
+import { watchFs } from '../fs-watcher'
+import { compare, Operation } from 'fast-json-patch'
 
 /**
  * Refacto to do in this module
@@ -22,6 +22,7 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     logger: Logger
     watchChanges?: {
         onChange: (patch: Operation[], config: Config, previousConfig: Config) => void
+        abortSignal?: AbortSignal
         // onError
     }
 }
@@ -123,25 +124,25 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
         return userProvidedConfig as any as Config
     }
 
-    const config = opts.finalizer(userProvidedConfig, opts.logger)
+    let config = opts.finalizer(userProvidedConfig, opts.logger)
 
     if (opts.watchChanges && filename) {
         // Here the problem is that included filename are not watched
-        new FsWatcher({
+
+        watchFs({
             logger: opts.logger,
             paths: [filename],
+            abortSignal: opts.watchChanges.abortSignal,
             fn() {
                 const newConfig = loadConfig(opts)
-                // Object.keys(config).forEach(k => { delete (config as any)[k] })
-                // Object.assign(config, newConfig)
                 const patch = compare(config, newConfig, false)
 
                 if (patch.length === 0) {
                     return
                 }
 
-                const oldConfig = cloneDeep(config)
-                applyPatch(config, patch, true, true)
+                const oldConfig = config
+                config = newConfig
 
                 opts.watchChanges!.onChange(patch, config, oldConfig)
             }
