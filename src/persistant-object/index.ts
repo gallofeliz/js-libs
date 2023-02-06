@@ -8,7 +8,7 @@ export interface CreateFilePersistantObjectOpts {
     logger?: UniversalLogger
 }
 
-export async function createFilePersistantObject<T>({filename, onSaveError}: CreateFilePersistantObjectOpts): Promise<Partial<T>> {
+export async function createFilePersistantObject<T>({filename, onSaveError, logger}: CreateFilePersistantObjectOpts): Promise<Partial<T>> {
     try {
         await access(filename, constants.W_OK)
     } catch (e) {
@@ -28,8 +28,16 @@ export async function createFilePersistantObject<T>({filename, onSaveError}: Cre
         // Use of https://github.com/npm/write-file-atomic ?
         try {
             await writeFile(filename, JSON.stringify(observable, undefined, 4), { encoding: 'utf8' })
-        } catch (e) {
-            onSaveError(e as Error)
+        } catch (error) {
+            if (!logger && !onSaveError) {
+                throw error
+            }
+            if (logger) {
+                logger.error('Unable to save persistant object', { error })
+            }
+            if (onSaveError) {
+                onSaveError(error as Error)
+            }
         }
     })
 

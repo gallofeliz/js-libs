@@ -4,7 +4,7 @@ clean:
 
 .PHONY: test
 test :
-	npx run-tests src/$(lib)
+	./run-tests src/$(lib)
 
 .PHONY: build
 build: clean test
