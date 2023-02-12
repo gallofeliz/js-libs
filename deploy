@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -e
+
+LIB="$1"
+
+test -n "$LIB"
+
+SRC=src/$LIB
+DEST=dist/$LIB
+
+prompt -p 'major/minor/patch' NPM_VERSION_ARG
+
+npm login
+trap "npm logout" EXIT
+
+cd $SRC
+
+npm version $NPM_VERSION_ARG
+
+VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
+
+cd -
+
+git add -p
+git commit $LIB/$VERSION
+git tag -a $LIB/$VERSION
+
+./build "$LIB"
+
+cd $DEST
+
+npm publish --access public
+
+#git push
