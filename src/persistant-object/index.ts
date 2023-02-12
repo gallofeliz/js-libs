@@ -2,11 +2,14 @@ import { Observable } from 'object-observer'
 import { readFile, writeFile, access, constants } from 'fs/promises'
 import { UniversalLogger } from '@gallofeliz/logger'
 
-export interface CreateFilePersistantObjectOpts {
+export type CreateFilePersistantObjectOpts = {
     filename: string
     onSaveError?: (error: Error) => void
     logger?: UniversalLogger
-}
+} & (
+    { onSaveError: (error: Error) => void }
+    | { logger: UniversalLogger }
+)
 
 export async function createFilePersistantObject<T>({filename, onSaveError, logger}: CreateFilePersistantObjectOpts): Promise<Partial<T>> {
     try {
@@ -29,9 +32,6 @@ export async function createFilePersistantObject<T>({filename, onSaveError, logg
         try {
             await writeFile(filename, JSON.stringify(observable, undefined, 4), { encoding: 'utf8' })
         } catch (error) {
-            if (!logger && !onSaveError) {
-                throw error
-            }
             if (logger) {
                 logger.error('Unable to save persistant object', { error })
             }
