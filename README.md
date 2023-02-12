@@ -2,11 +2,14 @@
 
 **warning** version < 1 <=> At any moment the contracts change
 
+- Deployed to https://www.npmjs.com/~gallofeliz
+- Available here with tags packageName/version
+
 ## Operations
 
-- ./run-tests xxx
-- ./build xxx
-- ./deploy xxx
+- ./run-tests packageName
+- ./build packageName
+- ./deploy packageName
 
 ## Guidelines
 
