@@ -9,7 +9,7 @@ test -n "$LIB"
 SRC=src/$LIB
 DEST=dist/$LIB
 
-prompt -p 'major/minor/patch' NPM_VERSION_ARG
+read -p 'major/minor/patch ? ' NPM_VERSION_ARG
 
 npm login
 trap "npm logout" EXIT
@@ -23,8 +23,8 @@ VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
 cd -
 
 git add -p
-git commit $LIB/$VERSION
-git tag -a $LIB/$VERSION
+git commit -m "$LIB/$VERSION"
+git tag -a "$LIB/$VERSION"
 
 ./build "$LIB"
 
