@@ -20,8 +20,3 @@ export function sizeToKiB(size: Size): number {
     const mapping = {'k': 1, 'm': 1024, 'g': 1048576}
     return parseInt(size.substring(0, size.length - 1), 10)  * mapping[size.substr(-1).toLowerCase() as 'k' | 'm' | 'g']
 }
-
-export class AbortError extends Error {
-    code = 'ABORT_ERR'
-    message = 'The operation was aborted'
-}

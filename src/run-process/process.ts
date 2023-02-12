@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
 import { Logger } from './logger'
 import { once, EventEmitter } from 'events'
-import { AbortError, Duration, durationToMilliSeconds } from './utils'
+import { Duration, durationToMilliSeconds } from './utils'
 const { nextTick, env: processEnv } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
@@ -25,6 +25,11 @@ export interface ProcessConfig {
     inputType?: 'raw' | 'json'
     retries?: number
     resultSchema?: Schema
+}
+
+export class AbortError extends Error {
+    code = 'ABORT_ERR'
+    message = 'The operation was aborted'
 }
 
 // I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them

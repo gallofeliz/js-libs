@@ -61,6 +61,8 @@
     "src/super-yaml",
     "src/logger",
     "src/config",
-    "src/persistant-object"
+    "src/persistant-object",
+    "src/run-process",
+    "src/validate"
   ]
 }

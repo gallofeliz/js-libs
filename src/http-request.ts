@@ -1,4 +1,4 @@
-import { Duration, durationToMilliSeconds, AbortError } from './utils'
+import { Duration, durationToMilliSeconds } from './utils'
 import { Logger } from './logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
@@ -29,6 +29,11 @@ export interface HttpRequestConfig {
       password: string
    },
    resultSchema?: Schema
+}
+
+export class AbortError extends Error {
+    code = 'ABORT_ERR'
+    message = 'The operation was aborted'
 }
 
 export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
