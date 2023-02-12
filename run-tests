@@ -19,7 +19,7 @@ DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
 # done
 
 # shift $((OPTIND -1))
-PATHH=${1:-'./'}
+PATHH=src/${1:-'./'}
 
 # if [ -z "$coverage" ]; then
 # 	coverage='100'

@@ -4,9 +4,9 @@
 
 ## Operations
 
-- `make test lib=xxx`
-- `make build lib=xxx`
-- `make deploy lib=xxx`
+- ./run-tests xxx
+- ./build xxx
+- ./deploy xxx
 
 ## Guidelines
 
