@@ -13,6 +13,9 @@ class Db {
     constructor(path: string) {
         this.path = path
     }
+    setPath(path: string) {
+        this.path = path
+    }
 }
 
 class UserService {
@@ -42,21 +45,26 @@ describe('Application', () => {
             runApp<Config>({
                 name: '@gallofeliz/Pikatchu',
                 config: {
-                    userProvidedConfigSchema: tsToJsSchema<UserConfig>() /* {
-                        type: 'object',
-                        properties: { dbPath: {type: 'string'} }
-                    } */
+                    watchChanges: true,
+                    userProvidedConfigSchema: tsToJsSchema<UserConfig>()
                 },
-                // api ?
                 services: {
                     userService({logger, db}): UserService {
                         return new UserService(logger, db)
                     },
-                    db({config}): Db {
-                        return new Db(config.dbPath)
+                    db({config, onConfigChange}): Db {
+                        const db = new Db(config.dbPath)
+
+                        onConfigChange(({config, patch}) => {
+                            if (patch.some(op => op.path === '/dbPath')) {
+                                db.setPath(config.dbPath)
+                            }
+                        })
+
+                        return db
                     }
                 },
-                async run({userService, logger}, abortSignal) {
+                async run({userService, logger, abortSignal, abortController}) {
                     userService.doAJob()
                     let st: NodeJS.Timeout
 
@@ -64,13 +72,12 @@ describe('Application', () => {
                         clearTimeout(st)
                         console.log('clean')
                         userService.clean()
+                        resolve(undefined)
                     })
 
                     await new Promise(resolve => st = setTimeout(resolve, 5000))
 
-                    console.log('Should never reach if aborted')
-                    userService.clean()
-                    resolve(undefined)
+                    abortController.abort()
                 }
             })
         })

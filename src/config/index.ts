@@ -3,11 +3,13 @@ import YAML from 'yaml'
 import { valuesIn, mapKeys, pickBy, each, set, cloneDeep } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve, dirname} from 'path'
-import {Logger} from '../logger'
+import {UniversalLogger} from '@gallofeliz/logger'
 import validate, {SchemaObject} from '@gallofeliz/validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
-import { watchFs } from '../fs-watcher'
+import { watchFs } from '@gallofeliz/fs-watcher'
 import { compare, Operation } from 'fast-json-patch'
+
+export type ChangePatchOperation = Operation
 
 /**
  * Refacto to do in this module
@@ -18,10 +20,10 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     envFilename?: string
     envPrefix?: string
     envDelimiter?: string
-    finalizer?: (userProvidedConfig: UserProvidedConfig, logger: Logger) => Config
-    logger: Logger
+    finalizer?: (userProvidedConfig: UserProvidedConfig, logger: UniversalLogger) => Config
+    logger: UniversalLogger
     watchChanges?: {
-        onChange: (patch: Operation[], config: Config, previousConfig: Config) => void
+        onChange: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
         abortSignal?: AbortSignal
         // onError
     }
@@ -67,7 +69,7 @@ function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: st
     })
 }
 
-export default function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Config {
+export function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Config {
     let userProvidedConfig: UserProvidedConfig = {} as UserProvidedConfig
     let filename = opts.defaultFilename
 
@@ -142,10 +144,10 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
                     return
                 }
 
-                const oldConfig = config
+                const previousConfig = config
                 config = newConfig
 
-                opts.watchChanges!.onChange(patch, config, oldConfig)
+                opts.watchChanges!.onChange({patch, config, previousConfig})
             }
         })
     }

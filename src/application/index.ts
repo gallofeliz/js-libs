@@ -1,12 +1,19 @@
-import loadConfig, { ConfigOpts } from '@gallofeliz/config'
+import { loadConfig, ConfigOpts, ChangePatchOperation } from '@gallofeliz/config'
 import { Logger, LoggerOpts } from '@gallofeliz/logger'
+import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
+
+export type onConfigChangeCallback<Config> = ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
 
 export type InjectedServices<Config> = {
     logger: Logger
     config: Config
     appName: string
     appVersion: string
+    container: Services<Config>
+    onConfigChange: (callback: onConfigChangeCallback<Config>) => void
+    abortController: AbortController
+    abortSignal: AbortSignal
 }
 
 export type Services<Config> = Record<keyof ServicesDefinition<Config>, any> & InjectedServices<Config>
@@ -17,12 +24,12 @@ export type ServicesDefinition<Config> = Record<Exclude<string, ReservedServices
 
 export type ServiceDefinition<T, Config> = (services: Services<Config>) => T
 
-export type RunHandler<Config> = (services: Services<Config>, abortSignal: AbortSignal) => void
+export type RunHandler<Config> = (services: Services<Config>) => void
 
 export interface AppDefinition<Config> {
     name?: string
     version?: string
-    config: (Omit<ConfigOpts<any, Config>, 'logger'> & { logger?: Logger }) | (() => Config)
+    config: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: Logger, watchChanges?: boolean }) | (() => Config)
     logger?: LoggerOpts | ((services: Partial<Services<Config>>) => Logger)
     services: ServicesDefinition<Config>
     run: RunHandler<Config>
@@ -32,10 +39,10 @@ export interface AppDefinition<Config> {
 //     return new Promise(resolve => signal.addEventListener('abort', resolve))
 // }
 
-function createDiContainer(builtinServices: InjectedServices<any>, servicesDefinition: ServicesDefinition<any>): Services<any> {
+function createDiContainer(builtinServices: Omit<InjectedServices<any>, 'container'>, servicesDefinition: ServicesDefinition<any>): Services<any> {
     const buildingSymbol = Symbol('building')
 
-    const myself = new Proxy({...builtinServices}, {
+    const myself: Services<any> = new Proxy({...builtinServices} as InjectedServices<any>, {
         get(services: Services<any>, serviceName: string) {
             if (!services[serviceName]) {
                 if (!servicesDefinition[serviceName]) {
@@ -51,7 +58,9 @@ function createDiContainer(builtinServices: InjectedServices<any>, servicesDefin
 
             return services[serviceName]
         }
-    })
+    }) as Services<any>
+
+    myself.container = myself
 
     return myself
 }
@@ -66,6 +75,7 @@ class App<Config> {
     protected logger: Logger
     protected services: Services<Config>
     protected runFn: RunHandler<Config>
+    protected abortController = new AbortController
 
     constructor(appDefinition: AppDefinition<Config>) {
         this.name = appDefinition.name || require('./package.json').name
@@ -104,14 +114,28 @@ class App<Config> {
             this.logger = (new Logger(appDefinition.logger)).child({ appRunUuid: uuid() })
             this.config = appDefinition.config instanceof Function
                 ? appDefinition.config()
-                : loadConfig<any, any>({...defaultConfigArgs, ...appDefinition.config, logger: this.logger})
+                : loadConfig<any, any>({
+                    ...defaultConfigArgs,
+                    ...appDefinition.config,
+                    logger: this.logger,
+                    watchChanges: appDefinition.config.watchChanges
+                        ? { abortSignal: this.abortController.signal, onChange(...args) {
+                            configChangeObservers.forEach(callback => callback(...args))
+                        }}
+                        : undefined
+                })
         }
+
+        const configChangeObservers: onConfigChangeCallback<any>[] = []
 
         this.services = createDiContainer({
             config: this.config,
             logger: this.logger,
             appName: this.name,
-            appVersion: this.version
+            appVersion: this.version,
+            onConfigChange(callback) { configChangeObservers.push(callback) },
+            abortController: this.abortController,
+            abortSignal: this.abortController.signal
         }, appDefinition.services)
 
         this.runFn = appDefinition.run
@@ -124,12 +148,13 @@ class App<Config> {
 
         this.alreadyRun = true
 
-        const abortController = new AbortController
-        abortSignal = this.linkSignalWithController(abortSignal, abortController)
+        if (abortSignal) {
+            abortSignal.addEventListener('abort', () => this.abortController.abort())
+        }
 
         const processSignalHandler = () => {
             ['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
-            abortController.abort()
+            this.abortController.abort()
         }
 
         ;['SIGTERM', 'SIGINT'].forEach(signal => process.on(signal, processSignalHandler))
@@ -137,14 +162,7 @@ class App<Config> {
         // Handle unhandled rejections ? process.prependListener
 
         this.logger.info('Running', { config: this.config, name: this.name, version: this.version })
-        this.runFn(this.services, abortSignal)
-    }
-
-    protected linkSignalWithController(abortSignal: AbortSignal | undefined, abortController: AbortController) {
-        if (abortSignal) {
-            abortSignal.addEventListener('abort', () => abortController.abort())
-        }
-        return abortController.signal
+        this.runFn(this.services)
     }
 }
 
