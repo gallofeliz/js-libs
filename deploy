@@ -9,10 +9,10 @@ test -n "$LIB"
 SRC=src/$LIB
 DEST=dist/$LIB
 
-read -p 'major/minor/patch ? ' NPM_VERSION_ARG
+./test "$LIB"
+./build "$LIB"
 
-npm login
-trap "npm logout ; rm -R dist" EXIT
+read -p 'major/minor/patch ? ' NPM_VERSION_ARG
 
 cd $SRC
 
@@ -29,6 +29,9 @@ git tag -a "$LIB/$VERSION"
 ./build "$LIB"
 
 cd $DEST
+
+npm login
+trap "npm logout" EXIT
 
 npm publish --access public
 

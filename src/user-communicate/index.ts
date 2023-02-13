@@ -1,7 +1,7 @@
 import runProcess, { ProcessConfig } from '@gallofeliz/run-process'
 import httpRequest, { HttpRequestConfig } from '@gallofeliz/http-request'
 import { UniversalLogger } from '@gallofeliz/logger'
-import { Schema } from '@gallofeliz/validate'
+import { SchemaObject } from '@gallofeliz/validate'
 
 /*
 	Hard to find a good name
@@ -27,7 +27,7 @@ export interface UserCommunicateConfig {
 	logger: UniversalLogger,
 	abortSignal?: AbortSignal
 	data?: any
-	resultSchema?: Schema
+	resultSchema?: SchemaObject
 }
 
 export default async function communicate<Result extends any>(config: UserCommunicateConfig): Promise<Result> {

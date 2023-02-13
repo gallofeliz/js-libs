@@ -6,7 +6,7 @@ const { nextTick, env: processEnv } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
 import { pick } from 'lodash'
-import validate, { Schema } from '@gallofeliz/validate'
+import validate, { SchemaObject } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 
 export interface ProcessConfig {
@@ -24,7 +24,7 @@ export interface ProcessConfig {
     inputData?: NodeJS.ReadableStream | Process<any> | any
     inputType?: 'raw' | 'json'
     retries?: number
-    resultSchema?: Schema
+    resultSchema?: SchemaObject
 }
 
 export class AbortError extends Error {

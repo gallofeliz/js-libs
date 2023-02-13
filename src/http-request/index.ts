@@ -3,7 +3,7 @@ import { UniversalLogger } from '@gallofeliz/logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
-import validate, { Schema } from '@gallofeliz/validate'
+import validate, { SchemaObject } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 import { pipeline } from 'stream/promises'
 
@@ -28,7 +28,7 @@ export interface HttpRequestConfig {
       username: string
       password: string
    },
-   resultSchema?: Schema
+   resultSchema?: SchemaObject
 }
 
 export class AbortError extends Error {

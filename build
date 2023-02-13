@@ -6,8 +6,6 @@ LIB="$1"
 
 test -n "$LIB"
 
-./run-tests "$LIB"
-
 SRC=src/$LIB
 DEST=dist/$LIB
 
