@@ -8,28 +8,28 @@ import { runApp } from '@gallofeliz/application'
 // ...
 
 runApp<Config>({
-	config: {
-		userProvidedConfigSchema: tsToJsSchema<UserConfig>()
-	},
-	services: {
-		userService({logger, db}): UserService {
-			return new UserService(logger, db)
-		},
-		db({config}): Db {
-			return new Db(config.dbPath)
-		}
-	},
-	async run({userService, logger}, abortSignal) {
-		userService.start(abortSignal)
+    config: {
+        userProvidedConfigSchema: tsToJsSchema<UserConfig>()
+    },
+    services: {
+        userService({logger, db}): UserService {
+            return new UserService(logger, db)
+        },
+        db({config}): Db {
+            return new Db(config.dbPath)
+        }
+    },
+    async run({userService, logger}, abortSignal) {
+        userService.start(abortSignal)
 
-		// or
+        // or
 
-		userService.start()
+        userService.start()
 
-		abortSignal.addEventListener('abort', () => userService.stop())
+        abortSignal.addEventListener('abort', () => userService.stop())
 
-		logger.info('Let\'s go !')
-	}
+        logger.info('Let\'s go !')
+    }
 })
 
 ```

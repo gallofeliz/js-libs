@@ -10,18 +10,18 @@ POC passed. Now to create a plugin (if possible without JSON.parse).
 
 Resolve typescript type to JSON Schema :
 ```typescript
-	import { tsToJsSchema } from './transformer-def';
-	import { Ext } from './types'
+    import { tsToJsSchema } from './transformer-def';
+    import { Ext } from './types'
 
-	interface MyObject {
-	  id: string;
-	  name: string;
-	  age: number;
-	}
-	const schema = tsToJsSchema<MyObject>();
-	const schema2 = tsToJsSchema<Ext>();
+    interface MyObject {
+      id: string;
+      name: string;
+      age: number;
+    }
+    const schema = tsToJsSchema<MyObject>();
+    const schema2 = tsToJsSchema<Ext>();
 
-	console.log(schema, schema2);
+    console.log(schema, schema2);
 ```
 
 Will be resolved during typescript compilation to :
@@ -41,12 +41,12 @@ Then, we can have :
     type LightStatus = 'on' | 'off'
 
     const myApiRoute = {
-    	method: 'POST',
-    	uri: '/light/status',
-    	inputBodySchema: tsToJsSchema<LightStatus>(),
-    	handle<LightStatus, void>(req, res): void {
-    		light.turn(req.body) // req.body is either on or off
-    	}
+        method: 'POST',
+        uri: '/light/status',
+        inputBodySchema: tsToJsSchema<LightStatus>(),
+        handle<LightStatus, void>(req, res): void {
+            light.turn(req.body) // req.body is either on or off
+        }
     }
 ```
 
