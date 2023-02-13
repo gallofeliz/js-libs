@@ -1,6 +1,11 @@
 # Application
 
-Application runner
+Application runner:
+
+- Easy Dependencies injection
+- Kill signal catched and converted to abortSignal
+- Structured
+- Built-in config and logger
 
 ```typescript
 import { runApp } from '@gallofeliz/application'
@@ -33,8 +38,3 @@ runApp<Config>({
 })
 
 ```
-
-- Easy Dependencies injection
-- Kill signal catched and converted to abortSignal
-- Structured
-- Built-in config and logger

@@ -145,7 +145,8 @@ export class Logger extends EventEmitter implements UniversalLogger {
             level: this.level,
             metadata: {...this.metadata, ...(metadata || {})},
             transports: this.transports,
-            logUnhandled: false
+            logUnhandled: false,
+            logWarnings: false
         })
     }
     public async log(level: LogLevel, message: string, metadata?: Object) {

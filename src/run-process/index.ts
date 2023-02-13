@@ -13,7 +13,6 @@ export interface ProcessConfig {
     logger: UniversalLogger
     command: string | string[]
     shell?: string | string[]
-    abortSignal?: AbortSignal
     outputStream?: NodeJS.WritableStream | Process<any>
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     outputTransformation?: string
@@ -28,24 +27,20 @@ export interface ProcessConfig {
 }
 
 export class AbortError extends Error {
+    name = 'AbortError'
     code = 'ABORT_ERR'
     message = 'The operation was aborted'
 }
 
-// I don't love this polymorphic return and this last arg (I should prefer two methods) but I don't know how to name them
-function runProcess<Result extends any>(config: ProcessConfig, asPromise: true): Promise<Result>
-function runProcess<Result extends any>(config: ProcessConfig, asPromise?: false): Process<Result>
-function runProcess<Result extends any>(config: ProcessConfig, asPromise: boolean = false): Process<Result> | Promise<Result> {
-    const proc = new Process(config)
+export async function runProcess<Result extends any>({abortSignal, ...config}: ProcessConfig & { abortSignal?: AbortSignal }): Promise<Result> {
+    const process = createProcess<Result>(config)
 
-    if (!asPromise) {
-        return proc
-    }
-
-    return once(proc, 'finish').then(args => args[0])
+    return await process.run(abortSignal)
 }
 
-export default runProcess
+export function createProcess<Result extends any>(config: ProcessConfig): Process<Result> {
+    return new Process(config)
+}
 
 /**
  * Needs remove events listeners for GC ?
@@ -100,23 +95,24 @@ export class Process<Result extends any> extends EventEmitter {
         if (config.retries) {
             this.logger.notice('retries configuration not handled yet')
         }
-
-        nextTick(() => this.run())
     }
 
     protected shareAbortSignal(process2: Process<any>) {
-        if (!process2.config.abortSignal) {
-            process2.config.abortSignal = this.config.abortSignal
-        }
-        if (!this.config.abortSignal) {
-            this.config.abortSignal = process2.config.abortSignal
-        }
+        // if (!process2.config.abortSignal) {
+        //     process2.config.abortSignal = this.config.abortSignal
+        // }
+        // if (!this.config.abortSignal) {
+        //     this.config.abortSignal = process2.config.abortSignal
+        // }
     }
 
-    protected async run() {
-        if (this.config.abortSignal?.aborted) {
-            this.emit('error', new AbortError)
-            return
+    public async run(abortSignal?: AbortSignal): Promise<Result> {
+        if (this.process) {
+            throw new Error('Already running or run')
+        }
+
+        if (abortSignal?.aborted) {
+            throw new AbortError
         }
 
         let spawnCmd: string
@@ -152,7 +148,7 @@ export class Process<Result extends any> extends EventEmitter {
                 killSignal: this.config.killSignal || 'SIGINT',
                 env,
                 ...this.config.cwd && { cwd: this.config.cwd },
-                signal: this.config.abortSignal,
+                signal: abortSignal,
                 timeout: this.config.timeout ? durationToMilliSeconds(this.config.timeout) : undefined
             }
         )
@@ -183,8 +179,7 @@ export class Process<Result extends any> extends EventEmitter {
             if (this.config.outputStream instanceof Process) {
                 if (this.config.outputStream.process) {
                     if (!this.config.outputStream.process.stdin!.writable) {
-                        this.emit('error', Error('Unable to redirecting outputStream to other process'))
-                        return
+                        throw new Error('Unable to redirecting outputStream to other process')
                     }
                     this.logger.info('Redirecting outputStream to other process')
                     process.stdout.pipe(this.config.outputStream.process.stdin!)
@@ -218,17 +213,21 @@ export class Process<Result extends any> extends EventEmitter {
             const [exitCode]: [number] = await once(process, 'exit') as [number]
             this.logger.info('exitCode ' + exitCode)
             if (exitCode > 0) {
-                throw new Error('Process error : ' + stderr)
-            }
-            if (this.processPipeError) {
-                throw new Error('ProcessPipeError : ' + this.processPipeError.message)
+                throw new Error('Process error : ' + stderr.trim())
             }
         } catch (e) {
-            return this.emit('error', e)
+            if ((e as any).code === 'ABORT_ERR') {
+                this.logger.info('Abort requested, awaiting process ends')
+                await once(process, 'exit')
+            }
+            throw e
+        }
+        if (this.processPipeError) {
+            throw new Error('ProcessPipeError : ' + this.processPipeError.message)
         }
 
         if (this.config.outputStream) {
-            return this.emit('finish')
+            return undefined as Result
         }
 
         const output = this.getOutputData(stdout)
@@ -236,10 +235,9 @@ export class Process<Result extends any> extends EventEmitter {
             ? await jsonata(this.config.outputTransformation).evaluate(output)
             : output
 
-        return this.emit('finish', this.config.resultSchema
+        return this.config.resultSchema
             ? validate<Result>(result, {schema: this.config.resultSchema})
             : result as Result
-        )
     }
 
     protected getOutputData(output: string) {
