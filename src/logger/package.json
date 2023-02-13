@@ -1,6 +1,6 @@
 {
   "name": "@gallofeliz/logger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -8,6 +8,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@gallofeliz/obfuscator": "^0.1.0",
     "lodash": "^4.17.21",
     "safe-stable-stringify": "^2.4.2",
     "traverse": "^0.6.7"

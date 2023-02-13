@@ -17,8 +17,6 @@ export default function validate<Data extends any>(data:Data, config: ValidateCo
     })
     const wrapData = {data: clone(data)} // Don't modify caller data !
 
-
-
     const wrapSchema = {
         type: 'object',
         properties: {
