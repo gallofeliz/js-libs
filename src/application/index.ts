@@ -60,6 +60,7 @@ class App<Config> {
 	//protected status: 'READY' | 'RUNNING' = 'READY'
 	protected alreadyRun: boolean = false
 	protected name: string
+	protected shortName: string
 	protected version: string
 	protected config: Config
 	protected logger: Logger
@@ -69,11 +70,12 @@ class App<Config> {
 	constructor(appDefinition: AppDefinition<Config>) {
 		this.name = appDefinition.name || require('./package.json').name
 		this.version = appDefinition.version  || require('./package.json').version
+		this.shortName = this.name.split('/').reverse()[0]
 
 		const defaultConfigArgs: Partial<ConfigOpts<any, any>> = {
-			defaultFilename: '/etc/' + this.name + '/config.yaml',
-			envFilename: this.name + '_CONFIG_PATH',
-			envPrefix: this.name.split('/').reverse()[0]
+			defaultFilename: '/etc/' + this.shortName + '/config.yaml',
+			envFilename: this.shortName + '_CONFIG_PATH',
+			envPrefix: this.shortName
 		}
 
 		if (appDefinition.logger instanceof Function) {
