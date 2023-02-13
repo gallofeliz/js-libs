@@ -76,6 +76,10 @@ export interface UniversalLogger {
     log(level: LogLevel, message: string, metadata?: Object): Promise<void>
 }
 
+export function createLogger(loggerOpts: LoggerOpts = {}) {
+    return new Logger(loggerOpts)
+}
+
 export class Logger extends EventEmitter implements UniversalLogger {
     protected metadata: Object
     protected level: LogLevel

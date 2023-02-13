@@ -1,7 +1,7 @@
-import runProcess, { ProcessConfig } from './process'
-import httpRequest, { HttpRequestConfig } from './http-request'
-import { Logger } from './logger'
-import { Schema } from './validate'
+import runProcess, { ProcessConfig } from '@gallofeliz/run-process'
+import httpRequest, { HttpRequestConfig } from '@gallofeliz/http-request'
+import { UniversalLogger } from '@gallofeliz/logger'
+import { Schema } from '@gallofeliz/validate'
 
 /*
 	Hard to find a good name
@@ -24,7 +24,7 @@ export type UserConfig = HttpUserConfig | CommandUserConfig
 
 export interface UserCommunicateConfig {
 	userConfig: UserConfig
-	logger: Logger,
+	logger: UniversalLogger,
 	abortSignal?: AbortSignal
 	data?: any
 	resultSchema?: Schema

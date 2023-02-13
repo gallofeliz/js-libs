@@ -1,8 +1,8 @@
 import { EventEmitter, once } from 'events'
 import { v4 as uuid } from 'uuid'
-import { Logger } from './logger'
+import { UniversalLogger, Logger } from '@gallofeliz/logger'
 import _ from 'lodash'
-import { Duration, durationToMilliSeconds } from './utils'
+import { Duration, durationToMilliSeconds } from '@gallofeliz/human-units-converter'
 import { Query } from 'mingo'
 import Datastore from '@seald-io/nedb'
 import { promisify } from 'util'
@@ -34,7 +34,7 @@ export interface JobOpts<Identity> {
     duplicable?: boolean
 }
 
-type JobFn = (args: {logger: Logger, abortSignal: AbortSignal, job: Job}) => Promise<any>
+type JobFn = (args: {logger: UniversalLogger, abortSignal: AbortSignal, job: Job}) => Promise<any>
 
 export class Job<Identity = any, Result = any> extends EventEmitter {
     protected id: Identity
@@ -304,7 +304,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             throw new Error('Already started')
         }
 
-        const runningLoggerListener = (log: object) => {
+        const runningUniversalLoggerListener = (log: object) => {
             // WARNING IN CASE OF VERBOSE
             const runLog = _.omit(log, ['job'])
             this.runLogs.push(runLog)
@@ -315,7 +315,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             }
         }
 
-        this.logger.on('log', runningLoggerListener)
+        this.logger.on('log', runningUniversalLoggerListener)
 
         this.state = 'running'
         this.startedAt = new Date
@@ -381,7 +381,7 @@ export class Job<Identity = any, Result = any> extends EventEmitter {
             this.emit('done', result)
         }
 
-        this.logger.off('log', runningLoggerListener)
+        this.logger.off('log', runningUniversalLoggerListener)
         this.emit('ended')
     }
 
@@ -574,14 +574,14 @@ export class JobsRunner<RunnedJob extends Job> {
     protected queue: RunnedJob[] = []
     protected running: RunnedJob[] = []
     protected started = false
-    protected logger: Logger
+    protected logger: UniversalLogger
     protected concurrency: number
     protected allocatedTimeReached: RunnedJob[] = []
     protected handleAllocatedTimesReaches: boolean
 
     public constructor(
         {logger, concurrency = 1, handleAllocatedTimesReaches}:
-        {logger: Logger, concurrency?: number, handleAllocatedTimesReaches?: boolean }
+        {logger: UniversalLogger, concurrency?: number, handleAllocatedTimesReaches?: boolean }
     ) {
         this.logger = logger
         this.concurrency = concurrency

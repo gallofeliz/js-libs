@@ -12,7 +12,7 @@ DEST=dist/$LIB
 read -p 'major/minor/patch ? ' NPM_VERSION_ARG
 
 npm login
-trap "npm logout" EXIT
+trap "npm logout ; rm -R dist" EXIT
 
 cd $SRC
 

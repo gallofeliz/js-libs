@@ -1,4 +1,4 @@
-import { Job } from './jobs'
+import { Job } from '.'
 import { Request, Response } from 'express'
 
 export function realtimeLogs({job, req, res, fromBeginning = true}: {job: Job<any, any>, req: Request, res: Response, fromBeginning?: boolean}) {

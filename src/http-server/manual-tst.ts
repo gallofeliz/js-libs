@@ -1,9 +1,9 @@
-import createLogger from '../logger'
-import HttpServer, { HttpServerRequest, HttpServerResponse } from '../http-server'
-import httpRequest from '../http-request'
-import runProcess from '../process'
+import {createLogger} from '@gallofeliz/logger'
+import HttpServer, { HttpServerRequest, HttpServerResponse } from '.'
+import httpRequest from '@gallofeliz/http-request'
+import runProcess from '@gallofeliz/run-process'
 
-const logger = createLogger('info')
+const logger = createLogger()
 
 const server = new HttpServer({
     port: 8080,

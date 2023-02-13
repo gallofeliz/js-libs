@@ -1,16 +1,16 @@
 import { ChildProcess, spawn } from 'child_process'
-import { Logger } from './logger'
+import { UniversalLogger } from '@gallofeliz/logger'
 import { once, EventEmitter } from 'events'
-import { Duration, durationToMilliSeconds } from './utils'
+import { Duration, durationToMilliSeconds } from '@gallofeliz/human-units-converter'
 const { nextTick, env: processEnv } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
 import { pick } from 'lodash'
-import validate, { Schema } from './validate'
+import validate, { Schema } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 
 export interface ProcessConfig {
-    logger: Logger
+    logger: UniversalLogger
     command: string | string[]
     shell?: string | string[]
     abortSignal?: AbortSignal
@@ -52,7 +52,7 @@ export default runProcess
  */
 export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
-    protected logger: Logger
+    protected logger: UniversalLogger
     protected process?: ChildProcess
     protected processPipeError?: Error
 
