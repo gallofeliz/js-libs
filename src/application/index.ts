@@ -67,7 +67,7 @@ class App<Config> {
 	protected runFn: RunHandler<Config>
 
 	constructor(appDefinition: AppDefinition<Config>) {
-		this.name = appDefinition.name || require('./package.json').name
+		this.name = appDefinition.name || require('./package.json').name.split('/').reverse()[0]
 		this.version = appDefinition.version  || require('./package.json').version
 
 		const defaultConfigArgs: Partial<ConfigOpts<any, any>> = {

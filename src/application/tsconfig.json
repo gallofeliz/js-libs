@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
     "compilerOptions": {
     "plugins": [
-      { "transform": "@gallofeliz/typescript-transform-to-json-schema/transformer.ts" }
+      { "transform": "@gallofeliz/typescript-transform-to-json-schema/transformer.js" }
     ]
   }
 }

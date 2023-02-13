@@ -36,9 +36,10 @@ class UserService {
 describe('Application', () => {
 	// @ts-ignore
 	it('test', () => {
-		process.env.dbPath = '/usr/local/db/file.db'
+		process.env.pikatchu_dbPath = '/usr/local/db/file.db'
 
 		runApp<Config>({
+			name: 'Pikatchu',
 			config: {
 				userProvidedConfigSchema: tsToJsSchema<UserConfig>() /* {
 					type: 'object',

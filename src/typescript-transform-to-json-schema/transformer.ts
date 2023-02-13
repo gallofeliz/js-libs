@@ -21,11 +21,17 @@ export default function(program: ts.Program, pluginOptions: {}) {
 
                         const type = node.typeArguments![0].getText()
 
-                        const strSchema = JSON.stringify(JSON.parse(
+                        const schema = JSON.parse(
                             execSync(
                                 'npx ts-json-schema-generator --id '+type+' --expose all --path '+sourceFile.fileName+' --type '+type+' --no-top-ref -f tsconfig.json'
                                 , {encoding: 'utf8'})
-                        ))
+                        )
+
+                        // if (schema.$ref) {
+                        //     const key = schema.$ref.replace('')
+                        // }
+
+                        const strSchema = JSON.stringify(schema)
 
                         return ts.factory.createCallExpression(
                             ts.factory.createRegularExpressionLiteral('JSON.parse'),

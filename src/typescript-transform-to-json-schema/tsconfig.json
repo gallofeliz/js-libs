@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "plugins": [
-      { "transform": "./transformer.ts" }
+      { "transform": "./transformer.js" }
     ],
     /* Visit https://aka.ms/tsconfig to read more about this file */
 

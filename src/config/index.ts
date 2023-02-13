@@ -28,8 +28,14 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
 }
 
 function findGoodPath(userPath: string, schema: SchemaObject) {
+  if (schema.$ref) {
+    const ref = schema.$ref.replace('#/definitions/', '')
+    schema = schema.definitions[ref]
+  }
+
   const correctPath = []
   let cursor = schema
+
 
   for (const pathNode of userPath.split('.')) {
 
@@ -60,8 +66,7 @@ function findGoodPath(userPath: string, schema: SchemaObject) {
 function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: string, prefix?: string, schema: SchemaObject}): Record<string, string> {
     const fullPrefix = prefix ? prefix.toLowerCase() + (prefix.endsWith(delimiter) ? '' : delimiter) : null
 
-    const envs = (!fullPrefix ? process.env : pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix))) as Record<string, string>
-
+    const envs = (!fullPrefix ? process.env : mapKeys(pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix)), (v, k) => k?.substring(fullPrefix.length))) as Record<string, string>
     // If prefix add warn if not found good path ?
     return mapKeys(envs, (value, key) => {
         return findGoodPath(key, schema)
