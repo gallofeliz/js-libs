@@ -9,7 +9,7 @@ import {
 } from 'body-parser'
 import { basename } from 'path'
 import { Socket } from 'net'
-import HtpasswdValidator from '@gallofeliz/htpasswd-verify'
+import { HtpasswdValidator } from '@gallofeliz/htpasswd-verify'
 import { once } from 'events'
 import morgan from 'morgan'
 import validate, { Schema, SchemaObject } from '../validate'

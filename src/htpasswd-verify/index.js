@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const md5 = require("apache-md5");
 const crypt = require("apache-crypt");
 
-module.exports = class HtpasswdValidator {
+module.exports.HtpasswdValidator = class HtpasswdValidator {
     constructor(listOrDict) {
         if (Array.isArray(listOrDict)) {
             listOrDict = listOrDict.reduce((dict, userpassHash) => {

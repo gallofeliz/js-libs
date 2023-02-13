@@ -2,7 +2,6 @@
   "name": "@gallofeliz/jobs",
   "version": "0.1.0",
   "description": "",
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,5 +14,9 @@
   "bugs": {
     "url": "https://github.com/gallofeliz/js-libs/issues"
   },
-  "homepage": "https://github.com/gallofeliz/js-libs#readme"
+  "homepage": "https://github.com/gallofeliz/js-libs#readme",
+  "dependencies": {
+    "@seald-io/nedb": "^4.0.1",
+    "mingo": "^6.2.7"
+  }
 }

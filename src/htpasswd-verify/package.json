@@ -1,8 +1,7 @@
 {
-  "name": "htpasswd-verify",
+  "name": "@gallofeliz/htpasswd-verify",
   "version": "1.0.0",
   "description": "Verify htpasswd passwords",
-  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
