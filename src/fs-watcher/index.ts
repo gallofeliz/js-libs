@@ -1,13 +1,13 @@
-import { durationToMilliSeconds, Duration } from './utils'
+import { durationToMilliSeconds, Duration } from '@gallofeliz/human-units-converter'
 import chokidar from 'chokidar'
-import { Logger } from './logger'
+import { UniversalLogger } from '@gallofeliz/logger'
 
 export interface WaitPending {
     start: number
     timeout: NodeJS.Timeout
 }
 
-export interface FsWatcherOpts { id?: any, fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration}
+export interface FsWatcherOpts { id?: any, fn: Function, logger: UniversalLogger, paths: string[], ignore?: string[], waitMin?: Duration, waitMax?: Duration}
 
 export function watchFs({abortSignal, ...opts}: FsWatcherOpts & { abortSignal?: AbortSignal }) {
     const fsWatcher = new FsWatcher(opts)
@@ -26,7 +26,7 @@ export class FsWatcher<Identity = any> {
     protected waitMaxMs: number | null
     protected watcher: chokidar.FSWatcher | null = null
     protected waitPending: WaitPending | null = null
-    protected logger: Logger
+    protected logger: UniversalLogger
 
     constructor(
         { id, fn, logger, paths, ignore, waitMin, waitMax }:FsWatcherOpts

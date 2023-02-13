@@ -1,6 +1,6 @@
-import { durationToMilliSeconds, Duration } from './utils'
+import { durationToMilliSeconds, Duration } from '@gallofeliz/human-units-converter'
 import cron from 'cron-parser'
-import { Logger } from './logger'
+import { UniversalLogger } from '@gallofeliz/logger'
 
 /** @pattern ^[0-9* \-,/]{9,}$ */
 export type Cron = string
@@ -14,11 +14,11 @@ export default class FnScheduler<Identity = any> {
     protected runOnStart: boolean
     protected timeoutId: NodeJS.Timeout | null = null
     protected timeoutNextDate: Date | null = null
-    protected logger: Logger
+    protected logger: UniversalLogger
 
     constructor(
         {id, fn, logger, schedules, runOnStart}:
-        {id?: any, fn: Function, logger: Logger, schedules: Schedule[], runOnStart: boolean}
+        {id?: any, fn: Function, logger: UniversalLogger, schedules: Schedule[], runOnStart: boolean}
     ) {
         this.id = id
         this.fn = fn

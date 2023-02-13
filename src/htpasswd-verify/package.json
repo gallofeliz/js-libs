@@ -1,0 +1,26 @@
+{
+  "name": "htpasswd-verify",
+  "version": "1.0.0",
+  "description": "Verify htpasswd passwords",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gallofeliz/js-libs.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gallofeliz/js-libs/issues"
+  },
+  "homepage": "https://github.com/gallofeliz/js-libs#readme",
+  "dependencies": {
+    "apache-crypt": "^1.2.5",
+    "apache-md5": "^1.1.7",
+    "bcryptjs": "^2.4.3",
+    "safe-compare": "^1.1.4"
+  },
+  "types": "./index.d.ts"
+}

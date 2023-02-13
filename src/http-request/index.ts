@@ -1,9 +1,9 @@
-import { Duration, durationToMilliSeconds } from './utils'
-import { Logger } from './logger'
+import { Duration, durationToMilliSeconds } from '@gallofeliz/human-units-converter'
+import { UniversalLogger } from '@gallofeliz/logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
-import validate, { Schema } from './validate'
+import validate, { Schema } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 import { pipeline } from 'stream/promises'
 
@@ -11,7 +11,7 @@ import { pipeline } from 'stream/promises'
 type integer = number
 
 export interface HttpRequestConfig {
-   logger: Logger
+   logger: UniversalLogger
    abortSignal?: AbortSignal
    url: string
    method?: Method
