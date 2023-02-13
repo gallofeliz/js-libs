@@ -1,5 +1,5 @@
 {
-  "name": "test",
+  "name": "@gallofeliz/typescript-transform-to-json-schema",
   "version": "1.0.0",
   "description": "",
   "main": "test.js",

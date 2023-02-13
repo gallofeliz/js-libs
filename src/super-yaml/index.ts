@@ -8,7 +8,7 @@ export function parseContent<T>(content: string, ymlCwd: string): T {
         if (type === 'auto') {
             if (filename && filename.match(/\.ya?ml$/)) {
                 type = 'yaml'
-            } else if (filename && filename.match(/\.json/$)) {
+            } else if (filename && filename.match(/\.json$/)) {
                 type = 'json'
             } else if (!isNaN(rawValue)) {
                 type = 'number'

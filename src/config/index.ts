@@ -4,7 +4,7 @@ import { valuesIn, mapKeys, pickBy, each, set, cloneDeep } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve, dirname} from 'path'
 import {Logger} from '../logger'
-import validate, {SchemaObject} from '../validate'
+import validate, {SchemaObject} from '@gallofeliz/validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import { watchFs } from '../fs-watcher'
 import { compare, Operation } from 'fast-json-patch'
@@ -63,7 +63,6 @@ function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: st
     const envs = (!fullPrefix ? process.env : pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix))) as Record<string, string>
 
     // If prefix add warn if not found good path ?
-
     return mapKeys(envs, (value, key) => {
         return findGoodPath(key, schema)
     })

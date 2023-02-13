@@ -78,23 +78,25 @@ class App<Config> {
 
 		if (appDefinition.logger instanceof Function) {
 
-			const tmpLogger: Logger = null as any as Logger
+			throw new Error('Unhandled for the moment')
 
-			try {
-				this.config = appDefinition.config instanceof Function
-					? appDefinition.config()
-					: loadConfig<any, any>({...defaultConfigArgs, ...appDefinition.config, logger: tmpLogger})
+			// const tmpLogger: Logger = null as any as Logger
 
-				this.logger = appDefinition.logger({config: this.config}).child({
-					appRunUuid: uuid()
-				})
-			} catch (e) {
-				e.logs = e
-				throw e
-			}
-			tmpLogger.transport.messages.forEach(msg => {
-				this.logger.info(msg)
-			})
+			// try {
+			// 	this.config = appDefinition.config instanceof Function
+			// 		? appDefinition.config()
+			// 		: loadConfig<any, any>({...defaultConfigArgs, ...appDefinition.config, logger: tmpLogger})
+
+			// 	this.logger = appDefinition.logger({config: this.config}).child({
+			// 		appRunUuid: uuid()
+			// 	})
+			// } catch (e) {
+			// 	e.logs = e
+			// 	throw e
+			// }
+			// tmpLogger.transport.messages.forEach(msg => {
+			// 	this.logger.info(msg)
+			// })
 
 		} else {
 			this.logger = (new Logger(appDefinition.logger)).child({ appRunUuid: uuid() })

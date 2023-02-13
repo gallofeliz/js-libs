@@ -23,7 +23,7 @@ export default function(program: ts.Program, pluginOptions: {}) {
 
                         const strSchema = JSON.stringify(JSON.parse(
                             execSync(
-                                'ts-json-schema-generator --id '+type+' --expose all --path '+sourceFile.fileName+' --type '+type+' --no-top-ref -f tsconfig.json'
+                                'npx ts-json-schema-generator --id '+type+' --expose all --path '+sourceFile.fileName+' --type '+type+' --no-top-ref -f tsconfig.json'
                                 , {encoding: 'utf8'})
                         ))
 
