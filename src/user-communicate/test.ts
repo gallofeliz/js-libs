@@ -1,5 +1,5 @@
-import communicate from "../src/user-communicate"
-import createLogger from '../src/logger'
+import communicate from "."
+import {createLogger} from '@gallofeliz/logger'
 
 (async () => {
 

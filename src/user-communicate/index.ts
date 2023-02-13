@@ -1,4 +1,4 @@
-import runProcess, { ProcessConfig } from '@gallofeliz/run-process'
+import {runProcess, ProcessConfig} from '@gallofeliz/run-process'
 import httpRequest, { HttpRequestConfig } from '@gallofeliz/http-request'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { SchemaObject } from '@gallofeliz/validate'
@@ -66,7 +66,7 @@ export default async function communicate<Result extends any>(config: UserCommun
                 ...config.userConfig,
                 ...config,
                 ...cmdDataMapping
-            }, true)
+            })
         default:
             throw new Error('Unexpected you here')
     }

@@ -1,7 +1,7 @@
 import {createLogger} from '@gallofeliz/logger'
 import HttpServer, { HttpServerRequest, HttpServerResponse } from '.'
 import httpRequest from '@gallofeliz/http-request'
-import runProcess from '@gallofeliz/run-process'
+import { runProcess } from '@gallofeliz/run-process'
 
 const logger = createLogger()
 
@@ -61,7 +61,7 @@ const server = new HttpServer({
                     await runProcess({
                         command: 'badboom',
                         logger
-                    }, true)
+                    })
                 }
             },
             {
@@ -118,7 +118,7 @@ const server = new HttpServer({
                         logger,
                         outputStream: res,
                         abortSignal
-                    }, true)
+                    })
                 }
             },
             {
@@ -132,7 +132,7 @@ const server = new HttpServer({
                         command: ['ls', '-la'],
                         logger,
                         outputStream: res
-                    }, true)
+                    })
                 }
             },
             {
