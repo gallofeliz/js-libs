@@ -67,13 +67,13 @@ class App<Config> {
 	protected runFn: RunHandler<Config>
 
 	constructor(appDefinition: AppDefinition<Config>) {
-		this.name = appDefinition.name || require('./package.json').name.split('/').reverse()[0]
+		this.name = appDefinition.name || require('./package.json').name
 		this.version = appDefinition.version  || require('./package.json').version
 
 		const defaultConfigArgs: Partial<ConfigOpts<any, any>> = {
 			defaultFilename: '/etc/' + this.name + '/config.yaml',
 			envFilename: this.name + '_CONFIG_PATH',
-			envPrefix: this.name
+			envPrefix: this.name.split('/').reverse()[0]
 		}
 
 		if (appDefinition.logger instanceof Function) {

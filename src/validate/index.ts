@@ -1,9 +1,9 @@
 import {SchemaObject, default as Ajv, Schema} from 'ajv'
 import {clone} from 'lodash'
-export {SchemaObject, Schema}
+export {SchemaObject}
 
 export interface ValidateConfig {
-    schema: Schema
+    schema: SchemaObject
     removeAdditional?: boolean
     contextErrorMsg?: string
 }
@@ -12,13 +12,24 @@ export default function validate<Data extends any>(data:Data, config: ValidateCo
     const ajv = new Ajv({
         coerceTypes: true,
         removeAdditional: !!config.removeAdditional,
-        useDefaults: true
+        useDefaults: true,
+        strict: true
     })
     const wrapData = {data: clone(data)} // Don't modify caller data !
+
+
+
     const wrapSchema = {
         type: 'object',
         properties: {
-            data: config.schema
+            data: ((schema: SchemaObject) => {
+                if (schema.$ref) {
+                    const ref = schema.$ref.replace('#/definitions/', '')
+                    return schema.definitions[ref]
+                }
+
+                return schema
+            })(config.schema)
         }
     }
 

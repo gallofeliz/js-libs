@@ -28,14 +28,8 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
 }
 
 function findGoodPath(userPath: string, schema: SchemaObject) {
-  if (schema.$ref) {
-    const ref = schema.$ref.replace('#/definitions/', '')
-    schema = schema.definitions[ref]
-  }
-
   const correctPath = []
   let cursor = schema
-
 
   for (const pathNode of userPath.split('.')) {
 
@@ -108,10 +102,17 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
         }
     }
 
+    let userProvidedConfigSchema = opts.userProvidedConfigSchema
+
+    if (userProvidedConfigSchema.$ref) {
+        const ref = userProvidedConfigSchema.$ref.replace('#/definitions/', '')
+        userProvidedConfigSchema = userProvidedConfigSchema.definitions[ref]
+    }
+
     const userEnvProvidedConfig = extractEnvConfigPathsValues({
         delimiter: opts.envDelimiter || '_',
         prefix: opts.envPrefix,
-        schema: opts.userProvidedConfigSchema
+        schema: userProvidedConfigSchema
     })
 
     each(userEnvProvidedConfig, (value, key) => {
@@ -119,16 +120,12 @@ export default function loadConfig<UserProvidedConfig extends object, Config ext
     })
 
     userProvidedConfig = validate(userProvidedConfig, {
-        schema: {...opts.userProvidedConfigSchema, additionalProperties: false},
+        schema: {...userProvidedConfigSchema, additionalProperties: false},
         removeAdditional: true,
         contextErrorMsg: 'Configuration'
     })
 
-    if (!opts.finalizer) {
-        return userProvidedConfig as any as Config
-    }
-
-    let config = opts.finalizer(userProvidedConfig, opts.logger)
+    let config = opts.finalizer ? opts.finalizer(userProvidedConfig, opts.logger) : userProvidedConfig as any as Config
 
     if (opts.watchChanges && filename) {
         // Here the problem is that included filename are not watched

@@ -36,48 +36,43 @@ class UserService {
 describe('Application', () => {
 	// @ts-ignore
 	it('test', () => {
-		process.env.pikatchu_dbPath = '/usr/local/db/file.db'
+		return new Promise(resolve => {
+			process.env.pikatchu_dbPath = '/usr/local/db/file.db'
 
-		runApp<Config>({
-			name: 'Pikatchu',
-			config: {
-				userProvidedConfigSchema: tsToJsSchema<UserConfig>() /* {
-					type: 'object',
-					properties: { dbPath: {type: 'string'} }
-				} */
-			},
-			// api ?
-			services: {
-				userService({logger, db}): UserService {
-					return new UserService(logger, db)
+			runApp<Config>({
+				name: '@gallofeliz/Pikatchu',
+				config: {
+					userProvidedConfigSchema: tsToJsSchema<UserConfig>() /* {
+						type: 'object',
+						properties: { dbPath: {type: 'string'} }
+					} */
 				},
-				db({config}): Db {
-					return new Db(config.dbPath)
-				}
-			},
-			async run({userService, logger}, abortSignal) {
-				userService.doAJob()
-				let st: NodeJS.Timeout
+				// api ?
+				services: {
+					userService({logger, db}): UserService {
+						return new UserService(logger, db)
+					},
+					db({config}): Db {
+						return new Db(config.dbPath)
+					}
+				},
+				async run({userService, logger}, abortSignal) {
+					userService.doAJob()
+					let st: NodeJS.Timeout
 
-				abortSignal.addEventListener('abort', () => {
-					clearTimeout(st)
-					console.log('clean')
+					abortSignal.addEventListener('abort', () => {
+						clearTimeout(st)
+						console.log('clean')
+						userService.clean()
+					})
+
+					await new Promise(resolve => st = setTimeout(resolve, 5000))
+
+					console.log('Should never reach if aborted')
 					userService.clean()
-				})
-
-				// setTimeout(() => {
-				// 	throw new Error('fyc')
-
-				// }, 500)
-
-				await new Promise(resolve => st = setTimeout(resolve, 10000))
-
-				console.log('Should never reach if aborted')
-				userService.clean()
-			}
+					resolve(undefined)
+				}
+			})
 		})
-
-
-
-	})
+	}).timeout(5500)
 })

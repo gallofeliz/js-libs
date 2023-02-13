@@ -7,7 +7,7 @@
 
 ## Operations
 
-- ./run-tests packageName
+- ./test packageName
 - ./build packageName
 - ./deploy packageName
 
