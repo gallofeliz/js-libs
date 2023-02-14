@@ -2,37 +2,56 @@
 
 set -e
 
-LIB="$1"
+LIBS=$*
+test -n "$LIBS"
 
-test -n "$LIB"
+for LIB in $LIBS; do
+    echo ">>>>>>>> $LIB"
+    ./test "$LIB"
+    ./build "$LIB"
+done
 
-SRC=src/$LIB
-DEST=dist/$LIB
-
-./test "$LIB"
-./build "$LIB"
-
-read -p 'major/minor/patch ? ' NPM_VERSION_ARG
-
-cd $SRC
-
-npm version $NPM_VERSION_ARG
-
-VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
-
-cd -
-
-git add -p
-git commit -m "$LIB/$VERSION"
-git tag -a "$LIB/$VERSION" -m "$LIB/$VERSION"
-
-./build "$LIB"
-
-cd $DEST
+INIT_PWD="$(pwd)"
 
 npm login
 trap "npm logout" EXIT
 
-npm publish --access public
+for LIB in $LIBS; do
+    echo ">>>>>>>> $LIB"
 
-#git push
+    cd "$INIT_PWD"
+
+    SRC=src/$LIB
+    DEST=dist/$LIB
+
+    read -p 'major/minor/patch ? ' NPM_VERSION_ARG
+
+    cd $SRC
+
+    npm version $NPM_VERSION_ARG
+
+    VERSION=$(node -e 'process.stdout.write(require("./package.json").version)')
+
+    cd -
+
+    git add -p
+    git commit -m "$LIB/$VERSION"
+    git tag -a "$LIB/$VERSION" -m "$LIB/$VERSION"
+
+    ./build "$LIB"
+
+    cd $DEST
+
+    npm publish --access public
+
+    cd -
+
+    #git push
+
+done
+
+
+
+
+
+
