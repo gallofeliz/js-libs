@@ -24,7 +24,7 @@ cd -
 
 git add -p
 git commit -m "$LIB/$VERSION"
-git tag -a "$LIB/$VERSION"
+git tag -a "$LIB/$VERSION" -m "$LIB/$VERSION"
 
 ./build "$LIB"
 
