@@ -71,16 +71,23 @@ class App<Config> {
     protected name: string
     protected shortName: string
     protected version: string
-    protected config: Config
-    protected logger: Logger
-    protected services: Services<Config>
+    protected config?: Config
+    protected logger?: Logger
+    protected services?: Services<Config>
     protected runFn: RunHandler<Config>
     protected abortController = new AbortController
+    protected appDefinition: AppDefinition<Config>
 
     constructor(appDefinition: AppDefinition<Config>) {
         this.name = appDefinition.name || require('./package.json').name
         this.version = appDefinition.version  || require('./package.json').version
         this.shortName = this.name.split('/').reverse()[0]
+        this.runFn = appDefinition.run
+        this.appDefinition = appDefinition
+    }
+
+    protected async prepare() {
+        const appDefinition = this.appDefinition
 
         const defaultConfigArgs: Partial<ConfigOpts<any, any>> = {
             defaultFilename: '/etc/' + this.shortName + '/config.yaml',
@@ -113,8 +120,8 @@ class App<Config> {
         } else {
             this.logger = (new Logger(appDefinition.logger)).child({ appRunUuid: uuid() })
             this.config = appDefinition.config instanceof Function
-                ? appDefinition.config()
-                : loadConfig<any, any>({
+                ? await appDefinition.config()
+                : await loadConfig<any, any>({
                     ...defaultConfigArgs,
                     ...appDefinition.config,
                     logger: this.logger,
@@ -137,14 +144,14 @@ class App<Config> {
             abortController: this.abortController,
             abortSignal: this.abortController.signal
         }, appDefinition.services)
-
-        this.runFn = appDefinition.run
     }
 
     public async run(abortSignal?: AbortSignal) {
         if (this.alreadyRun) {
             throw new Error('Application already run')
         }
+
+        await this.prepare()
 
         this.alreadyRun = true
 
@@ -161,8 +168,8 @@ class App<Config> {
         // Add clean up / beforeExitOnError ?
         // Handle unhandled rejections ? process.prependListener
 
-        this.logger.info('Running', { config: this.config, name: this.name, version: this.version })
-        this.runFn(this.services)
+        this.logger!.info('Running', { config: this.config, name: this.name, version: this.version })
+        this.runFn(this.services!)
     }
 }
 

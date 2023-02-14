@@ -2,7 +2,6 @@
   "name": "@gallofeliz/super-yaml",
   "version": "0.1.0",
   "description": "",
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,5 +14,9 @@
   "bugs": {
     "url": "https://github.com/gallofeliz/js-libs/issues"
   },
-  "homepage": "https://github.com/gallofeliz/js-libs#readme"
+  "homepage": "https://github.com/gallofeliz/js-libs#readme",
+  "dependencies": {
+    "jsonata": "^2.0.1",
+    "yaml": "^2.2.1"
+  }
 }

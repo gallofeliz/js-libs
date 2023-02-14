@@ -1,5 +1,4 @@
 import fs, { existsSync } from 'fs'
-import YAML from 'yaml'
 import { valuesIn, mapKeys, pickBy, each, set, cloneDeep } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve, dirname} from 'path'
@@ -69,7 +68,7 @@ function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: st
     })
 }
 
-export function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Config {
+export async function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Promise<Config> {
     let userProvidedConfig: UserProvidedConfig = {} as UserProvidedConfig
     let filename = opts.defaultFilename
 
@@ -88,7 +87,7 @@ export function loadConfig<UserProvidedConfig extends object, Config extends obj
             switch(extname(filename)) {
                 case '.yml':
                 case '.yaml':
-                    userProvidedConfig = parseYmlFile(filename)
+                    userProvidedConfig = await parseYmlFile(filename)
                     break
                 case '.json':
                     userProvidedConfig = JSON.parse(fs.readFileSync(filename, 'utf8'))
@@ -136,8 +135,8 @@ export function loadConfig<UserProvidedConfig extends object, Config extends obj
             logger: opts.logger,
             paths: [filename],
             abortSignal: opts.watchChanges.abortSignal,
-            fn() {
-                const newConfig = loadConfig(opts)
+            async fn() {
+                const newConfig = await loadConfig(opts)
                 const patch = compare(config, newConfig, false)
 
                 if (patch.length === 0) {

@@ -1,8 +1,10 @@
 import fs from 'fs'
 import YAML from 'yaml'
 import {extname, resolve, dirname} from 'path'
+import jsonata from 'jsonata'
+import traverse from 'traverse'
 
-export function parseContent<T>(content: string, ymlCwd: string): T {
+export async function parseContent<T>(content: string, ymlCwd: string): Promise<T> {
 
     function convertType(rawValue: any, filename?: string, type: 'auto' | 'string' | 'number' | 'yaml' | 'json' = 'auto') {
         if (type === 'auto') {
@@ -19,7 +21,7 @@ export function parseContent<T>(content: string, ymlCwd: string): T {
 
         switch(type) {
             case 'yaml':
-                throw new Error('Not implemented yet')
+                return parseContent(rawValue, dirname(filename as string))
             case 'json':
                 return JSON.parse(rawValue)
             case 'string':
@@ -35,8 +37,8 @@ export function parseContent<T>(content: string, ymlCwd: string): T {
         return convertType(process.env[name] || defaut, undefined, type)
     }
 
-    function include({filename, type}: {filename: string, type?: 'auto' | 'string' | 'number'}) {
-        return convertType(
+    function include({filename, type, query}: {filename: string, type?: 'auto' | 'string' | 'number', query?: string}) {
+        const value = convertType(
             fs.readFileSync(
                 resolve(ymlCwd, filename),
                 'utf8'
@@ -44,6 +46,19 @@ export function parseContent<T>(content: string, ymlCwd: string): T {
             filename,
             type
         )
+
+        if (query) {
+            return value instanceof Promise
+                ? value.then((value: any) => jsonata(query).evaluate(value)).then((v: any) => {
+                    // https://github.com/jsonata-js/jsonata/issues/296#issuecomment-583528415
+                    if (Array.isArray(v)) {
+                        return [...v]
+                    }
+                    return v
+                })
+                : jsonata(query).evaluate(value)
+        }
+        return value
     }
 
     const customTags: YAML.Tags = [
@@ -86,9 +101,22 @@ export function parseContent<T>(content: string, ymlCwd: string): T {
         throw warnOrErrors[0]
     }
 
-    return doc.toJS()
+    const result = doc.toJS()
+
+    const promises: Promise<any>[] = []
+
+    traverse(result).forEach(function (o) {
+        if (o instanceof Promise) {
+            promises.push(o)
+            o.then((v: any) => this.update(v))
+        }
+    })
+
+    await Promise.all(promises)
+
+    return result
 }
 
-export function parseFile<T>(filename: string): T {
+export async function parseFile<T>(filename: string): Promise<T> {
     return parseContent<T>(fs.readFileSync(filename, 'utf8'), dirname(filename))
 }
