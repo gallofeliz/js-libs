@@ -1,4 +1,4 @@
-# js-libs config
+# Config
 
 Sorry, but README to do.
 
