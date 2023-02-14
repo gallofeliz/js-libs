@@ -9,7 +9,7 @@
 
 - ./test packageName
 - ./build packageName
-- ./deploy packageName
+- ./deploy packageName1 packageName2 ...
 
 ## Guidelines
 

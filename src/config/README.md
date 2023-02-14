@@ -1,5 +1,31 @@
 # Config
 
-Sorry, but README to do.
+Advanced config:
+- from files (super-yaml, json) and envs (scoped or not)
+- Validated user config (with validate component with cast and defaults values)
+- Finalization fn to transform user config to config
+- watch changes and emit on change new config
 
-See the code ; AS USER, you can use env vars, yaml file, json
+Example:
+
+```typescript
+import {loadConfig} from '@gallofeliz/config'
+
+deepEqual(
+    await loadConfig<Config, Config>({
+        defaultFilename: __dirname + '/config.test.yml',
+        logger: createLogger(),
+        envFilename: 'config',
+        envPrefix: 'app',
+        userProvidedConfigSchema: tsToJsSchema<Config>()
+    }),
+    {
+        machin: {
+            truc: {
+                bidule: true
+            }
+        },
+        envShell: 'hello world'
+    }
+)
+```

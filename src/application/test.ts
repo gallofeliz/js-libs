@@ -1,6 +1,6 @@
 import { runApp } from '.'
 import { Logger } from '@gallofeliz/logger'
-import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema/transformer-def';
+import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema/transformer-def'
 
 interface Config {
     dbPath: string
