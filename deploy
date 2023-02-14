@@ -35,7 +35,8 @@ for LIB in $LIBS; do
     cd -
 
     git add -p
-    git commit -m "$LIB/$VERSION"
+    read -p 'Commit message ? ' COMMIT_MSG
+    git commit -m "$LIB/$VERSION $COMMIT_MSG"
     git tag -a "$LIB/$VERSION" -m "$LIB/$VERSION"
 
     ./build "$LIB"
