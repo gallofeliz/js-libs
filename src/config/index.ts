@@ -7,6 +7,7 @@ import {validate, SchemaObject} from '@gallofeliz/validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import { watchFs } from '@gallofeliz/fs-watcher'
 import { compare, Operation } from 'fast-json-patch'
+import chokidar from 'chokidar'
 
 export type ChangePatchOperation = Operation
 
@@ -23,6 +24,7 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     logger: UniversalLogger
     watchChanges?: {
         onChange: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
+        onError?: (e: Error) => void
         abortSignal?: AbortSignal
         // onError
     }
@@ -131,23 +133,37 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
     if (opts.watchChanges && filename) {
         // Here the problem is that included filename are not watched
 
-        watchFs({
-            logger: opts.logger,
-            paths: [filename],
-            abortSignal: opts.watchChanges.abortSignal,
-            async fn() {
-                const newConfig = await loadConfig(opts)
-                const patch = compare(config, newConfig, false)
+        const watcher = chokidar.watch(filename)
+        .on('all', async () => {
+            let newConfig
 
-                if (patch.length === 0) {
-                    return
+            try {
+                newConfig = await loadConfig({...opts, watchChanges: undefined})
+            } catch (error) {
+                if (opts.watchChanges!.onError) {
+                    opts.watchChanges!.onError(error as Error)
+                } else {
+                    opts.logger.warning('Config Watch reload error', {error})
                 }
-
-                const previousConfig = config
-                config = newConfig
-
-                opts.watchChanges!.onChange({patch, config, previousConfig})
+                return
             }
+            const patch = compare(config, newConfig, false)
+
+            if (patch.length === 0) {
+                return
+            }
+
+            const previousConfig = config
+            config = newConfig
+
+            opts.watchChanges!.onChange({patch, config, previousConfig})
+        })
+        .on('error', (e) => {
+            opts.logger.warning('Watch error', {error: e})
+        })
+
+        opts.watchChanges.abortSignal?.addEventListener('abort', () => {
+            watcher.close()
         })
     }
 

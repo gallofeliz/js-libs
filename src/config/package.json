@@ -1,6 +1,6 @@
 {
   "name": "@gallofeliz/config",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sorry, but README to do.",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -8,10 +8,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@gallofeliz/fs-watcher": "^0.1.0",
     "@gallofeliz/logger": "^0.1.1",
     "@gallofeliz/super-yaml": "^0.1.1",
     "@gallofeliz/validate": "^0.1.1",
+    "chokidar": "^3.5.3",
     "fast-json-patch": "^3.1.1",
     "lodash": "^4.17.21",
     "yaml": "^2.2.1"

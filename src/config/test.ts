@@ -18,6 +18,9 @@ describe('Config', () => {
     it('test', async () => {
 
         process.env.APP_ENVSHELL = 'hello world'
+        //const abortController = new AbortController
+
+        //setTimeout(() => abortController.abort(), 10000)
 
         deepEqual(
             await loadConfig<Config, Config>({
@@ -25,7 +28,20 @@ describe('Config', () => {
                 logger: createLogger(),
                 envFilename: 'config',
                 envPrefix: 'app',
-                userProvidedConfigSchema: tsToJsSchema<Config>()
+                userProvidedConfigSchema: tsToJsSchema<Config>(),
+                // watchChanges: {
+                //     abortSignal: abortController.signal,
+                //     onChange({config}) {
+                //         deepEqual(config, {
+                //             machin: {
+                //                 truc: {
+                //                     bidule: false
+                //                 }
+                //             },
+                //             envShell: 'hello world'
+                //         })
+                //     }
+                // }
             }),
             {
                 machin: {
