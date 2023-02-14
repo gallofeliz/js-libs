@@ -12,7 +12,7 @@ import { Socket } from 'net'
 import { HtpasswdValidator } from '@gallofeliz/htpasswd-verify'
 import { once } from 'events'
 import morgan from 'morgan'
-import validate, { SchemaObject } from '../validate'
+import { validate, SchemaObject } from '../validate'
 import { extendErrors } from 'ajv/dist/compile/errors'
 import { flatten, intersection } from 'lodash'
 import { v4 as uuid } from 'uuid'
@@ -202,7 +202,15 @@ function authMiddleware(
     }
 }
 
-export default class HttpServer {
+export function runServer({abortSignal, ...config}: HttpServerConfig & {abortSignal?: AbortSignal}) {
+    const httpServer = new HttpServer(config)
+
+    httpServer.start(abortSignal)
+
+    return httpServer
+}
+
+export class HttpServer {
     protected logger: Logger
     protected app: express.Application
     protected server?: Server

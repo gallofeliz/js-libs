@@ -1,0 +1,1 @@
+I would like to refacto this project with json compatible job globally more simple

@@ -3,7 +3,7 @@ import { UniversalLogger } from '@gallofeliz/logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
-import validate, { SchemaObject } from '@gallofeliz/validate'
+import { validate, SchemaObject } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 import { pipeline } from 'stream/promises'
 
@@ -36,7 +36,7 @@ export class AbortError extends Error {
     message = 'The operation was aborted'
 }
 
-export default async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
+export async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
     if (abortSignal?.aborted) {
       throw new AbortError
     }

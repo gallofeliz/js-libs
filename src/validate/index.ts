@@ -8,7 +8,7 @@ export interface ValidateConfig {
     contextErrorMsg?: string
 }
 
-export default function validate<Data extends any>(data:Data, config: ValidateConfig): Data {
+export function validate<Data extends any>(data:Data, config: ValidateConfig): Data {
     const ajv = new Ajv({
         coerceTypes: true,
         removeAdditional: !!config.removeAdditional,

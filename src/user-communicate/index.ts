@@ -1,5 +1,5 @@
 import {runProcess, ProcessConfig} from '@gallofeliz/run-process'
-import httpRequest, { HttpRequestConfig } from '@gallofeliz/http-request'
+import { httpRequest,  HttpRequestConfig } from '@gallofeliz/http-request'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { SchemaObject } from '@gallofeliz/validate'
 
@@ -30,7 +30,7 @@ export interface UserCommunicateConfig {
     resultSchema?: SchemaObject
 }
 
-export default async function communicate<Result extends any>(config: UserCommunicateConfig): Promise<Result> {
+export async function communicate<Result extends any>(config: UserCommunicateConfig): Promise<Result> {
     switch(config.userConfig.type) {
         case 'http':
             let httpDataMapping: Partial<HttpRequestConfig> = {}
