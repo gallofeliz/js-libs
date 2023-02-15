@@ -9,7 +9,7 @@ export type InjectedServices<Config> = {
     appName: string
     appVersion: string
     container: Services<Config>
-    configChangeEmitter: WatchChangesEventEmitter<Config>
+    configWatcher: WatchChangesEventEmitter<Config>
     abortController: AbortController
     abortSignal: AbortSignal
 }
@@ -139,7 +139,7 @@ class App<Config> {
             logger: this.logger,
             appName: this.name,
             appVersion: this.version,
-            configChangeEmitter: watchEventEmitter,
+            configWatcher: watchEventEmitter,
             abortController: this.abortController,
             abortSignal: this.abortController.signal
         }, appDefinition.services)

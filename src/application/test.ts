@@ -52,10 +52,10 @@ describe('Application', () => {
                     userService({logger, db}): UserService {
                         return new UserService(logger, db)
                     },
-                    db({config, configChangeEmitter}): Db {
+                    db({config, configWatcher}): Db {
                         const db = new Db(config.dbPath)
 
-                        configChangeEmitter.on('change:dbPath', ({value}) => db.setPath(value as string))
+                        configWatcher.on('change:dbPath', ({value}) => db.setPath(value as string))
 
                         return db
                     }

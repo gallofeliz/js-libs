@@ -22,14 +22,10 @@ runApp<Config>({
         userService({logger, db}): UserService {
             return new UserService(logger, db)
         },
-        db({config, onConfigChange}): Db {
+        db({config, configWatcher}): Db {
             const db = new Db(config.dbPath)
 
-            onConfigChange(({config, patch}) => {
-                if (patch.some(op => op.path === 'dbPath')) {
-                    db.setPath(config.dbPath)
-                }
-            })
+            configWatcher.on('change:dbPath', ({value}) => db.setPath(value as string))
 
             return db
         }
