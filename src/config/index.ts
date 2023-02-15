@@ -8,9 +8,14 @@ import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import { watchFs } from '@gallofeliz/fs-watcher'
 import { compare, Operation } from 'fast-json-patch'
 import chokidar from 'chokidar'
-import EventEmitter from 'events'
+import { EventEmitter } from 'events'
 
 export type ChangePatchOperation = Operation
+
+export interface WatchChangesEventEmitter<Config> extends EventEmitter {
+    on(event: 'change', listener: (arg: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void): this
+    on(event: string, listener: (arg: {value: unknown, previousValue: unknown, config: Config, previousConfig: Config}) => void): this
+}
 
 /**
  * Refacto to do in this module
@@ -29,11 +34,11 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     } & (
         ({
             onChange: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
-            eventEmitter?: EventEmitter
+            eventEmitter?: WatchChangesEventEmitter<Config>
         })
         | ({
             onChange?: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
-            eventEmitter: EventEmitter
+            eventEmitter: WatchChangesEventEmitter<Config>
         })
     )
 }
@@ -187,7 +192,7 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
                 patch.forEach(op => {
                     op.path.split('.').reduce((rootToLeafNodes: string[], node) => {
                         rootToLeafNodes = rootToLeafNodes.concat(node)
-                        opts.watchChanges!.eventEmitter?.emit('change:' + rootToLeafNodes.join('.'), {
+                        opts.watchChanges!.eventEmitter?.emit('change:' + rootToLeafNodes.join('.') as 'change:xxx', {
                             config,
                             previousConfig,
                             value: get(config, rootToLeafNodes),
@@ -202,9 +207,9 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
         .on('error', (error) => {
             if (opts.watchChanges!.onError) {
                 opts.watchChanges!.onError(error as Error)
-            } else if (opts.watchChanges!.eventEmitter) {
-                // Only emit error on eventEmitter if onError is not present to separate responsabilities
-                opts.watchChanges!.eventEmitter.emit('error', error)
+            // } else if (opts.watchChanges!.eventEmitter) {
+            //     // Only emit error on eventEmitter if onError is not present to separate responsabilities
+            //     opts.watchChanges!.eventEmitter.emit('error', error)
             } else {
                 opts.logger.warning('Watch error', {error})
             }

@@ -1,4 +1,4 @@
-import {loadConfig} from '.'
+import {loadConfig, WatchChangesEventEmitter} from '.'
 import { createLogger } from '@gallofeliz/logger'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema/transformer-def'
 import { deepEqual } from 'assert'
@@ -51,14 +51,14 @@ describe('Config', () => {
 
         setTimeout(() => abortController.abort(), 10000)
 
-        const eventEmitter = new EventEmitter
+        const eventEmitter: WatchChangesEventEmitter<Config> = new EventEmitter
 
         eventEmitter.on('change', ({config, patch}) => {
             console.log('events change', config, patch)
         })
 
-        eventEmitter.on('change:machin.truc', ({config, patch, value}) => {
-            console.log('events change machin truc', config, patch, value)
+        eventEmitter.on('change:machin.truc', ({config, value}) => {
+            console.log('events change machin truc', config, value)
         })
 
         deepEqual(
