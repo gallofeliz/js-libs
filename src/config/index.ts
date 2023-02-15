@@ -14,6 +14,7 @@ export type ChangePatchOperation = Operation
 
 export interface WatchChangesEventEmitter<Config> extends EventEmitter {
     on(event: 'change', listener: (arg: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void): this
+    on(event: 'error', listener: (error: Error) => void): this
     on(event: string, listener: (arg: {value: unknown, previousValue: unknown, config: Config, previousConfig: Config}) => void): this
 }
 
@@ -144,7 +145,19 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
     let config = opts.finalizer ? opts.finalizer(userProvidedConfig, opts.logger) : userProvidedConfig as any as Config
 
     if (opts.watchChanges && filename) {
-        // Here the problem is that included filename are not watched
+
+        const handleError = (error: Error, context: string) =>  {
+            if (opts.watchChanges!.onError || opts.watchChanges!.eventEmitter?.listenerCount('error')) {
+                if (opts.watchChanges!.onError) {
+                    opts.watchChanges!.onError(error)
+                }
+                if (opts.watchChanges!.eventEmitter?.listenerCount('error')) {
+                    opts.watchChanges!.eventEmitter.emit('error', error)
+                }
+            } else {
+                opts.logger.warning('Config ' + context + ' error', {error})
+            }
+        }
 
         const watcher = chokidar.watch(filename)
         .on('all', async () => {
@@ -153,11 +166,7 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
             try {
                 newConfig = await loadConfig({...opts, watchChanges: undefined})
             } catch (error) {
-                if (opts.watchChanges!.onError) {
-                    opts.watchChanges!.onError(error as Error)
-                } else {
-                    opts.logger.warning('Config Watch reload error', {error})
-                }
+                handleError(error as Error, 'watch reload')
                 return
             }
             const patch = compare(config, newConfig, false).map(op => {
@@ -204,19 +213,10 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
                 })
             }
         })
-        .on('error', (error) => {
-            if (opts.watchChanges!.onError) {
-                opts.watchChanges!.onError(error as Error)
-            // } else if (opts.watchChanges!.eventEmitter) {
-            //     // Only emit error on eventEmitter if onError is not present to separate responsabilities
-            //     opts.watchChanges!.eventEmitter.emit('error', error)
-            } else {
-                opts.logger.warning('Watch error', {error})
-            }
-        })
+        .on('error', (error) => handleError(error as Error, 'watch'))
 
         opts.watchChanges.abortSignal?.addEventListener('abort', () => {
-            watcher.close()
+            watcher.close().catch(error => handleError(error as Error, 'watch close'))
         })
     }
 
