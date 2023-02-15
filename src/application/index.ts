@@ -1,9 +1,7 @@
-import { loadConfig, ConfigOpts, ChangePatchOperation } from '@gallofeliz/config'
+import { loadConfig, ConfigOpts, ChangePatchOperation, WatchChangesEventEmitter } from '@gallofeliz/config'
 import { Logger, LoggerOpts } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
-
-export type onConfigChangeCallback<Config> = ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
 
 export type InjectedServices<Config> = {
     logger: Logger
@@ -11,7 +9,7 @@ export type InjectedServices<Config> = {
     appName: string
     appVersion: string
     container: Services<Config>
-    onConfigChange: (callback: onConfigChangeCallback<Config>) => void
+    configChangeEmitter: WatchChangesEventEmitter<Config>
     abortController: AbortController
     abortSignal: AbortSignal
 }
@@ -95,6 +93,8 @@ class App<Config> {
             envPrefix: this.shortName
         }
 
+        const watchEventEmitter = new EventEmitter
+
         if (appDefinition.logger instanceof Function) {
 
             throw new Error('Unhandled for the moment')
@@ -126,21 +126,20 @@ class App<Config> {
                     ...appDefinition.config,
                     logger: this.logger,
                     watchChanges: appDefinition.config.watchChanges
-                        ? { abortSignal: this.abortController.signal, onChange(...args) {
-                            configChangeObservers.forEach(callback => callback(...args))
-                        }}
+                        ? {
+                            abortSignal: this.abortController.signal,
+                            eventEmitter: watchEventEmitter,
+                        }
                         : undefined
                 })
         }
-
-        const configChangeObservers: onConfigChangeCallback<any>[] = []
 
         this.services = createDiContainer({
             config: this.config,
             logger: this.logger,
             appName: this.name,
             appVersion: this.version,
-            onConfigChange(callback) { configChangeObservers.push(callback) },
+            configChangeEmitter: watchEventEmitter,
             abortController: this.abortController,
             abortSignal: this.abortController.signal
         }, appDefinition.services)
