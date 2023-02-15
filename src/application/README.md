@@ -26,7 +26,7 @@ runApp<Config>({
             const db = new Db(config.dbPath)
 
             onConfigChange(({config, patch}) => {
-                if (patch.some(op => op.path === '/dbPath')) {
+                if (patch.some(op => op.path === 'dbPath')) {
                     db.setPath(config.dbPath)
                 }
             })

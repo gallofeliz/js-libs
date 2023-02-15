@@ -1,5 +1,5 @@
 import fs, { existsSync } from 'fs'
-import { valuesIn, mapKeys, pickBy, each, set, cloneDeep } from 'lodash'
+import { valuesIn, mapKeys, pickBy, each, set, cloneDeep, get } from 'lodash'
 import {hostname} from 'os'
 import {extname, resolve, dirname} from 'path'
 import {UniversalLogger} from '@gallofeliz/logger'
@@ -8,6 +8,7 @@ import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import { watchFs } from '@gallofeliz/fs-watcher'
 import { compare, Operation } from 'fast-json-patch'
 import chokidar from 'chokidar'
+import EventEmitter from 'events'
 
 export type ChangePatchOperation = Operation
 
@@ -23,11 +24,18 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     finalizer?: (userProvidedConfig: UserProvidedConfig, logger: UniversalLogger) => Config
     logger: UniversalLogger
     watchChanges?: {
-        onChange: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
         onError?: (e: Error) => void
         abortSignal?: AbortSignal
-        // onError
-    }
+    } & (
+        ({
+            onChange: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
+            eventEmitter?: EventEmitter
+        })
+        | ({
+            onChange?: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
+            eventEmitter: EventEmitter
+        })
+    )
 }
 
 function findGoodPath(userPath: string, schema: SchemaObject) {
@@ -147,7 +155,15 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
                 }
                 return
             }
-            const patch = compare(config, newConfig, false)
+            const patch = compare(config, newConfig, false).map(op => {
+                return {
+                    ...op,
+                    path: op.path
+                        .replace(/^\//, '')
+                        .replace(/\//g, '.')
+                        //.replace(/\.([0-9]+)(\.|$)/g, '[$1]$2')
+                }
+            })
 
             if (patch.length === 0) {
                 return
@@ -156,10 +172,42 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
             const previousConfig = config
             config = newConfig
 
-            opts.watchChanges!.onChange({patch, config, previousConfig})
+            const changeArg = {
+                patch,
+                config,
+                previousConfig
+            }
+
+            if (opts.watchChanges!.onChange) {
+                opts.watchChanges!.onChange(changeArg)
+            }
+
+            if (opts.watchChanges!.eventEmitter) {
+                opts.watchChanges!.eventEmitter?.emit('change', changeArg)
+                patch.forEach(op => {
+                    op.path.split('.').reduce((rootToLeafNodes: string[], node) => {
+                        rootToLeafNodes = rootToLeafNodes.concat(node)
+                        opts.watchChanges!.eventEmitter?.emit('change:' + rootToLeafNodes.join('.'), {
+                            config,
+                            previousConfig,
+                            value: get(config, rootToLeafNodes),
+                            previousValue: get(previousConfig, rootToLeafNodes),
+                        })
+                        return rootToLeafNodes
+                    }, [])
+
+                })
+            }
         })
-        .on('error', (e) => {
-            opts.logger.warning('Watch error', {error: e})
+        .on('error', (error) => {
+            if (opts.watchChanges!.onError) {
+                opts.watchChanges!.onError(error as Error)
+            } else if (opts.watchChanges!.eventEmitter) {
+                // Only emit error on eventEmitter if onError is not present to separate responsabilities
+                opts.watchChanges!.eventEmitter.emit('error', error)
+            } else {
+                opts.logger.warning('Watch error', {error})
+            }
         })
 
         opts.watchChanges.abortSignal?.addEventListener('abort', () => {
