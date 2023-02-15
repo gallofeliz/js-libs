@@ -1,6 +1,6 @@
 import {loadConfig, WatchChangesEventEmitter} from '.'
 import { createLogger } from '@gallofeliz/logger'
-import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema/transformer-def'
+import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import { deepEqual } from 'assert'
 import EventEmitter from 'events'
 

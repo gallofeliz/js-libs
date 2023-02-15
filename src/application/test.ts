@@ -1,6 +1,6 @@
 import { runApp } from '.'
-import { Logger } from '@gallofeliz/logger'
-import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema/transformer-def'
+import { UniversalLogger } from '@gallofeliz/logger'
+import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 
 interface Config {
     dbPath: string
@@ -19,9 +19,9 @@ class Db {
 }
 
 class UserService {
-    protected logger: Logger
+    protected logger: UniversalLogger
 
-    constructor(logger: Logger, db: Db) {
+    constructor(logger: UniversalLogger, db: Db) {
         this.logger = logger
         console.log('db', db)
     }
