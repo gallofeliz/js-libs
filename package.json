@@ -55,6 +55,6 @@
     "src/jobs",
     "src/fn-scheduler",
     "src/fs-watcher",
-    "src/htpasswd-verify"
+    "src/auth"
   ]
 }

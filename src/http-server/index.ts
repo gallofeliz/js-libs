@@ -9,20 +9,17 @@ import {
 } from 'body-parser'
 import { basename } from 'path'
 import { Socket } from 'net'
-import { HtpasswdValidator } from '@gallofeliz/htpasswd-verify'
 import { once } from 'events'
 import morgan from 'morgan'
 import { validate, SchemaObject } from '../validate'
 import { extendErrors } from 'ajv/dist/compile/errors'
-import { flatten, intersection } from 'lodash'
 import { v4 as uuid } from 'uuid'
 import stream from 'stream'
 import { HttpRequestConfig } from '../http-request'
 import * as expressCore from 'express-serve-static-core'
-import auth from 'basic-auth'
+
 import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
 import swaggerUi from 'swagger-ui-express'
-
 
 export type HttpServerRequest<
     Params = expressCore.ParamsDictionary,
@@ -94,113 +91,9 @@ export interface HttpServerConfig {
     logger: Logger
 }
 
-interface User {
-    username: string
-    password: string
-    autorisations: string | string[]
-}
-
-class Authenticator {
-    protected users: User[]
-    protected htpasswordValidator: HtpasswdValidator
-
-    constructor(users: User[]) {
-        this.users = users
-        this.htpasswordValidator = new HtpasswdValidator(
-            this.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {})
-        )
-    }
-
-    public authenticate(username: string, password: string): User | null {
-        if (this.htpasswordValidator.verify(username, password)) {
-            return this.users.find(u => u.username === username)!
-        }
-
-        return null
-    }
-}
-
-class Authorizator {
-    protected autorisationsPolicies: Record<string, string | string[]>
-    protected anonymAutorisations: string[]
-
-    constructor(autorisationsPolicies: Record<string, string | string[]>, anonymAutorisations: string | string[]) {
-        this.autorisationsPolicies = autorisationsPolicies
-        this.anonymAutorisations = Array.isArray(anonymAutorisations) ? anonymAutorisations : [anonymAutorisations]
-    }
-
-    public isAutorised(user: User | null, roles: string | string[]): boolean {
-       const userExtendedRoles = this.extendRoles(user ? user.autorisations : this.anonymAutorisations)
-       const testedExtendedRoles = this.extendRoles(roles)
-
-       if (userExtendedRoles.length === 0 || testedExtendedRoles.length === 0) {
-          return false
-       }
-
-       if (userExtendedRoles.includes('*') || testedExtendedRoles.includes('*')) {
-          return true
-       }
-
-       if (intersection(userExtendedRoles, testedExtendedRoles).length > 0) {
-          return true
-       }
-
-       // const userWillcardExtendeRoles = userExtendedRoles.filter(r => r.includes('*'))
-       // const testedWillcardExtendeRoles = testedExtendedRoles.filter(r => r.includes('*'))
-
-       return false
-    }
-
-    protected extendRoles(roles: string | string[]): string[] {
-        roles = Array.isArray(roles) ? roles : [roles]
-        if (intersection(roles, Object.keys(this.autorisationsPolicies)).length === 0) {
-            return roles
-        }
-        return this.extendRoles(flatten(roles.map(role => this.autorisationsPolicies[role] || role)))
-    }
-}
-
 // function nothingMiddleware() {
 //     return (req: express.Request, res: express.Response, next: express.NextFunction) => next()
 // }
-
-function authMiddleware(
-    {realm, routeRoles, authenticator, authorizator}:
-    {realm: string, routeRoles: string | string[], authenticator: Authenticator, authorizator: Authorizator}
-) {
-    function demandAuth(res: express.Response) {
-        res.set('WWW-Authenticate', 'Basic realm="'+realm+'"').status(401).end()
-    }
-
-    return function (req: express.Request, res: express.Response, next: express.NextFunction) {
-        const userPassFromHeaders = auth(req)
-
-        if (!userPassFromHeaders) {
-            // Anonym
-            if (!authorizator.isAutorised(null, routeRoles)) {
-                return demandAuth(res)
-            }
-
-            (req as HttpServerRequest).user = null
-        } else {
-            // Not anonym
-            const user = authenticator.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
-
-            if (!user) {
-                return demandAuth(res)
-            }
-
-            if (!authorizator.isAutorised(user, routeRoles)) {
-                res.status(403).end()
-                return
-            }
-
-            (req as HttpServerRequest).user = user
-        }
-
-        next()
-    }
-}
 
 export function runServer({abortSignal, ...config}: HttpServerConfig & {abortSignal?: AbortSignal}) {
     const httpServer = new HttpServer(config)
