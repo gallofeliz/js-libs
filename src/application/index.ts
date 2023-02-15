@@ -1,10 +1,10 @@
 import { loadConfig, ConfigOpts, ChangePatchOperation, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { Logger, LoggerOpts } from '@gallofeliz/logger'
+import { UniversalLogger, LoggerOpts, Logger } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 
 export type InjectedServices<Config> = {
-    logger: Logger
+    logger: UniversalLogger
     config: Config
     appName: string
     appVersion: string
@@ -27,8 +27,8 @@ export type RunHandler<Config> = (services: Services<Config>) => void
 export interface AppDefinition<Config> {
     name?: string
     version?: string
-    config: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: Logger, watchChanges?: boolean }) | (() => Config)
-    logger?: LoggerOpts | ((services: Partial<Services<Config>>) => Logger)
+    config: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: UniversalLogger, watchChanges?: boolean }) | (() => Config)
+    logger?: LoggerOpts | ((services: Partial<Services<Config>>) => UniversalLogger)
     services: ServicesDefinition<Config>
     run: RunHandler<Config>
 }
