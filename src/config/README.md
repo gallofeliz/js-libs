@@ -1,10 +1,14 @@
 # Config
 
 Advanced config:
-- from files (super-yaml, json) and envs (scoped or not)
-- Validated user config (with validate component with cast and defaults values)
-- Finalization fn to transform user config to config
-- watch changes and emit on change new config
+[X] from files (super-yaml, json) and envs (scoped or not)
+[X] Validated user config (with validate component with cast and defaults values)
+[X] Finalization fn to transform user config to config
+[X] watch changes and emit on change new config
+[ ] watch changes included files
+[ ] include files into config from envs (ex: APP_DB_PASSWORD='!include /run/secrets/db_password')
+[ ] Super Json (like Yaml, for example { db: { password: { $include: '/run/secrets/db_password' }, username: { $env: 'USER' } } })
+[ ] Command line arguments as config param
 
 Example:
 
