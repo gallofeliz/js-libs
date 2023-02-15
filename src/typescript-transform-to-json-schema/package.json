@@ -2,7 +2,7 @@
   "name": "@gallofeliz/typescript-transform-to-json-schema",
   "version": "1.0.0",
   "description": "",
-  "main": "test.js",
+  "main": "index.js",
   "dependencies": {
     "ts-json-schema-generator": "^1.2.0",
     "ttypescript": "^1.5.15",

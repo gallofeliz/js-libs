@@ -1,6 +1,9 @@
-// transformer1-module
 import * as ts from 'typescript';
 import { execSync } from 'child_process'
+
+export function tsToJsSchema<T extends object>(): Record<string, any> {
+    throw new Error('To be parsed')
+}
 
 export default function(program: ts.Program, pluginOptions: {}) {
     const typeChecker = program.getTypeChecker();

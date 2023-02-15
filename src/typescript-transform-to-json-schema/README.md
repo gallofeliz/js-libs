@@ -1,16 +1,30 @@
 # typescript-transform-to-json-schema
 
-POC passed. Now to create a plugin (if possible without JSON.parse).
+Convert typescript type to jsonSchema during typescript compilation, using https://www.npmjs.com/package/ts-json-schema-generator (supporting jsDoc for example to precise regex, min, max, etc)
+
+## Configure
+
+- Use ttypescript
+- Configure tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      { "transform": "@gallofeliz/typescript-transform-to-json-schema" }
+    ]
+  }
+}
+```
 
 ## Run
 
-`ttsc`
+`ttsc` or `ts-node -C ttypescript mainfile.ts`
 
 ## What
 
 Resolve typescript type to JSON Schema :
 ```typescript
-    import { tsToJsSchema } from './transformer-def';
+    import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema';
     import { Ext } from './types'
 
     interface MyObject {
@@ -36,7 +50,7 @@ console.log(schema, schema2);
 
 Then, we can have :
 ```typescript
-    import { tsToJsSchema } from './transformer-def';
+    import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema';
 
     type LightStatus = 'on' | 'off'
 
@@ -49,5 +63,3 @@ Then, we can have :
         }
     }
 ```
-
-You can imagine that the component that receives myApiRoute can without inputBodySchema know that body type is LightStatus and transform itself, but so we need to use Typescript at runtime or more complex job. Here we have a small redondance of type but no need to create a ts type AND a jsonSchema type

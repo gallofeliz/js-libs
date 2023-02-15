@@ -23,9 +23,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// transformer1-module
+exports.tsToJsSchema = void 0;
 const ts = __importStar(require("typescript"));
 const child_process_1 = require("child_process");
+function tsToJsSchema() {
+    throw new Error('To be parsed');
+}
+exports.tsToJsSchema = tsToJsSchema;
 function default_1(program, pluginOptions) {
     const typeChecker = program.getTypeChecker();
     return (ctx) => {
@@ -42,7 +46,11 @@ function default_1(program, pluginOptions) {
                     const declaration = (_a = typeChecker.getResolvedSignature(node)) === null || _a === void 0 ? void 0 : _a.declaration;
                     if (declaration && !ts.isJSDocSignature(declaration) && ((_b = declaration.name) === null || _b === void 0 ? void 0 : _b.getText()) === 'tsToJsSchema') {
                         const type = node.typeArguments[0].getText();
-                        const strSchema = JSON.stringify(JSON.parse((0, child_process_1.execSync)('npx ts-json-schema-generator --id ' + type + ' --expose all --path ' + sourceFile.fileName + ' --type ' + type + ' --no-top-ref -f tsconfig.json', { encoding: 'utf8' })));
+                        const schema = JSON.parse((0, child_process_1.execSync)('npx ts-json-schema-generator --id ' + type + ' --expose all --path ' + sourceFile.fileName + ' --type ' + type + ' --no-top-ref -f tsconfig.json', { encoding: 'utf8' }));
+                        // if (schema.$ref) {
+                        //     const key = schema.$ref.replace('')
+                        // }
+                        const strSchema = JSON.stringify(schema);
                         return ts.factory.createCallExpression(ts.factory.createRegularExpressionLiteral('JSON.parse'), [ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral('string'))], [ts.factory.createStringLiteral(strSchema)]);
                     }
                 }
