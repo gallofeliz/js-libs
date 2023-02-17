@@ -118,10 +118,10 @@ export class Auth {
 export interface AuthMiddlewareOpts {
     auth: Auth
     realm: string
-    requiredAuthorization: string
+    requiredAuthorization: string | ((req: express.Request) => string)
 }
 
-export function authMiddleware({auth, realm, requiredAuthorization}: AuthMiddlewareOpts) {
+export function createAuthMiddleware({auth, realm, requiredAuthorization}: AuthMiddlewareOpts) {
     function demandAuth(res: express.Response) {
         res.set('WWW-Authenticate', 'Basic realm="'+encodeURIComponent(realm)+'"').status(401).end()
     }
@@ -129,10 +129,14 @@ export function authMiddleware({auth, realm, requiredAuthorization}: AuthMiddlew
     return function (req: express.Request&{user?:User|null}, res: express.Response, next: express.NextFunction) {
         const userPassFromHeaders = basicAuth(req)
 
+        const reqRequiredAuthorization = requiredAuthorization instanceof Function
+             ? requiredAuthorization(req)
+             : requiredAuthorization
+
         // Anonym
         if (!userPassFromHeaders) {
             try {
-                auth.ensureAuthorized(null, requiredAuthorization)
+                auth.ensureAuthorized(null, reqRequiredAuthorization)
                 req.user = null
                 return next()
             } catch (error) {
@@ -145,7 +149,7 @@ export function authMiddleware({auth, realm, requiredAuthorization}: AuthMiddlew
 
         try {
             const user = auth.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
-            auth.ensureAuthorized(user, requiredAuthorization)
+            auth.ensureAuthorized(user, reqRequiredAuthorization)
             req.user = user
             next()
         } catch (error) {

@@ -1,5 +1,5 @@
 import { deepEqual, fail, strictEqual, throws } from 'assert'
-import { verifyHtpasswdPassword, Auth, authMiddleware } from '.'
+import { verifyHtpasswdPassword, Auth, createAuthMiddleware } from '.'
 import app from 'express'
 import got from 'got'
 
@@ -26,6 +26,7 @@ describe('Auth', () => {
             { username: 'Paul', password: 'secret', autorisations: ['role-user'] },
             { username: 'Mélanie', password: 'verySecret', autorisations: ['role-admin'] },
             { username: 'admin', password: 'veryVerySecret', autorisations: ['*', '!users.remove-admin'] },
+            { username: 'no33', password: 'secret', autorisations: ['blog.read-article[*]', '!blog.read-article[33]'] }
         ],
         anonymAutorisations: ['blog.read-*', 'blog.write-public'],
         authorizationsExtensions: {
@@ -95,15 +96,15 @@ describe('Auth', () => {
 
         server.get(
             '/whoiam',
-            authMiddleware({auth, realm: 'abc', requiredAuthorization: 'whoiam'}),
+            createAuthMiddleware({auth, realm: 'abc', requiredAuthorization: 'whoiam'}),
             (req, res) => {
                 res.send((req as any).user.username)
             }
         )
 
         server.get(
-            '/article',
-            authMiddleware({auth, realm: 'abc', requiredAuthorization: 'blog.read-article'}),
+            '/article/:id',
+            createAuthMiddleware({auth, realm: 'abc', requiredAuthorization: ({params}) => 'blog.read-article[' + params.id + ']'}),
             (req, res) => {
                 res.end()
             }
@@ -111,7 +112,7 @@ describe('Auth', () => {
 
         server.get(
             '/remove-admin',
-            authMiddleware({auth, realm: 'abc', requiredAuthorization: 'users.remove-admin'}),
+            createAuthMiddleware({auth, realm: 'abc', requiredAuthorization: 'users.remove-admin'}),
             (req, res) => {
                 res.end()
             }
@@ -130,11 +131,20 @@ describe('Auth', () => {
             }
 
             strictEqual(await got('http://localhost:7777/whoiam', {username: 'Mélanie', password: 'verySecret'}).text(), 'Mélanie')
-            await got('http://localhost:7777/article')
-            await got('http://localhost:7777/article', {username: 'Mélanie', password: 'verySecret'})
+            await got('http://localhost:7777/article/33')
+            await got('http://localhost:7777/article/33', {username: 'Mélanie', password: 'verySecret'})
+
+            await got('http://localhost:7777/article/333', {username: 'no33', password: 'secret'})
 
             try {
-                console.log(await got('http://localhost:7777/article', {username: 'Mélanie', password: 'badSecret'}))
+                await got('http://localhost:7777/article/33', {username: 'no33', password: 'secret'})
+                fail('Unexpected success')
+            } catch(e) {
+                strictEqual((e as any).response.statusCode, 403)
+            }
+
+            try {
+                console.log(await got('http://localhost:7777/article/33', {username: 'Mélanie', password: 'badSecret'}))
                 fail('Unexpected success')
             } catch(e) {
                 strictEqual((e as any).response.statusCode, 401)

@@ -1,48 +1,58 @@
-# htpasswd-verify
+# Auth
 
-Verify htpasswd passwords
+Authentication/Authorization:
+- [X] Support Apache generated credentials
+- [X] Authenticate users
+- [X] Authorize users/guest(anonym) with authorizations
+- [X] Express Middleware with static requiredAuthorization or request generated requiredAuthorization
+- [X] Free authorizations nomenclature, example :
+  - namespace.operation-resource[id]
+  - namespace.resource[id].operation
+  - resource
+  - operation
+  - namespace/resource/id/operation
+  - What you want ! But caution that read-article-* matches read-article-33 but also read-article-333 and read-article-author-email
 
-Support Apache generated credentials
+```typescript
+import { Auth, createAuthMiddleware } from '.'
 
-```
-    admin:$apr1$GZ650zxv$99/Dg0Y6os0zquEMaYoJx1 #default
-    admin:{SHA}m3eMTmxi2IBKIZgAnySjD/tg8W8= #sha
-    admin:$2y$05$L/jPI05ltEKrwIjQThJ4keBFKH/aRDpxY9CaaVWYIZcPu0FXdRO6i #bcrypt
-    admin:5G1OI2SwmK4v6 #crypt
-    admin:iAmNotHacker27! #plain
-```
-
-## Easy to use
-
-```javascript
-    const HtpasswdValidator = require('htpasswd-verify')
-    const validator = new HtpasswdValidator
-
-    if (validator.verifyCredentials(username, password, 'admin:$apr1$GZ650zxv$99/Dg0Y6os0zquEMaYoJx1')) {
-        console.log('Oh yeah !')
+const auth = new Auth({
+    users: [
+        { username: 'Paul', password: 'secret', autorisations: ['role-user'] },
+        { username: 'Mélanie', password: 'verySecret', autorisations: ['role-admin'] },
+        { username: 'admin', password: 'veryVerySecret', autorisations: ['*', '!users.remove-admin'] },
+        { username: '33reader', password: 'secret', autorisations: ['blog.read-article[33]'] },
+        { username: 'no33reader', password: 'secret', autorisations: ['blog.read-article[*]', '!blog.read-article[33]'] }
+    ],
+    anonymAutorisations: ['blog.read-*', 'blog.write-public'],
+    authorizationsExtensions: {
+        'role-user': ['blog.read-*', 'blog.write-*', 'whoiam'],
+        'role-admin': ['role-user', 'users.remove-user']
     }
+})
 
-    if (validator.verifyCredentials(username, password, 'admin', '$apr1$GZ650zxv$99/Dg0Y6os0zquEMaYoJx1')) {
-        console.log('Oh yeah !')
+auth.authenticate('Mélanie', 'test') // AuthenticationError
+
+const Mélanie = auth.authenticate('Mélanie', 'verySecret')
+
+auth.ensureAuthorized(Mélanie, 'users.remove-admin') // AuthorizationError
+auth.ensureAuthorized(Mélanie, 'blog.write-article-55')
+
+const server = app()
+
+server.get(
+    '/whoiam',
+    createAuthMiddleware({auth, realm: 'abc', requiredAuthorization: 'whoiam'}),
+    (req, res) => {
+        res.send(req.user.username)
     }
+)
 
-    if (validator.verifyUsername(username, 'admin') & validator.verifyPassword(password, '$apr1$GZ650zxv$99/Dg0Y6os0zquEMaYoJx1')) {
-        console.log('Oh yeah !')
+server.get(
+    '/article/:id',
+    createAuthMiddleware({auth, realm: 'abc', requiredAuthorization: ({params}) => 'blog.read-article[' + params.id + ']'}),
+    (req, res) => {
+        res.end()
     }
-
-    const listValidator = new HtpasswdValidator({
-        admin: '$apr1$GZ650zxv$99/Dg0Y6os0zquEMaYoJx1',
-        bill: '5G1OI2SwmK4v6'
-    })
-
-    // or
-
-    const listValidator = new HtpasswdValidator([
-        'admin:$apr1$GZ650zxv$99/Dg0Y6os0zquEMaYoJx1',
-        'bill:5G1OI2SwmK4v6'
-    ])
-
-    if (listValidator.verify(username, password)) {
-        console.log('Oh yeah !')
-    }
+)
 ```
