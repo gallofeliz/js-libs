@@ -1,5 +1,5 @@
 import basicAuth from 'basic-auth'
-import { flatten, intersection, omitBy, uniq } from 'lodash'
+import { flatten, intersection, omitBy, uniq, reverse } from 'lodash'
 import safeCompare from 'safe-compare'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
@@ -7,7 +7,8 @@ import md5 from 'apache-md5'
 // @ts-ignore
 import crypt from 'apache-crypt'
 import express from 'express'
-import { isMatch } from 'matcher'
+import matcher from 'matcher'
+import auth from 'basic-auth'
 
 export function verifyHtpasswdPassword(inputPassword: string, passwordHash: string): boolean {
     if (passwordHash.substr(0, 5) === '{SHA}') {
@@ -46,9 +47,9 @@ export class AuthorizationError extends Error {
 }
 
 export interface AuthOpts {
-    users: User[]
-    anonymAutorisations: string[]
-    authorizationsExtensions: Record<string, string[]>
+    users?: User[]
+    anonymAutorisations?: string[]
+    authorizationsExtensions?: Record<string, string[]>
 }
 
 export class Auth {
@@ -84,7 +85,7 @@ export class Auth {
     public authenticate(username: string, password: string): User {
         const foundUser = this.usersDict[username]
 
-        if (!foundUser || !verifyHtpasswdPassword(foundUser.username, foundUser.password)) {
+        if (!foundUser || !verifyHtpasswdPassword(password, foundUser.password)) {
             throw new AuthenticationError
         }
 
@@ -100,18 +101,17 @@ export class Auth {
     public isAuthorized(user: User | null, authorization: string): boolean {
         const userExtendedAuthorizations = this.extendAuthorizations(user?.autorisations || this.anonymAutorisations)
 
-        return isMatch(authorization, userExtendedAuthorizations, { caseSensitive: true })
+        return matcher(authorization, userExtendedAuthorizations, { caseSensitive: true }).length === 1
     }
 
     protected extendAuthorizations(autorisations: string[]): string[] {
-        if (intersection(autorisations, Object.keys(this.authorizationsExtensions)).length === 0) {
-            return uniq(autorisations)
+        const resolveExtends = (autorisation: string): string[] => {
+            return flatten((this.authorizationsExtensions[autorisation] || []).map(resolveExtends)).concat([autorisation])
         }
-        return this.extendAuthorizations(
-            flatten(
-                autorisations.map(role => this.authorizationsExtensions[role] || role)
-            ).concat(autorisations)
-        )
+
+        // Uniq need two reverse here,
+        //return reverse(uniq(reverse(flatten(autorisations.map(resolveExtends)))))
+        return flatten(autorisations.map(resolveExtends))
     }
 }
 
@@ -136,8 +136,8 @@ export function authMiddleware({auth, realm, requiredAuthorization}: AuthMiddlew
                 req.user = null
                 return next()
             } catch (error) {
-                if (!(error instanceof AuthenticationError)) {
-                    throw error
+                if (!(error instanceof AuthorizationError)) {
+                    return next(error)
                 }
                 return demandAuth(res)
             }
@@ -155,7 +155,7 @@ export function authMiddleware({auth, realm, requiredAuthorization}: AuthMiddlew
                 res.status(403).end()
                 return
             }
-            throw error
+            return next(error)
         }
     }
 }
