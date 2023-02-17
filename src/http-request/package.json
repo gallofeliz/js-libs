@@ -1,6 +1,6 @@
 {
   "name": "@gallofeliz/http-request",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -16,7 +16,9 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
+    "@gallofeliz/validate": "^0.1.1",
     "got": "^11.8.6",
-    "jsonata": "^2.0.1"
+    "jsonata": "^2.0.1",
+    "uuid": "^9.0.0"
   }
 }

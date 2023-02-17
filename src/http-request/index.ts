@@ -28,6 +28,7 @@ export interface HttpRequestConfig {
 }
 
 export class AbortError extends Error {
+    name = 'AbortError'
     code = 'ABORT_ERR'
     message = 'The operation was aborted'
 }
