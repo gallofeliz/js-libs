@@ -1,4 +1,3 @@
-import { durationToMilliSeconds, Duration } from '@gallofeliz/human-units-converter'
 import cron from 'cron-parser'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
@@ -6,7 +5,7 @@ import { v4 as uuid } from 'uuid'
 /** @pattern ^[0-9* \-,/]{9,}$ */
 export type Cron = string
 
-export type Schedule = Duration | Cron
+export type Schedule = number | Cron
 
 export interface FnSchedulerOpts {
     id?: any,
@@ -103,11 +102,11 @@ export class FnScheduler<Identity = any> {
         const now = (new Date).getTime()
 
         const nextTimes = this.schedules.map(schedule => {
-            if (schedule.includes(' ')) { // Todo : Change to check cron or duration
+            if (typeof schedule !== 'number') { // Todo : Change to check cron or duration
                 return cron.parseExpression(schedule).next().getTime() - now
             }
 
-            return durationToMilliSeconds(schedule)
+            return schedule
         })
 
         return nextTimes.sort()[0]

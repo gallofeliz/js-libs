@@ -1,4 +1,3 @@
-import { durationToMilliSeconds, Duration } from '@gallofeliz/human-units-converter'
 import chokidar from 'chokidar'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
@@ -14,8 +13,8 @@ export interface FsWatcherOpts {
     logger: UniversalLogger
     paths: string[]
     ignore?: string[]
-    waitMin?: Duration
-    waitMax?: Duration
+    waitMin?: number
+    waitMax?: number
 }
 
 export function watchFs({abortSignal, ...opts}: FsWatcherOpts & { abortSignal?: AbortSignal }) {
@@ -45,8 +44,8 @@ export class FsWatcher<Identity = any> {
         this.paths = paths
         this.logger =  logger.child({ fsWatcherId: id })
         this.ignore = ignore || []
-        this.waitMinMs = waitMin ? durationToMilliSeconds(waitMin) : null
-        this.waitMaxMs = waitMax ? durationToMilliSeconds(waitMax) : this.waitMinMs
+        this.waitMinMs = waitMin || null
+        this.waitMaxMs = waitMax || this.waitMinMs
     }
 
     public getId() {

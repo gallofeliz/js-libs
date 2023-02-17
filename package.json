@@ -49,7 +49,6 @@
     "src/run-process",
     "src/validate",
     "src/typescript-transform-to-json-schema",
-    "src/human-units-converter",
     "src/user-communicate",
     "src/http-request",
     "src/jobs",
