@@ -17,7 +17,7 @@ import { v4 as uuid } from 'uuid'
 import stream from 'stream'
 import { HttpRequestConfig } from '../http-request'
 import * as expressCore from 'express-serve-static-core'
-
+import { createAuthMiddleware, Auth, User , AuthMiddlewareOpts} from '@gallofeliz/auth'
 import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
 import swaggerUi from 'swagger-ui-express'
 
@@ -33,7 +33,7 @@ export type HttpServerRequest<
     query: Query
     body: Body
     user: User | null
-    authorizator: Authorizator
+    auth: Auth
 }
 
 export interface HttpServerResponse<Body = any> extends express.Response {
@@ -50,15 +50,17 @@ export interface HttpServerConfig {
     host?: string
     auth?: {
         users: User[]
-        autorisationsPolicies?: Record<string, string | string[]>
-        anonymAutorisations?: string | string[]
+        authorizationsExtensions?: Record<string, string[]>
+        anonymAutorisations?: string[]
         realm?: string
-        defaultRoutesAutorisations?: string | string[]
+        defaultRoutesRequiredAuthentication?: boolean
+        defaultRoutesRequiredAutorisation?: AuthMiddlewareOpts['requiredAuthorization']
     }
     webUi?: {
         filesPath: string
         auth?: {
-            autorisations?: string | string[]
+            requiredAuthentication?: boolean
+            requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
         }
     }
     api?: {
@@ -67,7 +69,8 @@ export interface HttpServerConfig {
             apiPath?: string
             uiPath?: string
             auth?: {
-                autorisations?: string | string[]
+                requiredAuthentication?: boolean
+                requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
             }
         }
         routes: Array<{
@@ -82,9 +85,8 @@ export interface HttpServerConfig {
             inputContentType?: string
             outputContentType?: string
             auth?: {
-                //forceAuthentication?: boolean -> ensure req.user will be not null
-                autorisations: string | string[]
-                //roles?: string | string[] | ((request: HttpServerRequest<any>) => string | string[])
+                requiredAuthentication?: boolean
+                requiredAuthorization: AuthMiddlewareOpts['requiredAuthorization']
             }
         }>
     }

@@ -119,9 +119,10 @@ export interface AuthMiddlewareOpts {
     auth: Auth
     realm: string
     requiredAuthorization: string | ((req: Request) => string)
+    requiredAuthentication?: boolean
 }
 
-export function createAuthMiddleware({auth, realm, requiredAuthorization}: AuthMiddlewareOpts) {
+export function createAuthMiddleware({auth, realm, requiredAuthorization, requiredAuthentication}: AuthMiddlewareOpts) {
     function demandAuth(res: Response) {
         res.set('WWW-Authenticate', 'Basic realm="'+encodeURIComponent(realm)+'"').status(401).end()
     }
@@ -135,6 +136,10 @@ export function createAuthMiddleware({auth, realm, requiredAuthorization}: AuthM
 
         // Anonym
         if (!userPassFromHeaders) {
+            if (requiredAuthentication) {
+                return demandAuth(res)
+            }
+
             try {
                 auth.ensureAuthorized(null, reqRequiredAuthorization)
                 req.user = null
