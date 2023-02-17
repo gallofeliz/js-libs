@@ -19,6 +19,7 @@
     "apache-crypt": "^1.2.5",
     "apache-md5": "^1.1.7",
     "bcryptjs": "^2.4.3",
+    "matcher": "^5.0.0",
     "safe-compare": "^1.1.4"
   },
   "devDependencies": {

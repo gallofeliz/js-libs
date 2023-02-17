@@ -1,4 +1,4 @@
-import auth from 'basic-auth'
+import basicAuth from 'basic-auth'
 import { flatten, intersection, omitBy, uniq } from 'lodash'
 import safeCompare from 'safe-compare'
 import crypto from 'crypto'
@@ -7,6 +7,7 @@ import md5 from 'apache-md5'
 // @ts-ignore
 import crypt from 'apache-crypt'
 import express from 'express'
+import { isMatch } from 'matcher'
 
 export function verifyHtpasswdPassword(inputPassword: string, passwordHash: string): boolean {
     if (passwordHash.substr(0, 5) === '{SHA}') {
@@ -44,7 +45,7 @@ export class AuthorizationError extends Error {
     name = 'AuthorizationError'
 }
 
-interface AuthOpts {
+export interface AuthOpts {
     users: User[]
     anonymAutorisations: string[]
     authorizationsExtensions: Record<string, string[]>
@@ -90,28 +91,16 @@ export class Auth {
         return foundUser
     }
 
-    public ensureAuthorized(user: User | null, authorization: string | null) {
+    public ensureAuthorized(user: User | null, authorization: string) {
         if (!this.isAuthorized(user, authorization)) {
             throw new AuthorizationError
         }
     }
 
-    public isAuthorized(user: User | null, authorization: string | null): boolean {
+    public isAuthorized(user: User | null, authorization: string): boolean {
         const userExtendedAuthorizations = this.extendAuthorizations(user?.autorisations || this.anonymAutorisations)
 
-        if (authorization === null || authorization === undefined) {
-            if (userExtendedAuthorizations.includes('*')) {
-                return true
-            }
-            return false
-        }
-
-        // TODO add minimatch to accept ['read-*', '!read-b']
-
-        // I do not extend authorization because it adds some problematics
-        // And we can see users with roles, roles with authorizations, etc,
-        // But a resource should have a very specific authorization and not target a group
-        return userExtendedAuthorizations.includes(authorization)
+        return isMatch(authorization, userExtendedAuthorizations, { caseSensitive: true })
     }
 
     protected extendAuthorizations(autorisations: string[]): string[] {
@@ -126,40 +115,47 @@ export class Auth {
     }
 }
 
-function authMiddleware(
-    {realm, routeRoles, auth}:
-    {realm: string, routeRoles: string | string[], auth: Auth}
-) {
+export interface AuthMiddlewareOpts {
+    auth: Auth
+    realm: string
+    requiredAuthorization: string
+}
+
+export function authMiddleware({auth, realm, requiredAuthorization}: AuthMiddlewareOpts) {
     function demandAuth(res: express.Response) {
-        res.set('WWW-Authenticate', 'Basic realm="'+realm+'"').status(401).end()
+        res.set('WWW-Authenticate', 'Basic realm="'+encodeURIComponent(realm)+'"').status(401).end()
     }
 
-    return function (req: express.Request, res: express.Response, next: express.NextFunction) {
-        const userPassFromHeaders = auth(req)
+    return function (req: express.Request&{user?:User|null}, res: express.Response, next: express.NextFunction) {
+        const userPassFromHeaders = basicAuth(req)
 
+        // Anonym
         if (!userPassFromHeaders) {
-            // Anonym
-            if (!authorizator.isAutorised(null, routeRoles)) {
+            try {
+                auth.ensureAuthorized(null, requiredAuthorization)
+                req.user = null
+                return next()
+            } catch (error) {
+                if (!(error instanceof AuthenticationError)) {
+                    throw error
+                }
                 return demandAuth(res)
             }
+        }
 
-            (req as HttpServerRequest).user = null
-        } else {
-            // Not anonym
-            const user = authenticator.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
-
-            if (!user) {
+        try {
+            const user = auth.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
+            auth.ensureAuthorized(user, requiredAuthorization)
+            req.user = user
+            next()
+        } catch (error) {
+            if (error instanceof AuthenticationError) {
                 return demandAuth(res)
-            }
-
-            if (!authorizator.isAutorised(user, routeRoles)) {
+            } else if (error instanceof AuthorizationError) {
                 res.status(403).end()
                 return
             }
-
-            (req as HttpServerRequest).user = user
+            throw error
         }
-
-        next()
     }
 }
