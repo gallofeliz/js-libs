@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs'
 import md5 from 'apache-md5'
 // @ts-ignore
 import crypt from 'apache-crypt'
-import express from 'express'
+import {Request, Response, NextFunction} from 'express'
 import matcher from 'matcher'
 import auth from 'basic-auth'
 
@@ -118,15 +118,15 @@ export class Auth {
 export interface AuthMiddlewareOpts {
     auth: Auth
     realm: string
-    requiredAuthorization: string | ((req: express.Request) => string)
+    requiredAuthorization: string | ((req: Request) => string)
 }
 
 export function createAuthMiddleware({auth, realm, requiredAuthorization}: AuthMiddlewareOpts) {
-    function demandAuth(res: express.Response) {
+    function demandAuth(res: Response) {
         res.set('WWW-Authenticate', 'Basic realm="'+encodeURIComponent(realm)+'"').status(401).end()
     }
 
-    return function (req: express.Request&{user?:User|null}, res: express.Response, next: express.NextFunction) {
+    return function (req: Request&{user?:User|null}, res: Response, next: NextFunction) {
         const userPassFromHeaders = basicAuth(req)
 
         const reqRequiredAuthorization = requiredAuthorization instanceof Function
