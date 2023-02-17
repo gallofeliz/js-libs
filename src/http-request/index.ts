@@ -1,4 +1,3 @@
-import { Duration, durationToMilliSeconds } from '@gallofeliz/human-units-converter'
 import { UniversalLogger } from '@gallofeliz/logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
@@ -6,9 +5,6 @@ import querystring from 'querystring'
 import { validate, SchemaObject } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 import { pipeline } from 'stream/promises'
-
-/** @type integer */
-type integer = number
 
 export interface HttpRequestConfig {
    logger: UniversalLogger
@@ -18,8 +14,8 @@ export interface HttpRequestConfig {
    responseStream?: NodeJS.WritableStream
    responseType?: 'text' | 'json' | 'auto'
    responseTransformation?: string
-   timeout?: Duration
-   retries?: integer
+   timeout?: number
+   retries?: number
    headers?: Record<string, string | string[]>
    params?: Record<string, string | string[]> | [string, string][]
    bodyData?: NodeJS.ReadableStream | any
@@ -62,7 +58,7 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
     const gotOpts: Partial<Options> = {
         method: request.method as Method || 'GET',
         url: url,
-        timeout: { request: request.timeout ? durationToMilliSeconds(request.timeout) : undefined},
+        timeout: { request: request.timeout },
         retry: { limit: request.retries || 0},
         headers: request.headers || {},
         ...(request.auth ? {

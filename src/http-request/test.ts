@@ -1,33 +1,38 @@
-import request from '../src/http-request'
-import createLogger from '../src/logger'
-const logger = createLogger('info')
+import { httpRequest } from '.'
+import {createLogger} from '@gallofeliz/logger'
+const logger = createLogger()
 
+describe('Http request', () => {
+    it('test', async () => {
 
-;(async () => {
+        console.log(await httpRequest({
+            logger,
+            url: 'http://ip.jsontest.com/',
+            responseType: 'auto',
+            responseTransformation: '{"address": ip}',
+            resultSchema: {
+                type: 'object',
+                properties: {
+                    address: {type: 'string'}
+                },
+                required: ['address']
+            }
+        }))
 
-    console.log(await request({
-        logger,
-        url: 'http://ip.jsontest.com/',
-        responseType: 'auto',
-        responseTransformation: '{"address": ip}',
-        resultSchema: {
-            type: 'object',
-            properties: {
-                address: {type: 'string'}
-            },
-            required: ['address']
-        }
-    }))
+    })
+})
 
-    return
+// ;(async () => {
 
-    const ac = new AbortController
-    ac.abort()
-    console.log(await request({
-        logger,
-        abortSignal: ac.signal,
-        url: 'http://ip.jsontest.com/',
-        responseType: 'auto'
-    }))
+//     return
 
-})()
+//     const ac = new AbortController
+//     ac.abort()
+//     console.log(await request({
+//         logger,
+//         abortSignal: ac.signal,
+//         url: 'http://ip.jsontest.com/',
+//         responseType: 'auto'
+//     }))
+
+// })()
