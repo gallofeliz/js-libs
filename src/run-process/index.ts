@@ -1,7 +1,6 @@
 import { ChildProcess, spawn } from 'child_process'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { once, EventEmitter } from 'events'
-import { Duration, durationToMilliSeconds } from '@gallofeliz/human-units-converter'
 const { nextTick, env: processEnv } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
@@ -19,7 +18,7 @@ export interface ProcessConfig {
     cwd?: string
     env?: {[k: string]: string}
     killSignal?: NodeJS.Signals
-    timeout?: Duration
+    timeout?: number
     inputData?: NodeJS.ReadableStream | Process<any> | any
     inputType?: 'raw' | 'json'
     retries?: number
@@ -117,7 +116,7 @@ export class Process<Result extends any> extends EventEmitter {
                 env,
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: abortSignal,
-                timeout: this.config.timeout ? durationToMilliSeconds(this.config.timeout) : undefined
+                timeout: this.config.timeout
             }
         )
         this.process = process
