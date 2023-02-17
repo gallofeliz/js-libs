@@ -6,9 +6,6 @@ import { validate, SchemaObject } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 import { pipeline } from 'stream/promises'
 
-/** @type integer */
-type integer = number
-
 export interface HttpRequestConfig {
    logger: UniversalLogger
    abortSignal?: AbortSignal
@@ -18,7 +15,7 @@ export interface HttpRequestConfig {
    responseType?: 'text' | 'json' | 'auto'
    responseTransformation?: string
    timeout?: number
-   retries?: integer
+   retries?: number
    headers?: Record<string, string | string[]>
    params?: Record<string, string | string[]> | [string, string][]
    bodyData?: NodeJS.ReadableStream | any
@@ -31,6 +28,7 @@ export interface HttpRequestConfig {
 }
 
 export class AbortError extends Error {
+    name = 'AbortError'
     code = 'ABORT_ERR'
     message = 'The operation was aborted'
 }
