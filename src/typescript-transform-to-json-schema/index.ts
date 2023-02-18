@@ -2,9 +2,10 @@ import * as ts from 'typescript';
 import { execSync } from 'child_process'
 
 export function tsToJsSchema<T extends any>(): Record<string, any> {
-    throw new Error('To be parsed')
+    throw new Error('tsToJsSchema<>() not compiled. Do you use ttypescript and have you added in your tsconfig.json `"plugins": [ { "transform": "@gallofeliz/typescript-transform-to-json-schema" } ] ?`')
 }
 
+// @internal
 export default function(program: ts.Program, pluginOptions: {}) {
     const typeChecker = program.getTypeChecker();
 
@@ -13,7 +14,7 @@ export default function(program: ts.Program, pluginOptions: {}) {
             function visitor(node: ts.Node): ts.Node | undefined {
                 if (ts.isImportDeclaration(node)) {
                     const module = (node.moduleSpecifier as ts.StringLiteral).text;
-                    if (module === './transformer-def') {
+                    if (module === '@gallofeliz/typescript-transform-to-json-schema') {
                         return
                     }
                 }

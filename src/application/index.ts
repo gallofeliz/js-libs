@@ -33,10 +33,6 @@ export interface AppDefinition<Config> {
     run: RunHandler<Config>
 }
 
-// export function waitUntilAborted(signal: AbortSignal) {
-//     return new Promise(resolve => signal.addEventListener('abort', resolve))
-// }
-
 function createDiContainer(builtinServices: Omit<InjectedServices<any>, 'container'>, servicesDefinition: ServicesDefinition<any>): Services<any> {
     const buildingSymbol = Symbol('building')
 
