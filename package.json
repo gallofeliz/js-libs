@@ -51,10 +51,8 @@
     "src/typescript-transform-to-json-schema",
     "src/user-communicate",
     "src/http-request",
-    "src/jobs",
-    "src/fn-scheduler",
-    "src/fs-watcher",
     "src/auth",
-    "src/http-server"
+    "src/http-server",
+    "src/tasker"
   ]
 }
