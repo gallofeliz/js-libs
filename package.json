@@ -54,6 +54,7 @@
     "src/jobs",
     "src/fn-scheduler",
     "src/fs-watcher",
-    "src/auth"
+    "src/auth",
+    "src/http-server"
   ]
 }

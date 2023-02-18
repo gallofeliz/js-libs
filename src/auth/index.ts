@@ -118,7 +118,7 @@ export class Auth {
 export interface AuthMiddlewareOpts {
     auth: Auth
     realm: string
-    requiredAuthorization: string | ((req: Request) => string)
+    requiredAuthorization?: string | ((req: Request) => string) | null
     requiredAuthentication?: boolean
 }
 
@@ -141,7 +141,9 @@ export function createAuthMiddleware({auth, realm, requiredAuthorization, requir
             }
 
             try {
-                auth.ensureAuthorized(null, reqRequiredAuthorization)
+                if (reqRequiredAuthorization) {
+                    auth.ensureAuthorized(null, reqRequiredAuthorization)
+                }
                 req.user = null
                 return next()
             } catch (error) {
@@ -154,7 +156,9 @@ export function createAuthMiddleware({auth, realm, requiredAuthorization, requir
 
         try {
             const user = auth.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
-            auth.ensureAuthorized(user, reqRequiredAuthorization)
+            if (reqRequiredAuthorization) {
+                auth.ensureAuthorized(user, reqRequiredAuthorization)
+            }
             req.user = user
             next()
         } catch (error) {

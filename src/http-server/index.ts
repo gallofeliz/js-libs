@@ -1,4 +1,4 @@
-import { Logger } from '../logger'
+import { UniversalLogger } from '@gallofeliz/logger'
 import express, { Router } from 'express'
 import { OutgoingHttpHeaders, Server, IncomingHttpHeaders, request } from 'http'
 import {
@@ -11,11 +11,10 @@ import { basename } from 'path'
 import { Socket } from 'net'
 import { once } from 'events'
 import morgan from 'morgan'
-import { validate, SchemaObject } from '../validate'
+import { validate, SchemaObject } from '@gallofeliz/validate'
 import { extendErrors } from 'ajv/dist/compile/errors'
 import { v4 as uuid } from 'uuid'
 import stream from 'stream'
-import { HttpRequestConfig } from '../http-request'
 import * as expressCore from 'express-serve-static-core'
 import { createAuthMiddleware, Auth, User , AuthMiddlewareOpts} from '@gallofeliz/auth'
 import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
@@ -28,7 +27,7 @@ export type HttpServerRequest<
 > = express.Request & {
     uuid: string
     abortSignal: AbortSignal
-    logger: Logger
+    logger: UniversalLogger
     params: Params
     query: Query
     body: Body
@@ -90,7 +89,7 @@ export interface HttpServerConfig {
             }
         }>
     }
-    logger: Logger
+    logger: UniversalLogger
 }
 
 // function nothingMiddleware() {
@@ -106,22 +105,22 @@ export function runServer({abortSignal, ...config}: HttpServerConfig & {abortSig
 }
 
 export class HttpServer {
-    protected logger: Logger
+    protected logger: UniversalLogger
     protected app: express.Application
     protected server?: Server
     protected connections: Record<string, Socket> = {}
     protected config: HttpServerConfig
-    protected authenticator: Authenticator
-    protected authorizator: Authorizator
+    protected auth: Auth
 
     constructor(config: HttpServerConfig) {
         this.config = config
         this.logger = config.logger
 
-        this.authenticator = new Authenticator(this.config.auth?.users || [])
-        this.authorizator = this.config.auth
-            ? new Authorizator(this.config.auth.autorisationsPolicies || {}, this.config.auth.anonymAutorisations || [])
-            : new Authorizator({}, '*')
+        this.auth = new Auth({
+            users: this.config.auth?.users,
+            anonymAutorisations: this.config.auth ? this.config.auth?.anonymAutorisations : ['*'],
+            authorizationsExtensions: this.config.auth?.authorizationsExtensions
+        })
 
         this.app = express()
             .disable('x-powered-by')
@@ -132,7 +131,7 @@ export class HttpServer {
             .use(urlencodedParser({ extended: true }))
             .use(rawParser())
             .use((req, res, next) => {
-                (req as HttpServerRequest).authorizator = this.authorizator;
+                (req as HttpServerRequest).auth = this.auth;
                 (req as HttpServerRequest).uuid = uuid()
                 const reqAbortController = new AbortController;
                 (req as HttpServerRequest).abortSignal = reqAbortController.signal
@@ -163,13 +162,15 @@ export class HttpServer {
 
         if (this.config.webUi) {
             this.app.use('/',
-                authMiddleware({
-                    realm: this.config.auth?.realm || 'app',
-                    routeRoles: this.config.auth
-                        ? this.config.webUi.auth?.autorisations || this.config.auth.defaultRoutesAutorisations || []
-                        : '*',
-                    authenticator: this.authenticator,
-                    authorizator: this.authorizator
+                createAuthMiddleware({
+                    realm: this.config.auth?.realm || this.config.name || 'app',
+                    requiredAuthentication: this.config.webUi.auth?.requiredAuthentication !== undefined
+                        ? this.config.webUi.auth?.requiredAuthentication
+                        : this.config.auth?.defaultRoutesRequiredAuthentication || false,
+                    requiredAuthorization: this.config.webUi.auth?.requiredAuthorization !== undefined
+                        ? this.config.webUi.auth.requiredAuthorization
+                        : this.config.auth?.defaultRoutesRequiredAutorisation,
+                    auth: this.auth
                 }),
                 express.static(this.config.webUi.filesPath)
             )
@@ -179,10 +180,6 @@ export class HttpServer {
             this.logger.notice('Http Server error', { e: err })
             res.status(500).end()
         })
-    }
-
-    public getAuthorizator() {
-        return this.authorizator
     }
 
     public async start(abortSignal?: AbortSignal) {
@@ -368,7 +365,24 @@ export class HttpServer {
 
             (swaggerDocument.paths[swaggerRoutePath][method as 'get'] as OpenApiOperation) = {
                 description: route.description,
-                security: !this.config.auth || this.authorizator.isAutorised(null, route.auth?.autorisations || []) ? [] : [{basic: []}],
+                security: (() => {
+                    if (!this.config.auth) {
+                        return []
+                    }
+                    if (route.auth?.requiredAuthentication) {
+                        return [{basic: []}]
+                    }
+                    if (!route.auth?.requiredAuthentication && !this.config.auth.defaultRoutesRequiredAuthentication) {
+                        return []
+                    }
+                    if (typeof (route.auth?.requiredAuthorization || this.config.auth.defaultRoutesRequiredAutorisation) === 'function') {
+                        return [{basic: []}]
+                    }
+                    if (!this.auth.isAuthorized(null, (route.auth?.requiredAuthorization || this.config.auth.defaultRoutesRequiredAutorisation as any))) {
+                        return [{basic: []}]
+                    }
+                    return []
+                })(),
                 parameters,
                 requestBody,
                 responses: {
@@ -380,13 +394,15 @@ export class HttpServer {
             }
 
             apiRouter[method as 'all'](route.path,
-                authMiddleware({
-                    realm: this.config.auth?.realm || 'app',
-                    routeRoles: this.config.auth
-                        ? route.auth?.autorisations || this.config.auth.defaultRoutesAutorisations || []
-                        : '*',
-                    authenticator: this.authenticator,
-                    authorizator: this.authorizator
+                createAuthMiddleware({
+                    realm: this.config.auth?.realm || this.config.name || 'app',
+                    requiredAuthentication: route.auth?.requiredAuthentication !== undefined
+                        ? route.auth?.requiredAuthentication
+                        : this.config.auth?.defaultRoutesRequiredAuthentication || false,
+                    requiredAuthorization: route.auth?.requiredAuthorization !== undefined
+                        ? route.auth?.requiredAuthorization
+                        : this.config.auth?.defaultRoutesRequiredAutorisation,
+                    auth: this.auth
                 }),
                 async (req, res, next) => {
                     const uuid = (req as any).uuid
