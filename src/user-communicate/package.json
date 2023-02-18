@@ -1,8 +1,7 @@
 {
   "name": "@gallofeliz/user-communicate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,5 +14,10 @@
   "bugs": {
     "url": "https://github.com/gallofeliz/js-libs/issues"
   },
-  "homepage": "https://github.com/gallofeliz/js-libs#readme"
+  "homepage": "https://github.com/gallofeliz/js-libs#readme",
+  "dependencies": {
+    "@gallofeliz/http-request": "^0.1.1",
+    "@gallofeliz/run-process": "^0.1.2",
+    "@gallofeliz/validate": "^0.1.2"
+  }
 }
