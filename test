@@ -32,6 +32,6 @@ trap "rm $DIR/run-test-r.js" EXIT
 cd $PATHH
 
 # echo '{"exclude": ["**/run-test-r.js", "**/*test.ts"], "temp-dir": "/tmp/nyc-report", "check-coverage": true, "branches": '$coverage', "lines": '$coverage', "functions": '$coverage', "statements": '$coverage'}' > /tmp/nyc.json
-echo '{"exclude": ["**/run-test-r.js", "**/*test.ts"], "temp-dir": "/tmp/nyc-report", "check-coverage": false}' > /tmp/nyc.json
+echo '{"reporter": ["json-summary", "text"], "exclude": ["**/run-test-r.js", "**/*test.ts"], "temp-dir": "/tmp/nyc-tmp", "check-coverage": false, "report-dir": "/tmp/nyc-report"}' > /tmp/nyc.json
 
 npx nyc --nycrc-path /tmp/nyc.json mocha -r $DIR/run-test-r.js '**/*test.ts' --ignore 'node_modules/**'
