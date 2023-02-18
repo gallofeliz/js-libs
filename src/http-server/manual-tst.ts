@@ -1,6 +1,6 @@
 import {createLogger} from '@gallofeliz/logger'
-import HttpServer, { HttpServerRequest, HttpServerResponse } from '.'
-import httpRequest from '@gallofeliz/http-request'
+import { HttpServer, HttpServerRequest, HttpServerResponse } from '.'
+import {httpRequest} from '@gallofeliz/http-request'
 import { runProcess } from '@gallofeliz/run-process'
 
 const logger = createLogger()
@@ -14,7 +14,7 @@ const server = new HttpServer({
             {
                 username: 'user',
                 password: 'pass',
-                autorisations: ['manager'] // ressources ? [{ auth: 'read-book', ressources: ['1', '2'] }] or ['read-book-1', 'read-book-1']
+                autorisations: ['manager']
             },
             {
                 username: 'boss',
@@ -28,9 +28,9 @@ const server = new HttpServer({
             }
         ],
         anonymAutorisations: ['PUBLIC'],
-        autorisationsPolicies: {
+        authorizationsExtensions: {
             manager: ['talki-read', 'talki-write'],
-            admin: '*'
+            admin: ['*']
         }
     },
     api: {
@@ -39,7 +39,7 @@ const server = new HttpServer({
                 description: 'Welcome route !',
                 path: '/welcome',
                 auth: {
-                    autorisations: ['PUBLIC']
+                    requiredAuthorization: 'PUBLIC'
                 },
                 outputBodySchema: {
                     type: 'object',
@@ -54,7 +54,7 @@ const server = new HttpServer({
             {
                 path: '/process-error',
                 auth: {
-                    autorisations: '*'
+                    requiredAuthorization: 'OK'
                 },
                 async handler({logger}, res) {
                     res.header('Content-Disposition', 'attachment; filename="image.jpeg"')
@@ -76,7 +76,7 @@ const server = new HttpServer({
             {
                 path: '/image',
                 auth: {
-                    autorisations: '*'
+                    requiredAuthorization: null
                 },
                 outputContentType: 'image/jpeg',
                 async handler({logger}, res) {
@@ -102,9 +102,6 @@ const server = new HttpServer({
             {
                 method: 'POST',
                 path: '/abortable',
-                auth: {
-                    autorisations: '*'
-                },
                 inputBodySchema: {
                     type: 'string'
                 },
@@ -123,9 +120,6 @@ const server = new HttpServer({
             },
             {
                 path: '/stream',
-                auth: {
-                    autorisations: '*'
-                },
                 async handler({logger}, res) {
                     res.contentType('text/plain')
                     await runProcess({
@@ -153,16 +147,13 @@ const server = new HttpServer({
                     type: 'string'
                 },
                 path: '/talki/:id',
-                auth: {
-                    autorisations: ['talki-read']
-                },
-                async handler({query, params, user, authorizator}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
+                async handler({query, params, user, auth}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
                     if (query.onlyIt) {
                         send(params.id.toString())
                         return
                     }
 
-                    const isAuthorizedToTalkiWrite = authorizator.isAutorised(user, 'talki-write')
+                    const isAuthorizedToTalkiWrite = auth.isAuthorized(user, 'talki-write')
 
                     send('hello ' + user!.username + ', you want talki n°' + params.id + ' ; you are autorized to talki-write : ' + isAuthorizedToTalkiWrite.toString())
 

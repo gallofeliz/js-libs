@@ -1,34 +1,38 @@
-import communicate from "."
+import {communicate} from "."
 import {createLogger} from '@gallofeliz/logger'
+import { strictEqual } from "assert"
 
-(async () => {
+describe('user-communicate', () => {
+    it('test', async () => {
 
-    const cmdResponse = await communicate({
-        userConfig: {
-            type: 'command',
-            command: 'wc -w',
-            outputType: 'text',
-            outputTransformation: '$number()'
-        },
-        logger: createLogger('info'),
-        data: 'There are 3 errors',
-        resultSchema: { type: 'number' }
-    })
+        const cmdResponse = await communicate({
+            userConfig: {
+                type: 'command',
+                command: 'wc -w',
+                outputType: 'text',
+                outputTransformation: '$number()'
+            },
+            logger: createLogger(),
+            data: 'There are 3 errors',
+            resultSchema: { type: 'number' }
+        })
 
-    console.log(cmdResponse)
+        strictEqual(cmdResponse, 4)
 
-    const httpResponse = await communicate({
-        userConfig: {
-            type: 'http',
-            method: 'POST',
-            url: 'https://httpbin.org/anything',
-            responseType: 'json',
-            responseTransformation: '$number($split(data, " ")[2])'
-        },
-        logger: createLogger('info'),
-        data: 'There are 3 errors',
-        resultSchema: { type: 'number' }
-    })
+        const httpResponse = await communicate({
+            userConfig: {
+                type: 'http',
+                method: 'POST',
+                url: 'https://httpbin.org/anything',
+                responseType: 'json',
+                responseTransformation: '$number($split(data, " ")[2])'
+            },
+            logger: createLogger(),
+            data: 'There are 3 errors',
+            resultSchema: { type: 'number' }
+        })
 
-    console.log(httpResponse)
-})()
+        strictEqual(httpResponse, 3)
+
+    }).timeout(5000)
+})

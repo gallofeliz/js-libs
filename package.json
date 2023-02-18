@@ -49,12 +49,12 @@
     "src/run-process",
     "src/validate",
     "src/typescript-transform-to-json-schema",
-    "src/human-units-converter",
     "src/user-communicate",
     "src/http-request",
     "src/jobs",
     "src/fn-scheduler",
     "src/fs-watcher",
-    "src/htpasswd-verify"
+    "src/auth",
+    "src/http-server"
   ]
 }

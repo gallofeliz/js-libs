@@ -1,6 +1,6 @@
 {
   "name": "@gallofeliz/run-process",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -16,7 +16,6 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
-    "@gallofeliz/human-units-converter": "^0.1.0",
     "@gallofeliz/logger": "^0.1.0",
     "@gallofeliz/validate": "^0.1.0",
     "jsonata": "^2.0.1",

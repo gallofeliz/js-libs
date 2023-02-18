@@ -1,6 +1,6 @@
 import {createLogger} from '@gallofeliz/logger'
-import HttpServer from '.'
-import httpRequest from '@gallofeliz/http-request'
+import {HttpServer} from '.'
+import {httpRequest} from '@gallofeliz/http-request'
 
 const logger = createLogger()
 
