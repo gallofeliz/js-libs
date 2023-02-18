@@ -2,8 +2,16 @@ import {createLogger} from '@gallofeliz/logger'
 import { HttpServer, HttpServerRequest, HttpServerResponse } from '.'
 import {httpRequest} from '@gallofeliz/http-request'
 import { runProcess } from '@gallofeliz/run-process'
+import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 
 const logger = createLogger()
+
+interface Welcome {
+    message: string
+    details?: {
+        id: number
+    }
+}
 
 const server = new HttpServer({
     port: 8080,
@@ -29,7 +37,7 @@ const server = new HttpServer({
         ],
         anonymAutorisations: ['PUBLIC'],
         authorizationsExtensions: {
-            manager: ['talki-read', 'talki-write'],
+            manager: ['talki-read', 'talki-write', 'talki[*]', '!talki[33]'],
             admin: ['*']
         }
     },
@@ -38,24 +46,15 @@ const server = new HttpServer({
             {
                 description: 'Welcome route !',
                 path: '/welcome',
-                auth: {
-                    requiredAuthorization: 'PUBLIC'
-                },
-                outputBodySchema: {
-                    type: 'object',
-                    properties: {
-                        message: {type: 'string'}
-                    }
-                },
+                requiredAuthorization: 'PUBLIC',
+                outputBodySchema: tsToJsSchema<Welcome>(),
                 async handler(_, {send}) {
                     send({message: 'Welcome !'})
                 }
             },
             {
                 path: '/process-error',
-                auth: {
-                    requiredAuthorization: 'OK'
-                },
+                requiredAuthorization: 'OK',
                 async handler({logger}, res) {
                     res.header('Content-Disposition', 'attachment; filename="image.jpeg"')
                     await runProcess({
@@ -75,9 +74,7 @@ const server = new HttpServer({
             },
             {
                 path: '/image',
-                auth: {
-                    requiredAuthorization: null
-                },
+                requiredAuthorization: null,
                 outputContentType: 'image/jpeg',
                 async handler({logger}, res) {
                     await httpRequest({
@@ -147,6 +144,7 @@ const server = new HttpServer({
                     type: 'string'
                 },
                 path: '/talki/:id',
+                requiredAuthorization(res) { return 'talki['+ res.params.id +']' },
                 async handler({query, params, user, auth}: HttpServerRequest<{id: number}, {onlyIt: boolean}>, {send}: HttpServerResponse<string>) {
                     if (query.onlyIt) {
                         send(params.id.toString())

@@ -1,7 +1,7 @@
 import * as ts from 'typescript';
 import { execSync } from 'child_process'
 
-export function tsToJsSchema<T extends object>(): Record<string, any> {
+export function tsToJsSchema<T extends any>(): Record<string, any> {
     throw new Error('To be parsed')
 }
 

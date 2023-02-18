@@ -92,13 +92,17 @@ export class Auth {
         return foundUser
     }
 
-    public ensureAuthorized(user: User | null, authorization: string) {
+    public ensureAuthorized(user: User | null, authorization: string | null) {
         if (!this.isAuthorized(user, authorization)) {
             throw new AuthorizationError
         }
     }
 
-    public isAuthorized(user: User | null, authorization: string): boolean {
+    public isAuthorized(user: User | null, authorization: string | null): boolean {
+        if (authorization === null) {
+            return true
+        }
+
         const userExtendedAuthorizations = this.extendAuthorizations(user?.autorisations || this.anonymAutorisations)
 
         return matcher(authorization, userExtendedAuthorizations, { caseSensitive: true }).length === 1
@@ -130,6 +134,8 @@ export function createAuthMiddleware({auth, realm, requiredAuthorization, requir
     return function (req: Request&{user?:User|null}, res: Response, next: NextFunction) {
         const userPassFromHeaders = basicAuth(req)
 
+        requiredAuthorization = requiredAuthorization === undefined ? null : requiredAuthorization
+
         const reqRequiredAuthorization = requiredAuthorization instanceof Function
              ? requiredAuthorization(req)
              : requiredAuthorization
@@ -141,9 +147,7 @@ export function createAuthMiddleware({auth, realm, requiredAuthorization, requir
             }
 
             try {
-                if (reqRequiredAuthorization) {
-                    auth.ensureAuthorized(null, reqRequiredAuthorization)
-                }
+                auth.ensureAuthorized(null, reqRequiredAuthorization)
                 req.user = null
                 return next()
             } catch (error) {
@@ -156,9 +160,7 @@ export function createAuthMiddleware({auth, realm, requiredAuthorization, requir
 
         try {
             const user = auth.authenticate(userPassFromHeaders.name, userPassFromHeaders.pass)
-            if (reqRequiredAuthorization) {
-                auth.ensureAuthorized(user, reqRequiredAuthorization)
-            }
+            auth.ensureAuthorized(user, reqRequiredAuthorization)
             req.user = user
             next()
         } catch (error) {
