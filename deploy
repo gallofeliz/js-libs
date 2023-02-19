@@ -39,7 +39,16 @@ for LIB in $LIBS; do
     git commit -m "$LIB/$VERSION $COMMIT_MSG"
     git tag -a "$LIB/$VERSION" -m "$LIB/$VERSION"
 
+    rm -Rf /tmp/nyc-report
+
+    ./test "$LIB"
     ./build "$LIB"
+
+    MESSAGE='*Note: This module is part of @gallofeliz/js-libs that is a personal project. It is not developed nor tested for applications that need high security or scalability.*'
+    sed -i '/^# /a \\n'"$MESSAGE" $DEST/README.md
+
+    COVERAGE="![](https://badgen.net/badge/coverage/$(cat /tmp/nyc-report/coverage-summary.json | jq .total.lines.pct)%25/blue)"
+    sed -i '/^# /a '"$COVERAGE" $DEST/README.md
 
     cd $DEST
 

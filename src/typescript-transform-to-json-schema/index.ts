@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
 import { execSync } from 'child_process'
+import * as tsjson from 'ts-json-schema-generator'
 
 export function tsToJsSchema<T extends any>(): Record<string, any> {
     throw new Error('tsToJsSchema<>() not compiled. Do you use ttypescript and have you added in your tsconfig.json `"plugins": [ { "transform": "@gallofeliz/typescript-transform-to-json-schema" } ] ?`')
@@ -25,16 +26,12 @@ export default function(program: ts.Program, pluginOptions: {}) {
 
                         const type = node.typeArguments![0].getText()
 
-                        const schema = JSON.parse(
-                            execSync(
-                                'npx ts-json-schema-generator --id '+type+' --expose all --path '+sourceFile.fileName+' --type '+type+' --no-top-ref -f tsconfig.json'
-                                , {encoding: 'utf8'})
+                        const generator = new tsjson.SchemaGenerator(
+                            program,
+                            tsjson.createParser(program, {}),
+                            tsjson.createFormatter({})
                         )
-
-                        // if (schema.$ref) {
-                        //     const key = schema.$ref.replace('')
-                        // }
-
+                        const schema = generator.createSchema(type)
                         const strSchema = JSON.stringify(schema)
 
                         return ts.factory.createCallExpression(
@@ -45,9 +42,6 @@ export default function(program: ts.Program, pluginOptions: {}) {
 
                     }
                 }
-                // if (ts.isCallExpression(node)) {
-                //     return ts.createLiteral('call');
-                // }
                 return ts.visitEachChild(node, visitor, ctx);
             }
             return ts.visitEachChild(sourceFile, visitor, ctx);

@@ -4,7 +4,7 @@ Convert typescript type to jsonSchema during typescript compilation, using https
 
 ## Configure
 
-- Use ttypescript
+- Use ttypescript (because typescript does not support custom transformers)
 - Configure tsconfig.json
 ```json
 {
@@ -18,7 +18,7 @@ Convert typescript type to jsonSchema during typescript compilation, using https
 
 ## Run
 
-`ttsc` or `ts-node -C ttypescript mainfile.ts`
+`ttsc` or `ts-node -C ttypescript index.ts`
 
 ## What
 
@@ -63,3 +63,7 @@ Then, we can have :
         }
     }
 ```
+
+## Dev
+
+index.d.ts and index.js are commited because needed for js-libs with ts-node to avoid memory loop problems.

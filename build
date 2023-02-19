@@ -17,14 +17,6 @@ find dist -mindepth 1 -maxdepth 1 -not -name "$LIB" -exec rm -R {} \;
 
 find "$SRC" -mindepth 1 -maxdepth 1 -not -name '*.ts' -not -name 'node_modules' -exec cp -t "$DEST" {} \;
 
-COVERAGE="![](https://badgen.net/badge/coverage/$(cat /tmp/nyc-report/coverage-summary.json | jq .total.lines.pct)%25/blue)"
-
-MESSAGE='*Note: This module is part of @gallofeliz/js-libs that is a personal project. It is not developed nor tested for applications that need high security or scalability.*'
-
-sed -i '/^# /a \\n'"$MESSAGE" $DEST/README.md
-
-sed -i '/^# /a '"$COVERAGE" $DEST/README.md
-
 echo "Test build"
 
 rm -Rf /tmp/test-build
