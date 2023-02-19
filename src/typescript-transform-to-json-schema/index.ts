@@ -26,12 +26,35 @@ export default function(program: ts.Program, pluginOptions: {}) {
 
                         const type = node.typeArguments![0].getText()
 
-                        const generator = new tsjson.SchemaGenerator(
-                            program,
-                            tsjson.createParser(program, {}),
-                            tsjson.createFormatter({})
-                        )
-                        const schema = generator.createSchema(type)
+                        let schema
+
+                        switch(type) {
+                            case 'string':
+                            case 'number':
+                            case 'boolean':
+                            case 'null':
+                                schema = {type: type}
+                                break
+                            // case 'Date':
+                            //     schema = {type: 'string', format: 'date-time'}
+                            //     break
+                            default:
+                                const config: any = {
+                                    topRef: false,
+                                    schemaId: type,
+                                    expose: 'all',
+                                    path: sourceFile.fileName
+                                }
+
+                                const generator = new tsjson.SchemaGenerator(
+                                    program,
+                                    tsjson.createParser(program, config),
+                                    tsjson.createFormatter(config),
+                                    config
+                                )
+                                schema = generator.createSchema(type)
+
+                        }
                         const strSchema = JSON.stringify(schema)
 
                         return ts.factory.createCallExpression(

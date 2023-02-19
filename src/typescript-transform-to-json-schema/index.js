@@ -25,7 +25,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tsToJsSchema = void 0;
 const ts = __importStar(require("typescript"));
-const child_process_1 = require("child_process");
+const tsjson = __importStar(require("ts-json-schema-generator"));
 function tsToJsSchema() {
     throw new Error('tsToJsSchema<>() not compiled. Do you use ttypescript and have you added in your tsconfig.json `"plugins": [ { "transform": "@gallofeliz/typescript-transform-to-json-schema" } ] ?`');
 }
@@ -46,8 +46,37 @@ function default_1(program, pluginOptions) {
                     const declaration = (_a = typeChecker.getResolvedSignature(node)) === null || _a === void 0 ? void 0 : _a.declaration;
                     if (declaration && !ts.isJSDocSignature(declaration) && ((_b = declaration.name) === null || _b === void 0 ? void 0 : _b.getText()) === 'tsToJsSchema') {
                         const type = node.typeArguments[0].getText();
-                        const schema = JSON.parse((0, child_process_1.execSync)('npx ts-json-schema-generator --id ' + type + ' --expose all --path ' + sourceFile.fileName + ' --type ' + type + ' --no-top-ref -f tsconfig.json', { encoding: 'utf8' }));
-                        const strSchema = JSON.stringify(schema);
+
+                        let schema
+
+                        switch(type) {
+                            case 'string':
+                            case 'number':
+                            case 'boolean':
+                            case 'null':
+                                schema = {type: type}
+                                break
+                            // case 'Date':
+                            //     schema = {type: 'string', format: 'date-time'}
+                            //     break
+                            default:
+                                const config = {
+                                    topRef: false,
+                                    schemaId: type,
+                                    expose: 'all',
+                                    path: sourceFile.fileName
+                                }
+
+                                const generator = new tsjson.SchemaGenerator(
+                                    program,
+                                    tsjson.createParser(program, config),
+                                    tsjson.createFormatter(config),
+                                    config
+                                )
+                                schema = generator.createSchema(type)
+
+                        }
+                        const strSchema = JSON.stringify(schema)
                         return ts.factory.createCallExpression(ts.factory.createRegularExpressionLiteral('JSON.parse'), [ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral('string'))], [ts.factory.createStringLiteral(strSchema)]);
                     }
                 }
