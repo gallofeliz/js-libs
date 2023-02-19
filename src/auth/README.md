@@ -1,17 +1,18 @@
 # Auth
 
 Authentication/Authorization:
-- [X] Support Apache generated credentials
-- [X] Authenticate users
-- [X] Authorize users/guest(anonym) with authorizations
-- [X] Express Middleware with static requiredAuthorization or request generated requiredAuthorization
-- [X] Free authorizations nomenclature, example :
+- [✓] Support Apache generated credentials
+- [✓] Authenticate users
+- [✓] Authorize users/guest(anonym) with authorizations
+- [✓] Express Middleware with static requiredAuthorization or request generated requiredAuthorization
+- [✓] Free authorizations nomenclature, example :
   - namespace.operation-resource[id]
   - namespace.resource[id].operation
   - resource
   - operation
   - namespace/resource/id/operation
   - What you want ! But caution that read-article-* matches read-article-33 but also read-article-333 and read-article-author-email
+- [-] Multi requireAuth for example to separate operations to resources (['operation.article.write', 'resource.article[\*]'])
 
 ```typescript
 import { Auth, createAuthMiddleware } from '.'

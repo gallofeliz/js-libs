@@ -1,17 +1,17 @@
 # Http Server
 
 Advanced Http Server:
-- [X] Simple declaration
-- [X] Logged
-- [X] Server public path
-- [X] Simple users and ACL management
-- [X] Swagger UI & document auto generated
-- [X] Validate query, params and input body
-- [X] Input/Output transformation depending on Request/Response Accept/Content-Type headers
-- [X] Error handling (async use)
-- [X] Auto close Response (async use)
-- [X] Abortable
-- [ ] Well tested :(
+- [✓] Simple declaration
+- [✓] Logged
+- [✓] Server public path
+- [✓] Simple users and ACL management
+- [✓] Swagger UI & document auto generated
+- [✓] Validate query, params and input body
+- [✓] Input/Output transformation depending on Request/Response Accept/Content-Type headers
+- [✓] Error handling (async use)
+- [✓] Auto close Response (async use)
+- [✓] Abortable
+- [-] Well tested :(
 
 Examples
 
