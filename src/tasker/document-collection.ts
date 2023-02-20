@@ -1,14 +1,14 @@
 import Datastore from '@seald-io/nedb'
+import traverse from 'traverse'
+import { mapKeys } from 'lodash'
 
 export interface DocumentCollectionQuery {
     [filter: string]: any
 }
 
-export interface DocumentCollectionSort {
-    [filter: string]: 1 | -1
-}
+export type DocumentCollectionSort<Document extends GenericDocument> = Partial<Record<keyof Document, 1 | -1>>
 
-export type DocumentCollectionUpdate<T> = T | {
+export type DocumentCollectionUpdate<Document extends GenericDocument> = Document | {
     [filter: string]: any
 }
 
@@ -23,8 +23,8 @@ export interface DocumentCollection<Document extends GenericDocument> {
     updateOne(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>, {returnDocument, assertUpdated}?: {returnDocument?: boolean, assertUpdated?: boolean}): typeof returnDocument extends true ? Promise<Document | undefined> : Promise<boolean>
     remove(query: DocumentCollectionQuery): Promise<number>
     removeOne(query: DocumentCollectionQuery, {assertRemoved}?: {assertRemoved?: boolean}): Promise<boolean>
-    find(query: DocumentCollectionQuery, sort?: DocumentCollectionSort, limit?: number, skip?: number): Promise<Document[]>
-    findOne(query: DocumentCollectionQuery, sort?: DocumentCollectionSort, {assertFound}?: {assertFound?: boolean}): Promise<Document | undefined>
+    find(query: DocumentCollectionQuery, sort?: DocumentCollectionSort<Document>, limit?: number, skip?: number): Promise<Document[]>
+    findOne(query: DocumentCollectionQuery, sort?: DocumentCollectionSort<Document>, {assertFound}?: {assertFound?: boolean}): Promise<Document | undefined>
     count(query: DocumentCollectionQuery): Promise<number>
     has(query: DocumentCollectionQuery): Promise<boolean>
 }
@@ -76,11 +76,11 @@ export class NeDbDocumentCollection<Document extends GenericDocument> implements
     }
 
 
-    public async find(query: DocumentCollectionQuery, sort?: DocumentCollectionSort, limit?: number, skip?: number) {
+    public async find(query: DocumentCollectionQuery, sort?: DocumentCollectionSort<Document>, limit?: number, skip?: number) {
         return await this.datastore.findAsync(query).sort(sort).limit(limit || Infinity).skip(skip || 0).execAsync() as Document[]
     }
 
-    public async findOne(query: DocumentCollectionQuery, sort?: DocumentCollectionSort, {assertFound}: {assertFound?: boolean} = {}) {
+    public async findOne(query: DocumentCollectionQuery, sort?: DocumentCollectionSort<Document>, {assertFound}: {assertFound?: boolean} = {}) {
         const founds = await this.find(query, sort, 1)
 
         if (assertFound && founds.length === 0) {
