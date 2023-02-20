@@ -58,6 +58,14 @@ describe('Tasker', () => {
 
         console.log('task', await tasker.getTask(taskUuid))
 
+        ;(async () => {
+            for await (const log of await tasker.listenTaskLogs(taskUuid, { fromBeginning: true })) {
+                if (log) {
+                    console.log('listenTaskLogs received from beginning', log)
+                }
+            }
+        })()
+
         await new Promise(resolve => setTimeout(resolve, 250))
 
         console.log('has listeners (dirty, should not)', (tasker as any).internalEmitter.eventNames().length !== 0)

@@ -146,8 +146,25 @@ export class Tasker {
         { fromBeginning = false, abortSignal }: {fromBeginning?: boolean, abortSignal?: AbortSignal} = {}
     ) {
         const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
-        const alreadyLogs = fromBeginning ? await this.logsCollection.find({ taskUuid: uuid }) : []
         const internalEmitter = this.internalEmitter
+
+        let alreadyLogs: object[] = []
+
+        if (fromBeginning) {
+
+            function onLogDuringFetchingLogs(log: object) {
+                alreadyLogs.push(log)
+            }
+
+            internalEmitter.on('log.' + uuid, onLogDuringFetchingLogs)
+
+            alreadyLogs = [
+                ...await this.logsCollection.find({ taskUuid: uuid }),
+                ...alreadyLogs
+            ]
+
+            internalEmitter.off('log.' + uuid, onLogDuringFetchingLogs)
+        }
 
         return function*() {
             for (const log of alreadyLogs) {
