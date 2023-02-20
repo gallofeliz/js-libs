@@ -141,6 +141,55 @@ export class Tasker {
         throw task.status === 'aborted' ? task.abortReason : task.error
     }
 
+    public async listenTaskLogs(
+        uuid: string,
+        { fromBeginning = false, abortSignal }: {fromBeginning?: boolean, abortSignal?: AbortSignal} = {}
+    ) {
+        const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        const alreadyLogs = fromBeginning ? await this.logsCollection.find({ taskUuid: uuid }) : []
+        const internalEmitter = this.internalEmitter
+
+        return function*() {
+            for (const log of alreadyLogs) {
+                yield Promise.resolve(log)
+            }
+            if (!['new', 'running'].includes(task.status)) {
+                return
+            }
+
+            let cont = true
+
+            function getNextLog() {
+                return new Promise((resolve, reject) => {
+                    const removeListeners = () => {
+                        internalEmitter.off('log.' + uuid, onLog)
+                        internalEmitter.off('ended.' + uuid, onEndOrAbort)
+                        abortSignal?.removeEventListener('abort', onEndOrAbort)
+                    }
+
+                    const onLog = (log: object) => {
+                        removeListeners()
+                        resolve(log)
+                    }
+
+                    const onEndOrAbort = () => {
+                        cont = false
+                        removeListeners()
+                        resolve(undefined)
+                    }
+
+                    internalEmitter.once('log.' + uuid, onLog)
+                    internalEmitter.once('ended.' + uuid, onEndOrAbort)
+                    abortSignal?.addEventListener('abort', onEndOrAbort)
+                })
+            }
+
+            while(cont) {
+                yield getNextLog()
+            }
+        }()
+    }
+
     public async getTask(uuid: string): Promise<Task> {
         const taskPromise = this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
         const logsPromise = this.logsCollection.find({ taskUuid: uuid })
@@ -196,6 +245,7 @@ export class Tasker {
 
         const onLog = async (log: object) => {
             await this.logsCollection.insert(log)
+            this.internalEmitter.emit('log.' + task.uuid, log)
         }
 
         taskLogger.on('log', onLog)

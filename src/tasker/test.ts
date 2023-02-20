@@ -24,6 +24,10 @@ describe('Tasker', () => {
 
             logger.info('Sum', {inputData})
 
+            await new Promise(resolve => setTimeout(resolve, 100))
+
+            logger.info('Ended')
+
             return inputData[0] + inputData[1]
         })
 
@@ -31,6 +35,14 @@ describe('Tasker', () => {
             operation: 'sum',
             inputData: [5, 4]
         })
+
+        ;(async () => {
+            for await (const log of await tasker.listenTaskLogs(taskUuid)) {
+                if (log) {
+                    console.log('listenTaskLogs receives', log)
+                }
+            }
+        })()
 
         tasker.waitForTaskOutputData(taskUuid).then(outputData => {
             console.log('waitForTaskOutputData returns', outputData)
@@ -40,10 +52,15 @@ describe('Tasker', () => {
 
         tasker.start()
 
-        setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
+        //setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
 
-        await new Promise(resolve => setTimeout(resolve, 200))
+        await new Promise(resolve => setTimeout(resolve, 250))
 
-        console.log(await tasker.getTask(taskUuid))
-    })
+        console.log('task', await tasker.getTask(taskUuid))
+
+        await new Promise(resolve => setTimeout(resolve, 250))
+
+        console.log('has listeners (dirty, should not)', (tasker as any).internalEmitter.eventNames().length !== 0)
+
+    }).timeout(5000)
 })
