@@ -3,6 +3,14 @@ import { UniversalLogger, LoggerOpts, Logger } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 
+export class AbortError extends Error {
+    name = 'AbortError'
+    code = 'ABORT_ERR'
+    constructor(message: string = 'This operation was aborted') {
+        super(message)
+    }
+}
+
 export type InjectedServices<Config> = {
     logger: UniversalLogger
     config: Config
@@ -151,12 +159,12 @@ class App<Config> {
         this.alreadyRun = true
 
         if (abortSignal) {
-            abortSignal.addEventListener('abort', () => this.abortController.abort())
+            abortSignal.addEventListener('abort', () => this.abortController.abort(abortSignal.reason))
         }
 
-        const processSignalHandler = () => {
+        const processSignalHandler = (signal: NodeJS.Signals) => {
             ['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
-            this.abortController.abort()
+            this.abortController.abort(new AbortError('Process receives signal ' + signal))
         }
 
         ;['SIGTERM', 'SIGINT'].forEach(signal => process.on(signal, processSignalHandler))

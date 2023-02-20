@@ -30,12 +30,14 @@ export interface HttpRequestConfig {
 export class AbortError extends Error {
     name = 'AbortError'
     code = 'ABORT_ERR'
-    message = 'The operation was aborted'
+    constructor(message: string = 'This operation was aborted') {
+        super(message)
+    }
 }
 
 export async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
     if (abortSignal?.aborted) {
-      throw new AbortError
+      throw abortSignal.reason
     }
 
     if (request.responseStream && request.responseType) {
@@ -132,9 +134,9 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
             : result as Result
 
     } catch (e) {
-      if ((e as any).code === 'ERR_CANCELED') {
-        throw new AbortError
-      }
+        if (abortSignal?.aborted) {
+            throw abortSignal.reason
+        }
       throw e
     } finally {
         abortSignal?.removeEventListener('abort', onSignalAbort)

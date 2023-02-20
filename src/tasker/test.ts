@@ -32,9 +32,15 @@ describe('Tasker', () => {
             inputData: [5, 4]
         })
 
+        tasker.waitForTaskOutputData(taskUuid).then(outputData => {
+            console.log('waitForTaskOutputData returns', outputData)
+        }).catch(error => {
+            console.log('waitForTaskOutputData throws', error)
+        })
+
         tasker.start()
 
-        //setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
+        setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
 
         await new Promise(resolve => setTimeout(resolve, 200))
 

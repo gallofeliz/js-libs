@@ -1,7 +1,8 @@
 import { DefaultDocumentCollection } from './document-collection'
-import { each, omit } from 'lodash'
+import { each, omit, mapValues } from 'lodash'
 import { Logger, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
+import EventEmitter, { once } from 'events'
 
 export interface TaskerOpts {
     persistDir: string
@@ -40,7 +41,7 @@ export interface Task/*<R extends any>*/ {
     logs: object[]
     outputData?: unknown
     error?: Error
-    abortReason?: string
+    abortReason?: Error
 }
 
 type TaskDocument = Omit<Task, 'logs'> & {
@@ -66,9 +67,11 @@ export class Tasker {
     protected runners: Record<string, Runner> = {}
     protected logger: Logger
     protected abortControllers: Record<string, AbortController> = {}
+    protected internalEmitter = new EventEmitter
 
     public constructor({persistDir, runners, logger}: TaskerOpts) {
-        this.logger = logger
+        this.logger = logger.child({ taskerUuid: uuid() })
+        this.internalEmitter.setMaxListeners(Infinity)
         this.tasksCollection = new DefaultDocumentCollection({
             filePath: this.getDocumentCollectionFilename(persistDir, 'tasks'),
             indexes: [
@@ -116,9 +119,26 @@ export class Tasker {
             createdAt: new Date
         })
 
+        this.logger.info('Adding task', { task })
+
         this.runNexts()
 
         return task.uuid
+    }
+
+    public async waitForTaskOutputData(uuid: string) : Promise<any> {
+        let task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+
+        if (['new', 'running'].includes(task.status)) {
+            await once(this.internalEmitter, 'ended.' + task.uuid)
+            task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        }
+
+        if (task.status === 'done') {
+            return task.outputData
+        }
+
+        throw task.status === 'aborted' ? task.abortReason : task.error
     }
 
     public async getTask(uuid: string): Promise<Task> {
@@ -145,7 +165,7 @@ export class Tasker {
             )
 
         } else if (task.status === 'running') {
-            this.abortControllers[uuid].abort(new AbortError(reason))
+            this.internalEmitter.emit('abort.' + uuid, new AbortError(reason))
         }
     }
 
@@ -170,46 +190,68 @@ export class Tasker {
             { assertUpdated: true, returnDocument: true }
         )
 
+        this.logger.info('Running task', { task })
+
         const taskLogger = this.logger.child({ taskUuid: task.uuid })
 
-        const log = async (log: object) => {
+        const onLog = async (log: object) => {
             await this.logsCollection.insert(log)
         }
 
-        taskLogger.on('log', log)
+        taskLogger.on('log', onLog)
+
+        const onAbort = (reason?: AbortError) => {
+            abortController.abort(reason)
+        }
+
+        this.internalEmitter.on('abort.' + task.uuid, onAbort)
+
         const abortController = new AbortController
 
         try {
-            this.abortControllers[task.uuid] = abortController
             const outputData = await this.runners[task.operation]({
                 ...task,
                 logger: taskLogger,
                 abortSignal: abortController.signal
             })
 
-            await this.tasksCollection.updateOne(
+            task = await this.tasksCollection.updateOne(
                 { _id: task._id },
                 { $set: {status: 'done', outputData, endedAt: new Date }},
-                { assertUpdated: true, returnDocument: false }
+                { assertUpdated: true, returnDocument: true }
             )
         } catch (error) {
             if (abortController.signal.aborted) {
-                await this.tasksCollection.updateOne(
+                task = await this.tasksCollection.updateOne(
                     { _id: task._id },
-                    { $set: { status: 'aborted', abortReason: abortController.signal.reason.message, endedAt: new Date }},
-                    { assertUpdated: true, returnDocument: false }
+                    { $set: { status: 'aborted', abortReason: this.errorToJson(abortController.signal.reason), endedAt: new Date }},
+                    { assertUpdated: true, returnDocument: true }
                 )
             } else {
-                await this.tasksCollection.updateOne(
+                task = await this.tasksCollection.updateOne(
                     { _id: task._id },
-                    { $set: { status: 'failed', error, endedAt: new Date }},
-                    { assertUpdated: true, returnDocument: false }
+                    { $set: { status: 'failed', error: this.errorToJson(error as Error), endedAt: new Date }},
+                    { assertUpdated: true, returnDocument: true }
                 )
             }
 
         } finally {
-            taskLogger.off('log', log)
-            delete this.abortControllers[task.uuid]
+            taskLogger.off('log', onLog)
+            this.logger.info('Ended task', { task: {...task, outputData: task.outputData !== undefined ? '(troncated)' : undefined} })
+            this.internalEmitter.off('abort.' + task.uuid, onAbort)
+            this.internalEmitter.emit('ended.' + task.uuid)
+        }
+    }
+
+    protected errorToJson(error: Error) {
+        // security if throws is not Error
+        if (!(error instanceof Error)) {
+            return error
+        }
+
+        return {
+            ...mapValues(Object.getOwnPropertyDescriptors(error), v => v.value),
+            name: error.name
         }
     }
 

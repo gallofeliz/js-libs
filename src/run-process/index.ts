@@ -79,7 +79,7 @@ export class Process<Result extends any> extends EventEmitter {
         }
 
         if (abortSignal?.aborted) {
-            throw new AbortError
+            throw abortSignal.reason
         }
 
         let spawnCmd: string
