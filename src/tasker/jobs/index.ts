@@ -2,7 +2,6 @@ import { EventEmitter, once } from 'events'
 import { v4 as uuid } from 'uuid'
 import { UniversalLogger, Logger } from '@gallofeliz/logger'
 import _ from 'lodash'
-import { Query } from 'mingo'
 import Datastore from '@seald-io/nedb'
 import { promisify } from 'util'
 
