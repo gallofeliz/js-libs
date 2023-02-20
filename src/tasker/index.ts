@@ -9,8 +9,17 @@ export interface TaskerOpts {
     runners?: Record<string, Runner>
 }
 
+export class AbortError extends Error {
+    name = 'AbortError'
+    code = 'ABORT_ERR'
+    constructor(message: string = 'This operation was aborted') {
+        super(message)
+    }
+}
+
 export interface RunningData extends TaskDocument {
     logger: UniversalLogger
+    abortSignal: AbortSignal
 }
 
 export type Runner = (data: RunningData) => Promise<void>
@@ -31,6 +40,7 @@ export interface Task/*<R extends any>*/ {
     logs: object[]
     outputData?: unknown
     error?: Error
+    abortReason?: string
 }
 
 type TaskDocument = Omit<Task, 'logs'> & {
@@ -55,6 +65,7 @@ export class Tasker {
     protected logsCollection: DefaultDocumentCollection<LogDocument>
     protected runners: Record<string, Runner> = {}
     protected logger: Logger
+    protected abortControllers: Record<string, AbortController> = {}
 
     public constructor({persistDir, runners, logger}: TaskerOpts) {
         this.logger = logger
@@ -92,7 +103,7 @@ export class Tasker {
         this.runners[operation] = run
     }
 
-    public async addTask(addTask: AddTaskOpts): Promise<string> {
+    public async addTask(addTask: AddTaskOpts/*, abortSignal */): Promise<string> {
         if (!this.runners[addTask.operation]) {
             this.logger.warning('No runner assigned for operation ' + addTask.operation)
         }
@@ -119,6 +130,22 @@ export class Tasker {
         return {
             ...task,
             logs: logs.map(log => omit(log, 'taskUuid'))
+        }
+    }
+
+    public async abortTask(uuid: string, reason?: string) {
+        const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+
+        if (task.status === 'new') {
+
+            await this.tasksCollection.updateOne(
+                { _id: task._id },
+                { $set: { status: 'aborted', endedAt: new Date }},
+                { assertUpdated: true, returnDocument: false }
+            )
+
+        } else if (task.status === 'running') {
+            this.abortControllers[uuid].abort(new AbortError(reason))
         }
     }
 
@@ -150,23 +177,39 @@ export class Tasker {
         }
 
         taskLogger.on('log', log)
+        const abortController = new AbortController
 
         try {
-            const outputData = await this.runners[task.operation]({...task, logger: taskLogger})
+            this.abortControllers[task.uuid] = abortController
+            const outputData = await this.runners[task.operation]({
+                ...task,
+                logger: taskLogger,
+                abortSignal: abortController.signal
+            })
 
-            task = await this.tasksCollection.updateOne(
+            await this.tasksCollection.updateOne(
                 { _id: task._id },
                 { $set: {status: 'done', outputData, endedAt: new Date }},
-                { assertUpdated: true, returnDocument: true }
+                { assertUpdated: true, returnDocument: false }
             )
         } catch (error) {
-            task = await this.tasksCollection.updateOne(
-                { _id: task._id },
-                { $set: { status: 'failed', error, endedAt: new Date }},
-                { assertUpdated: true, returnDocument: true }
-            )
+            if (abortController.signal.aborted) {
+                await this.tasksCollection.updateOne(
+                    { _id: task._id },
+                    { $set: { status: 'aborted', abortReason: abortController.signal.reason.message, endedAt: new Date }},
+                    { assertUpdated: true, returnDocument: false }
+                )
+            } else {
+                await this.tasksCollection.updateOne(
+                    { _id: task._id },
+                    { $set: { status: 'failed', error, endedAt: new Date }},
+                    { assertUpdated: true, returnDocument: false }
+                )
+            }
+
         } finally {
             taskLogger.off('log', log)
+            delete this.abortControllers[task.uuid]
         }
     }
 

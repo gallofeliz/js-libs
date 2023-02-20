@@ -8,7 +8,19 @@ describe('Tasker', () => {
             logger: createLogger()
         })
 
-        tasker.assignRunner('sum', async ({inputData, logger}) => {
+        tasker.assignRunner('sum', async ({inputData, logger, abortSignal}) => {
+
+            let aborted = false
+
+            abortSignal.addEventListener('abort', () => {
+                aborted = true
+            })
+
+            await new Promise(resolve => setTimeout(resolve, 100))
+
+            if (aborted) {
+                throw abortSignal.reason
+            }
 
             logger.info('Sum', {inputData})
 
@@ -22,7 +34,9 @@ describe('Tasker', () => {
 
         tasker.start()
 
-        await new Promise(resolve => setTimeout(resolve, 100))
+        //setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
+
+        await new Promise(resolve => setTimeout(resolve, 200))
 
         console.log(await tasker.getTask(taskUuid))
     })
