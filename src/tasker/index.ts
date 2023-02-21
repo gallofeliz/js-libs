@@ -85,6 +85,7 @@ export class Tasker {
     protected abortControllers: Record<string, AbortController> = {}
     protected internalEmitter = new EventEmitter
     protected runNextsLock: boolean = false
+    protected runNextsRequested: boolean = false
 
     public constructor({persistDir, runners, logger}: TaskerOpts) {
         this.logger = logger.child({ taskerUuid: uuid() })
@@ -287,10 +288,12 @@ export class Tasker {
         }
 
         if (this.runNextsLock) {
+            this.runNextsRequested = true
             return
         }
 
         this.runNextsLock = true
+        this.runNextsRequested = false
 
         const newTasks = await this.tasksCollection.find(
             { status: 'new' },
@@ -337,6 +340,10 @@ export class Tasker {
         }
 
         this.runNextsLock = false
+
+        if (this.runNextsRequested) {
+            this.runNexts()
+        }
     }
 
     protected async runTask(task: TaskDocument) {

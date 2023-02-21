@@ -24,4 +24,3 @@ Target limit (concurrency)?
 Shared runConccurency/Task template/extends ?
 Refactor runConditions to concurrency with all in query ?
 Add global runConditions ?
-fix runFns if needed
