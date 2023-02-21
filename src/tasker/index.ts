@@ -29,38 +29,38 @@ export type TaskPriority = number
 
 export type TaskStatus = 'new' | 'running' | 'done' | 'failed' | 'aborted'
 
-export type RunCondition = ConcurrencyRunCondition | FnRunCondition
-
-export interface ConcurrencyRunCondition {
-    type: 'concurrency'
+export type TaskConcurrency = Array<{
     scope: 'running' | 'before-queued'
-    query: DocumentCollectionQuery | string
+    query: DocumentCollectionQuery
     limit: number
-}
+}>
 
-export interface FnRunCondition {
-    type: 'fn',
-    fnName: string
-}
+export type TaskDocumentConcurrency = Array<{
+    scope: 'running' | 'before-queued'
+    query: string
+    limit: number
+}>
 
-export interface Task/*<R extends any>*/ {
+export interface Task<Operation extends string = any, Data extends any = any, Result extends any = any> {
     uuid: string
     status: TaskStatus
-    operation: string
-    inputData: any
+    operation: Operation
+    data: Data
     priority: TaskPriority
     createdAt: Date
-    runConditions: RunCondition[]
+    concurrency?: TaskConcurrency
     startedAt?: Date
     endedAt?: Date
-    logs: object[]
-    outputData?: unknown
+    logs?: object[]
+    result?: Result
     error?: Error
     abortReason?: Error
+    runTimeout?: number
 }
 
-type TaskDocument = Omit<Task, 'logs'> & {
+type TaskDocument = Omit<Task, 'logs' | 'concurrency'> & {
     _id: string
+    concurrency?: TaskDocumentConcurrency
 }
 
 interface LogDocument {
@@ -71,9 +71,10 @@ interface LogDocument {
 
 export interface AddTaskOpts {
     operation: string
-    inputData: Task['inputData']
+    data: any
     priority?: TaskPriority
-    runConditions?: RunCondition[]
+    concurrency?: TaskConcurrency
+    runTimeout?: number
 }
 
 export class Tasker {
@@ -144,20 +145,18 @@ export class Tasker {
 
         const task = await this.tasksCollection.insert({
             priority: 0,
-            ...addTask,
-            runConditions: addTask.runConditions
-                ? addTask.runConditions.map(condition => {
-                    if (condition.type === 'concurrency' && typeof condition.query !== 'string') {
-                        condition = cloneDeep(condition)
-                        condition.query = JSON.stringify(condition.query)
+            ...omit(addTask, 'concurrency'),
+            ...addTask.concurrency && {
+                concurrency: addTask.concurrency.map(condition => {
+                    return {
+                        ...cloneDeep(condition),
+                        query: JSON.stringify(condition.query)
                     }
-
-                    return condition
                 })
-                : [],
+            },
             uuid: uuid(),
             status: 'new',
-            createdAt: new Date,
+            createdAt: new Date
         })
 
         this.logger.info('Adding task', { task })
@@ -176,7 +175,7 @@ export class Tasker {
         }
 
         if (task.status === 'done') {
-            return task.outputData
+            return task.result
         }
 
         throw task.status === 'aborted' ? task.abortReason : task.error
@@ -248,22 +247,42 @@ export class Tasker {
         }()
     }
 
-    public async getTask(uuid: string): Promise<Task> {
+    public async hasTask(query: DocumentCollectionQuery) {
+        return await this.tasksCollection.has(query)
+    }
+
+    public async getTask(uuid: string, withLogs: boolean = false): Promise<Task> {
         const taskPromise = this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
-        const logsPromise = this.logsCollection.find({ taskUuid: uuid }, { timestamp: 1 })
+        const logsPromise = withLogs
+            ? this.logsCollection.find({ taskUuid: uuid }, { timestamp: 1 })
+            : Promise.resolve(undefined)
 
         const [task, logs] = await Promise.all([taskPromise, logsPromise])
 
-        // task.runConditions.forEach(condition => {
-        //     if (condition.type === 'concurrency') {
-        //         condition.query = JSON.parse(condition.query as string)
-        //     }
-        // })
-
         return {
             ...task,
-            logs: logs.map(log => omit(log, 'taskUuid'))
+            ...task.concurrency && { concurrency: task.concurrency.map(condition => {
+                return {
+                    ...cloneDeep(condition),
+                    query: JSON.parse(condition.query)
+                }
+            })},
+            ...logs && {logs: logs.map(log => omit(log, 'taskUuid'))}
         }
+    }
+
+    public async prioritizeTask(uuid: string, priority: number) {
+        // db.update({uuid, status: 'new'}, {$set: ...}) can make the job simplier
+
+        const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+
+        if (task.status !== 'new' || task.priority === priority) {
+            return
+        }
+
+        await this.tasksCollection.updateOne({ uuid }, { $set: { priority } }, {assertUpdated: true})
+
+        this.runNexts()
     }
 
     public async abortTask(uuid: string, reason?: string) {
@@ -307,11 +326,7 @@ export class Tasker {
                 continue
             }
 
-            const conditionsResults = await Promise.all(task.runConditions.map(async condition => {
-                if (condition.type !== 'concurrency') {
-                    throw new Error('Unhandled')
-                }
-
+            const conditionsResults = await Promise.all((task.concurrency || []).map(async condition => {
                 if (condition.scope === 'running') {
                     const a = await this.tasksCollection.count({
                         ...JSON.parse(condition.query as string),
@@ -377,19 +392,31 @@ export class Tasker {
 
             const abortController = new AbortController
 
+            const runTimeout = task.runTimeout
+                && setTimeout(() => abortController.abort(new AbortError('Task run timeout')), task.runTimeout)
+
+            const immediateAfterToDo = () => {
+                clearTimeout(runTimeout)
+                this.internalEmitter.off('abort.' + task.uuid, onAbort)
+            }
+
             try {
-                const outputData = await this.runners[task.operation]({
+                const result = await this.runners[task.operation]({
                     ...task,
                     logger: taskLogger,
                     abortSignal: abortController.signal
                 })
 
+                immediateAfterToDo()
+
                 task = await this.tasksCollection.updateOne(
                     { _id: task._id },
-                    { $set: {status: 'done', outputData, endedAt: new Date }},
+                    { $set: {status: 'done', result, endedAt: new Date }},
                     { assertUpdated: true, returnDocument: true }
                 )
             } catch (error) {
+                immediateAfterToDo()
+
                 if (abortController.signal.aborted) {
                     task = await this.tasksCollection.updateOne(
                         { _id: task._id },
@@ -404,9 +431,9 @@ export class Tasker {
                     )
                 }
             } finally {
+
                 taskLogger.off('log', onLog)
-                this.logger.info('Ended task', { task: {...task, outputData: task.outputData !== undefined ? '(troncated)' : undefined} })
-                this.internalEmitter.off('abort.' + task.uuid, onAbort)
+                this.logger.info('Ended task', { task: {...task, result: task.result !== undefined ? '(troncated)' : undefined} })
                 this.internalEmitter.emit('ended.' + task.uuid)
                 this.runNexts()
             }

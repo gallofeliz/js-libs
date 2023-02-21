@@ -19,7 +19,7 @@ describe('Tasker', () => {
             logger: createLogger()
         })
 
-        tasker.assignRunner('sum', async ({inputData, logger, abortSignal}) => {
+        tasker.assignRunner('sum', async ({data, logger, abortSignal}) => {
 
             let aborted = false
 
@@ -33,18 +33,18 @@ describe('Tasker', () => {
                 throw abortSignal.reason
             }
 
-            logger.info('Sum', {inputData})
+            logger.info('Sum', {data})
 
             await new Promise(resolve => setTimeout(resolve, 100))
 
             logger.info('Ended')
 
-            return inputData[0] + inputData[1]
+            return data[0] + data[1]
         })
 
         const taskUuid = await tasker.addTask({
             operation: 'sum',
-            inputData: [5, 4]
+            data: [5, 4]
         })
 
         ;(async () => {
@@ -55,8 +55,8 @@ describe('Tasker', () => {
             }
         })()
 
-        tasker.waitForTaskOutputData(taskUuid).then(outputData => {
-            console.log('waitForTaskOutputData returns', outputData)
+        tasker.waitForTaskOutputData(taskUuid).then(result => {
+            console.log('waitForTaskOutputData returns', result)
         }).catch(error => {
             console.log('waitForTaskOutputData throws', error)
         })
@@ -88,11 +88,11 @@ describe('Tasker', () => {
             persistDir: '/tmp',
             logger: createLogger(),
             runners: {
-                'read-book': async ({logger, inputData, priority}) => {
+                'read-book': async ({logger, data, priority}) => {
                     console.log('>>>>>>>>>>>>>>>>> READ', priority)
                     await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
                 },
-                'write-book': async ({logger, inputData, priority}) => {
+                'write-book': async ({logger, data, priority}) => {
                     console.log('>>>>>>>>>>>>>>>>> WRITE', priority)
                     await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
                 }
@@ -106,29 +106,26 @@ describe('Tasker', () => {
         function readBook(book: string, priority: number) {
             tasker.addTask({
                 operation: 'read-book',
-                inputData: {
+                data: {
                     book: book,
                     reader: 'reader1',
                     lock: 'inclusive'
                 },
                 priority,
-                runConditions: [
+                concurrency: [
                     {
-                        type: 'concurrency',
                         scope: 'running',
-                        query: { 'inputData.lock': 'inclusive', 'inputData.book': book },
+                        query: { 'data.lock': 'inclusive', 'data.book': book },
                         limit: 1
                     },
                     {
-                        type: 'concurrency',
                         scope: 'running',
-                        query: { 'inputData.lock': 'exclusive', 'inputData.book': book },
+                        query: { 'data.lock': 'exclusive', 'data.book': book },
                         limit: 0
                     },
                     {
-                        type: 'concurrency',
                         scope: 'before-queued',
-                        query: { 'inputData.book': book, 'inputData.lock': 'exclusive' },
+                        query: { 'data.book': book, 'data.lock': 'exclusive' },
                         limit: 0
                     }
                 ]
@@ -138,17 +135,16 @@ describe('Tasker', () => {
         function writeBook(book: string, priority: number) {
             tasker.addTask({
                 operation: 'write-book',
-                inputData: {
+                data: {
                     book: book,
                     reader: 'reader1',
                     lock: 'exclusive'
                 },
                 priority,
-                runConditions: [
+                concurrency: [
                     {
-                        type: 'concurrency',
                         scope: 'running',
-                        query: { 'inputData.book': book },
+                        query: { 'data.book': book },
                         limit: 0
                     }
                 ]
