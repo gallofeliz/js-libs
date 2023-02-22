@@ -8,6 +8,7 @@ export interface TaskerOpts {
     persistDir: string
     logger: Logger
     runners?: Record<string, Runner>
+    abortNewTasksOnStop?: boolean
 }
 
 export class AbortError extends Error {
@@ -141,9 +142,11 @@ export class Tasker extends EventEmitter {
     protected internalEmitter = new EventEmitter
     protected runNextsLock: boolean = false
     protected runNextsRequested: boolean = false
+    protected abortNewTasksOnStop: boolean
 
-    public constructor({persistDir, runners, logger}: TaskerOpts) {
+    public constructor({persistDir, runners, logger, abortNewTasksOnStop = false}: TaskerOpts) {
         super()
+        this.abortNewTasksOnStop = abortNewTasksOnStop
         this.logger = logger.child({ taskerUuid: uuid() })
         this.internalEmitter.setMaxListeners(Infinity)
         this.tasksCollection = new DefaultDocumentCollection({
@@ -183,9 +186,11 @@ export class Tasker extends EventEmitter {
     public async stop() {
         this.started = false
 
-        const runningTasks = await this.tasksCollection.find({ status: 'running' })
+        const statusToAbort: TaskStatus[] = this.abortNewTasksOnStop ? ['new', 'running'] : ['running']
 
-        runningTasks.forEach(task => this.abortTask(task.uuid, 'Tasker Stop'))
+        const tasksToAbort = await this.tasksCollection.find({ status: { $in: statusToAbort } })
+
+        tasksToAbort.forEach(task => this.abortTask(task.uuid, 'Tasker Stop'))
 
         this.emit('stopped')
     }
