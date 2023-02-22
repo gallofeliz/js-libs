@@ -1,6 +1,6 @@
-import { DefaultDocumentCollection, DocumentCollectionQuery } from './document-collection'
-import { each, omit, mapValues, sortBy, cloneDeep, every } from 'lodash'
-import { Logger, UniversalLogger } from '@gallofeliz/logger'
+import { DefaultDocumentCollection, DocumentCollectionQuery, DocumentCollectionSort } from './document-collection'
+import { each, omit, mapValues, sortBy, cloneDeep, every, groupBy } from 'lodash'
+import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 import EventEmitter, { once } from 'events'
 
@@ -41,6 +41,55 @@ export type TaskDocumentConcurrency = Array<{
     limit: number
 }>
 
+/*
+
+interface BaseTask<Operation extends string = any, Data extends any = any> {
+    uuid: string
+    status: TaskStatus
+    operation: Operation
+    data: Data
+    priority: TaskPriority
+    createdAt: Date
+    concurrency?: TaskConcurrency
+    runTimeout?: number
+    logs?: object[]
+}
+
+export interface NewTask<Operation extends string = any, Data extends any = any> extends BaseTask<Operation, Data> {
+    status: 'new'
+}
+
+export interface RunningTask<Operation extends string = any, Data extends any = any> extends BaseTask<Operation, Data> {
+    status: 'running'
+    startedAt: Date
+}
+
+export interface DoneTask<Operation extends string = any, Data extends any = any, Result extends any = any> extends BaseTask<Operation, Data> {
+    status: 'done'
+    startedAt: Date
+    endedAt: Date
+    result: Result
+}
+
+export interface AbortedTask<Operation extends string = any, Data extends any = any> extends BaseTask<Operation, Data> {
+    status: 'aborted'
+    startedAt: Date
+    endedAt: Date
+    abortReason: Error
+}
+
+export interface FailedTask<Operation extends string = any, Data extends any = any> extends BaseTask<Operation, Data> {
+    status: 'failed'
+    startedAt: Date
+    endedAt: Date
+    error: Error
+}
+
+export type Task<Operation extends string = any, Data extends any = any, Result extends any = any>
+    = NewTask<Operation, Data> | RunningTask<Operation, Data> | DoneTask<Operation, Data, Result> | AbortedTask<Operation, Data> | FailedTask<Operation, Data>
+
+*/
+
 export interface Task<Operation extends string = any, Data extends any = any, Result extends any = any> {
     uuid: string
     status: TaskStatus
@@ -75,6 +124,11 @@ export interface AddTaskOpts {
     priority?: TaskPriority
     concurrency?: TaskConcurrency
     runTimeout?: number
+}
+
+export interface RetrieveTaskOpts {
+    withLogs?: boolean
+    logsMaxLevel?: LogLevel
 }
 
 export class Tasker {
@@ -251,10 +305,56 @@ export class Tasker {
         return await this.tasksCollection.has(query)
     }
 
-    public async getTask(uuid: string, withLogs: boolean = false): Promise<Task> {
+    public async findTask(
+        query: DocumentCollectionQuery,
+        {sort, ...retrieveOpts}: RetrieveTaskOpts & {sort?: DocumentCollectionSort<TaskDocument>} = {}
+    ) {
+        const tasks = await this.findTasks(query, {...retrieveOpts, sort, limit: 1})
+
+        if (tasks.length === 0) {
+            return
+        }
+
+        return tasks[0]
+    }
+
+    public async findTasks(
+        query: DocumentCollectionQuery,
+        {sort, limit, skip, withLogs = false, logsMaxLevel = 'info'}: RetrieveTaskOpts & {sort?: DocumentCollectionSort<TaskDocument>, limit?: number, skip?: number} = {}
+    ) {
+        const logLevels = getMaxLevelsIncludes(logsMaxLevel)
+
+        // Not sur the good place to try to returns tasks that represents the queue order, the running order and the ended order
+        sort = sort || { endedAt: 1, startedAt: 1, priority: -1, createdAt: 1 }
+
+        const tasks = await this.tasksCollection.find(query, sort, limit, skip)
+        const logs = withLogs
+            ? groupBy(
+                await this.logsCollection.find({ taskUuid: { $in: tasks.map(t => t.uuid) }, level: { $in: logLevels } }, { timestamp: 1 }),
+                'taskUuid'
+            )
+            : undefined
+
+        return tasks.map(task => {
+            return {
+                ...task,
+                ...task.concurrency && { concurrency: task.concurrency.map(condition => {
+                    return {
+                        ...cloneDeep(condition),
+                        query: JSON.parse(condition.query)
+                    }
+                })},
+                ...logs && {logs: (logs[task.uuid] || []).map(log => omit(log, 'taskUuid', '_id'))}
+            }
+        })
+    }
+
+    public async getTask(uuid: string, { withLogs = false, logsMaxLevel = 'info' }: RetrieveTaskOpts = {}): Promise<Task> {
+        const logLevels = getMaxLevelsIncludes(logsMaxLevel)
+
         const taskPromise = this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
         const logsPromise = withLogs
-            ? this.logsCollection.find({ taskUuid: uuid }, { timestamp: 1 })
+            ? this.logsCollection.find({ taskUuid: uuid, level: { $in: logLevels } }, { timestamp: 1 })
             : Promise.resolve(undefined)
 
         const [task, logs] = await Promise.all([taskPromise, logsPromise])
@@ -267,7 +367,7 @@ export class Tasker {
                     query: JSON.parse(condition.query)
                 }
             })},
-            ...logs && {logs: logs.map(log => omit(log, 'taskUuid'))}
+            ...logs && {logs: logs.map(log => omit(log, 'taskUuid', '_id'))}
         }
     }
 
@@ -378,7 +478,7 @@ export class Tasker {
             const taskLogger = this.logger.child({ taskUuid: task.uuid })
 
             const onLog = async (log: object) => {
-                await this.logsCollection.insert(log)
+                await this.logsCollection.insert(omit(log, 'taskerUuid'))
                 this.internalEmitter.emit('log.' + task.uuid, log)
             }
 

@@ -8,6 +8,10 @@ import traverse from 'traverse'
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
 const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
 
+export function getMaxLevelsIncludes(maxLogLevel: LogLevel) {
+    return levels.slice(0, levels.indexOf(maxLogLevel) + 1)
+}
+
 export function shouldBeLogged(logLevel: LogLevel, maxLogLevel: LogLevel) {
     return levels.indexOf(logLevel) <= levels.indexOf(maxLogLevel)
 }

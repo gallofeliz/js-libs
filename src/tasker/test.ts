@@ -90,6 +90,7 @@ describe('Tasker', () => {
             runners: {
                 'read-book': async ({logger, data, priority}) => {
                     console.log('>>>>>>>>>>>>>>>>> READ', priority)
+                    logger.info('I will read book')
                     await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
                 },
                 'write-book': async ({logger, data, priority}) => {
@@ -160,6 +161,10 @@ describe('Tasker', () => {
         writeBook('book1', 94)
 
         tasker.start()
+
+        setTimeout(async () => {
+            console.log(await tasker.findTasks({ status: 'running' }, {withLogs: true}))
+        }, 2000)
 
         await new Promise(resolve => setTimeout(resolve, 40000))
 
