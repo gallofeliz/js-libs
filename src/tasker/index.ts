@@ -131,7 +131,7 @@ export interface RetrieveTaskOpts {
     logsMaxLevel?: LogLevel
 }
 
-export class Tasker {
+export class Tasker extends EventEmitter {
     protected started: boolean = false
     protected tasksCollection: DefaultDocumentCollection<TaskDocument>
     protected logsCollection: DefaultDocumentCollection<LogDocument>
@@ -143,6 +143,7 @@ export class Tasker {
     protected runNextsRequested: boolean = false
 
     public constructor({persistDir, runners, logger}: TaskerOpts) {
+        super()
         this.logger = logger.child({ taskerUuid: uuid() })
         this.internalEmitter.setMaxListeners(Infinity)
         this.tasksCollection = new DefaultDocumentCollection({
@@ -161,6 +162,7 @@ export class Tasker {
         })
         each(runners, (runner, operation) => this.assignRunner(operation, runner))
 
+        // Emit events ?
         this.tasksCollection.update(
             { status: 'running' },
             { $set: {
@@ -174,6 +176,7 @@ export class Tasker {
     public start(abortSignal?: AbortSignal) {
         abortSignal?.addEventListener('abort', () => this.stop())
         this.started = true
+        this.emit('started')
         this.runNexts()
     }
 
@@ -183,6 +186,8 @@ export class Tasker {
         const runningTasks = await this.tasksCollection.find({ status: 'running' })
 
         runningTasks.forEach(task => this.abortTask(task.uuid, 'Tasker Stop'))
+
+        this.emit('stopped')
     }
 
     public assignRunner(operation: string, run: Runner) {
@@ -196,6 +201,8 @@ export class Tasker {
         if (!this.runners[addTask.operation]) {
             this.logger.warning('No runner assigned for operation ' + addTask.operation)
         }
+
+        this.emit('task.add', addTask)
 
         const task = await this.tasksCollection.insert({
             priority: 0,
@@ -214,6 +221,7 @@ export class Tasker {
         })
 
         this.logger.info('Adding task', { task })
+        this.emit('task.added', task.uuid)
 
         this.runNexts()
 
@@ -381,6 +389,8 @@ export class Tasker {
         }
 
         await this.tasksCollection.updateOne({ uuid }, { $set: { priority } }, {assertUpdated: true})
+        this.emit('task.prioritized', task.uuid, priority)
+        this.emit(`task.${task.uuid}.prioritized`, priority)
 
         this.runNexts()
     }
@@ -388,16 +398,22 @@ export class Tasker {
     public async abortTask(uuid: string, reason?: string) {
         const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
 
-        if (task.status === 'new') {
+        if (!['new', 'running'].includes(task.status)) {
+            return
+        }
 
+        const reasonErr = new AbortError(reason)
+
+        if (task.status === 'new') {
             await this.tasksCollection.updateOne(
                 { _id: task._id },
-                { $set: { status: 'aborted', endedAt: new Date }},
+                { $set: { status: 'aborted', endedAt: new Date, abortReason: this.errorToJson(reasonErr) }},
                 { assertUpdated: true, returnDocument: false }
             )
-
+            this.emit('task.aborted', task.uuid, reasonErr)
+            this.emit(`task.${task.uuid}.aborted`, reasonErr)
         } else if (task.status === 'running') {
-            this.internalEmitter.emit('abort.' + uuid, new AbortError(reason))
+            this.internalEmitter.emit('abort.' + uuid, reasonErr)
         }
     }
 
@@ -472,6 +488,9 @@ export class Tasker {
             { assertUpdated: true, returnDocument: true }
         )
 
+        this.emit('task.run', task.uuid)
+        this.emit(`task.${task.uuid}.run`)
+
         ;(async() => {
             this.logger.info('Running task', { task })
 
@@ -480,6 +499,9 @@ export class Tasker {
             const onLog = async (log: object) => {
                 await this.logsCollection.insert(omit(log, 'taskerUuid'))
                 this.internalEmitter.emit('log.' + task.uuid, log)
+                const cleanedLog = omit(log, 'taskerUuid', 'taskUuid')
+                this.emit('task.log', task.uuid, cleanedLog)
+                this.emit(`task.${task.uuid}.log`, cleanedLog)
             }
 
             taskLogger.on('log', onLog)
@@ -514,6 +536,11 @@ export class Tasker {
                     { $set: {status: 'done', result, endedAt: new Date }},
                     { assertUpdated: true, returnDocument: true }
                 )
+
+                this.emit('task.done', task.uuid, result)
+                this.emit(`task.${task.uuid}.done`, result)
+                this.emit('task.ended', task.uuid, task.status, result)
+                this.emit(`task.${task.uuid}.ended`, task.status, result)
             } catch (error) {
                 immediateAfterToDo()
 
@@ -523,15 +550,22 @@ export class Tasker {
                         { $set: { status: 'aborted', abortReason: this.errorToJson(abortController.signal.reason), endedAt: new Date }},
                         { assertUpdated: true, returnDocument: true }
                     )
+                    this.emit('task.aborted', task.uuid, abortController.signal.reason)
+                    this.emit(`task.${task.uuid}.aborted`, abortController.signal.reason)
+                    this.emit('task.ended', task.uuid, task.status, abortController.signal.reason)
+                    this.emit(`task.${task.uuid}.ended`, task.status, abortController.signal.reason)
                 } else {
                     task = await this.tasksCollection.updateOne(
                         { _id: task._id },
                         { $set: { status: 'failed', error: this.errorToJson(error as Error), endedAt: new Date }},
                         { assertUpdated: true, returnDocument: true }
                     )
+                    this.emit('task.failed', task.uuid, error)
+                    this.emit(`task.${task.uuid}.failed`, error)
+                    this.emit('task.ended', task.uuid, task.status, error)
+                    this.emit(`task.${task.uuid}.ended`, task.status, error)
                 }
             } finally {
-
                 taskLogger.off('log', onLog)
                 this.logger.info('Ended task', { task: {...task, result: task.result !== undefined ? '(troncated)' : undefined} })
                 this.internalEmitter.emit('ended.' + task.uuid)
