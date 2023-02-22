@@ -47,12 +47,11 @@ Tasks Management with persistance (non-distributed):
     - task.ended(uuid, status, result | abortReason | error)
     - task.XXX.ended(status, result | abortReason | error)
 - [!] Scheduler : Scheduling is a trigger and Tasker will not handle particular trigger, just accept new tasks ; Why to implement Scheduling trigger, and no fsWatching or API trigger ? I prefer delegating that
+- [X] Attach task AbortSignal
 - [ ] Avoid duplicated new/running tasks ?
 - [ ] Retry on error (with same task or new one ?)
-- [ ] Accept abortSignal in task and map it somewhere
 - [ ] Stop Tasker abort or not new tasks, postpone or not running etc
 - [ ] Typescript well typed with Task<X,X,X> getTask<T extends Task> etc
-- [ ] Add task with abortSignal
 Promise coherence in Task API
 postpone running = abort with new ?
 Work with complex objects ? (ex: task cmd stream to http response) => Attach runningmethod these objects but unable to restart task after tasker process shutdown
@@ -65,4 +64,6 @@ runTimeout cron ?
 less verbose logs
 -> rename concurrency by runConditions
 -> rename runTimeout by abortConditions and add query or timeout, with opt to include new status or only running
+-> Or all inside concurrency parent key
 Use projections to reduce data ?
+Stop new tasks on tasker stop configurable by task ?

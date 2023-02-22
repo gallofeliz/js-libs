@@ -159,6 +159,9 @@ class App<Config> {
         this.alreadyRun = true
 
         if (abortSignal) {
+            if (abortSignal.aborted) {
+                return
+            }
             abortSignal.addEventListener('abort', () => this.abortController.abort(abortSignal.reason))
         }
 

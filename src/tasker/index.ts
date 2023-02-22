@@ -125,6 +125,11 @@ export interface AddTaskOpts {
     priority?: TaskPriority
     concurrency?: TaskConcurrency
     runTimeout?: number
+    abortSignal?: AbortSignal
+    /*duplication: {
+        query: {}
+        expected: 'continue' | 'update' | 'skip'
+    }*/
 }
 
 export interface RetrieveTaskOpts {
@@ -165,9 +170,11 @@ export class Tasker extends EventEmitter {
         })
         each(runners, (runner, operation) => this.assignRunner(operation, runner))
 
+        const statusToAbort: TaskStatus[] = this.abortNewTasksOnStop ? ['new', 'running'] : ['running']
+
         // Emit events ?
         this.tasksCollection.update(
-            { status: 'running' },
+            { status: { $in: statusToAbort } },
             { $set: {
                 status: 'aborted',
                 abortReason: this.errorToJson(new AbortError('Unexpected running task on Tasker load')),
@@ -177,13 +184,26 @@ export class Tasker extends EventEmitter {
     }
 
     public start(abortSignal?: AbortSignal) {
+        if (abortSignal?.aborted) {
+            this.stop()
+            return
+        }
         abortSignal?.addEventListener('abort', () => this.stop())
+
+        if (this.started) {
+            return
+        }
+
         this.started = true
         this.emit('started')
         this.runNexts()
     }
 
     public async stop() {
+        if (!this.started) {
+            return
+        }
+
         this.started = false
 
         const statusToAbort: TaskStatus[] = this.abortNewTasksOnStop ? ['new', 'running'] : ['running']
@@ -202,7 +222,7 @@ export class Tasker extends EventEmitter {
         this.runners[operation] = run
     }
 
-    public async addTask(addTask: AddTaskOpts/*, abortSignal */): Promise<string> {
+    public async addTask(addTask: AddTaskOpts): Promise<string> {
         if (!this.runners[addTask.operation]) {
             this.logger.warning('No runner assigned for operation ' + addTask.operation)
         }
@@ -211,7 +231,7 @@ export class Tasker extends EventEmitter {
 
         const task = await this.tasksCollection.insert({
             priority: 0,
-            ...omit(addTask, 'concurrency'),
+            ...omit(addTask, 'concurrency', 'abortSignal'),
             ...addTask.concurrency && {
                 concurrency: addTask.concurrency.map(condition => {
                     return {
@@ -224,6 +244,20 @@ export class Tasker extends EventEmitter {
             status: 'new',
             createdAt: new Date
         })
+
+        if (addTask.abortSignal) {
+            if(addTask.abortSignal.aborted) {
+                this.abortTask(task.uuid, 'Task AbortSignal aborted')
+            } else {
+                const abortSignal = addTask.abortSignal
+                const onTaskSignalAbort = () => this.abortTask(task.uuid, 'Task AbortSignal aborted')
+                abortSignal.addEventListener('abort', onTaskSignalAbort)
+
+                this.once(`task.${task.uuid}.aborted`, () => {
+                    abortSignal.removeEventListener('abort', onTaskSignalAbort)
+                })
+            }
+        }
 
         this.logger.info('Adding task', { task })
         this.emit('task.added', task.uuid)
