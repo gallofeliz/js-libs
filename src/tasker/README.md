@@ -67,3 +67,9 @@ less verbose logs
 -> Or all inside concurrency parent key
 Use projections to reduce data ?
 Stop new tasks on tasker stop configurable by task ?
+
+Lock task to update it updateTask()
+
+No props on tasker but on tasks
+
+Abort on task dont support reboot résume

@@ -16,6 +16,7 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
-    "@seald-io/nedb": "^4.0.1"
+    "@seald-io/nedb": "^4.0.1",
+    "mingo": "^6.2.7"
   }
 }

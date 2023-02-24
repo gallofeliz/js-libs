@@ -19,7 +19,7 @@ export class AbortError extends Error {
     }
 }
 
-export interface RunningData extends TaskDocument {
+export interface RunningData extends Task {
     logger: UniversalLogger
     abortSignal: AbortSignal
 }
@@ -208,7 +208,10 @@ export class Tasker extends EventEmitter {
 
         const statusToAbort: TaskStatus[] = this.abortNewTasksOnStop ? ['new', 'running'] : ['running']
 
-        const tasksToAbort = await this.tasksCollection.find({ status: { $in: statusToAbort } })
+        const tasksToAbort = this.tasksCollection.find(
+            { status: { $in: statusToAbort } },
+            { projection: { uuid: 1 } }
+        )
 
         tasksToAbort.forEach(task => this.abortTask(task.uuid, 'Tasker Stop'))
 
@@ -229,7 +232,9 @@ export class Tasker extends EventEmitter {
 
         this.emit('task.add', addTask)
 
-        const task = await this.tasksCollection.insert({
+        const taskUuid = uuid()
+
+        await this.tasksCollection.insert({
             priority: 0,
             ...omit(addTask, 'concurrency', 'abortSignal'),
             ...addTask.concurrency && {
@@ -240,39 +245,43 @@ export class Tasker extends EventEmitter {
                     }
                 })
             },
-            uuid: uuid(),
+            uuid: taskUuid,
             status: 'new',
             createdAt: new Date
         })
 
         if (addTask.abortSignal) {
             if(addTask.abortSignal.aborted) {
-                this.abortTask(task.uuid, 'Task AbortSignal aborted')
+                this.abortTask(taskUuid, 'Task AbortSignal aborted')
             } else {
                 const abortSignal = addTask.abortSignal
-                const onTaskSignalAbort = () => this.abortTask(task.uuid, 'Task AbortSignal aborted')
+                const onTaskSignalAbort = () => this.abortTask(taskUuid, 'Task AbortSignal aborted')
                 abortSignal.addEventListener('abort', onTaskSignalAbort)
 
-                this.once(`task.${task.uuid}.aborted`, () => {
+                this.once(`task.${taskUuid}.aborted`, () => {
                     abortSignal.removeEventListener('abort', onTaskSignalAbort)
                 })
             }
         }
 
-        this.logger.info('Adding task', { task })
-        this.emit('task.added', task.uuid)
+        this.logger.info('Adding task', { task: taskUuid })
+        this.emit('task.added', taskUuid)
 
         this.runNexts()
 
-        return task.uuid
+        return taskUuid
     }
 
     public async waitForTaskOutputData(uuid: string) : Promise<any> {
-        let task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        let task = await this.tasksCollection.findOne({ uuid }) as TaskDocument | undefined
+
+        if (!task) {
+            throw new Error('Task not found')
+        }
 
         if (['new', 'running'].includes(task.status)) {
             await once(this.internalEmitter, 'ended.' + task.uuid)
-            task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+            task = await this.tasksCollection.findOne({ uuid }) as TaskDocument
         }
 
         if (task.status === 'done') {
@@ -286,9 +295,11 @@ export class Tasker extends EventEmitter {
         uuid: string,
         { fromBeginning = false, abortSignal }: {fromBeginning?: boolean, abortSignal?: AbortSignal} = {}
     ) {
-        const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        const task = await this.tasksCollection.findOne({ uuid }) as TaskDocument | undefined
         const internalEmitter = this.internalEmitter
-
+        if (!task) {
+            throw new Error('Task not found')
+        }
         let alreadyLogs: object[] = []
 
         if (fromBeginning) {
@@ -300,7 +311,7 @@ export class Tasker extends EventEmitter {
             internalEmitter.on('log.' + uuid, onLogDuringFetchingLogs)
 
             alreadyLogs = [
-                ...await this.logsCollection.find({ taskUuid: uuid }, { timestamp: 1 }),
+                ...await this.logsCollection.find({ taskUuid: uuid }, {sort:{ timestamp: 1 }, projection: { taskUuid: 0, _id: 0 }}).toArray(),
                 ...alreadyLogs
             ]
 
@@ -374,17 +385,17 @@ export class Tasker extends EventEmitter {
         // Not sur the good place to try to returns tasks that represents the queue order, the running order and the ended order
         sort = sort || { endedAt: 1, startedAt: 1, priority: -1, createdAt: 1 }
 
-        const tasks = await this.tasksCollection.find(query, sort, limit, skip)
+        const tasks = this.tasksCollection.find(query, {sort, limit, skip, projection: { _id: 0 }})
         const logs = withLogs
             ? groupBy(
-                await this.logsCollection.find({ taskUuid: { $in: tasks.map(t => t.uuid) }, level: { $in: logLevels } }, { timestamp: 1 }),
+                await this.logsCollection.find({ taskUuid: { $in: tasks.map(t => t.uuid) }, level: { $in: logLevels } }, {sort:{ timestamp: 1 }}).toArray(),
                 'taskUuid'
             )
             : undefined
 
         return tasks.map(task => {
             return {
-                ...task,
+                ...omit(task, '_id'),
                 ...task.concurrency && { concurrency: task.concurrency.map(condition => {
                     return {
                         ...cloneDeep(condition),
@@ -399,12 +410,16 @@ export class Tasker extends EventEmitter {
     public async getTask(uuid: string, { withLogs = false, logsMaxLevel = 'info' }: RetrieveTaskOpts = {}): Promise<Task> {
         const logLevels = getMaxLevelsIncludes(logsMaxLevel)
 
-        const taskPromise = this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        const taskPromise = this.tasksCollection.findOne({ uuid }, {projection: {_id: 0}}) as Promise<TaskDocument | undefined>
         const logsPromise = withLogs
-            ? this.logsCollection.find({ taskUuid: uuid, level: { $in: logLevels } }, { timestamp: 1 })
+            ? this.logsCollection.find({ taskUuid: uuid, level: { $in: logLevels } }, {sort:{ timestamp: 1 }}).toArray()
             : Promise.resolve(undefined)
 
         const [task, logs] = await Promise.all([taskPromise, logsPromise])
+
+        if (!task) {
+            throw new Error('Task not found')
+        }
 
         return {
             ...task,
@@ -419,23 +434,33 @@ export class Tasker extends EventEmitter {
     }
 
     public async prioritizeTask(uuid: string, priority: number) {
-        // db.update({uuid, status: 'new'}, {$set: ...}) can make the job simplier
+        const [updated, taskExists] = await Promise.all([
+            // Update priority if task exists and is new
+            this.tasksCollection.updateOne({ uuid, status: 'new' }, { $set: { priority } }),
+            // Assert task exists
+            this.tasksCollection.has({ uuid })
+        ])
 
-        const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        if (!taskExists) {
+            throw new Error('Task not found')
+        }
 
-        if (task.status !== 'new' || task.priority === priority) {
+        if (!updated) {
             return
         }
 
-        await this.tasksCollection.updateOne({ uuid }, { $set: { priority } }, {assertUpdated: true})
-        this.emit('task.prioritized', task.uuid, priority)
-        this.emit(`task.${task.uuid}.prioritized`, priority)
+        this.emit('task.prioritized', uuid, priority)
+        this.emit(`task.${uuid}.prioritized`, priority)
 
         this.runNexts()
     }
 
     public async abortTask(uuid: string, reason?: string) {
-        const task = await this.tasksCollection.findOne({ uuid }, undefined, {assertFound: true})
+        const task = await this.tasksCollection.findOne({ uuid }) as TaskDocument | undefined
+
+        if (!task) {
+            throw new Error('Task not found')
+        }
 
         if (!['new', 'running'].includes(task.status)) {
             return
@@ -443,11 +468,14 @@ export class Tasker extends EventEmitter {
 
         const reasonErr = new AbortError(reason)
 
+        /**
+         * warning risk of concurrent read/write (updating running)
+         */
+
         if (task.status === 'new') {
             await this.tasksCollection.updateOne(
                 { _id: task._id },
-                { $set: { status: 'aborted', endedAt: new Date, abortReason: this.errorToJson(reasonErr) }},
-                { assertUpdated: true, returnDocument: false }
+                { $set: { status: 'aborted', endedAt: new Date, abortReason: this.errorToJson(reasonErr) }}
             )
             this.emit('task.aborted', task.uuid, reasonErr)
             this.emit(`task.${task.uuid}.aborted`, reasonErr)
@@ -469,14 +497,14 @@ export class Tasker extends EventEmitter {
         this.runNextsLock = true
         this.runNextsRequested = false
 
-        const newTasks = await this.tasksCollection.find(
+        const newTasks = this.tasksCollection.find(
             { status: 'new' },
-            { priority: -1, createdAt: 1 }
+            {sort:{ priority: -1, createdAt: 1 }}
         )
 
         const refused: string[] = []
 
-        for (const task of newTasks) {
+        for await (const task of newTasks) {
             if (!this.runners[task.operation]) {
                 continue
             }
@@ -524,8 +552,8 @@ export class Tasker extends EventEmitter {
         task = await this.tasksCollection.updateOne(
             { _id: task._id },
             { $set: { status: 'running', startedAt: new Date }},
-            { assertUpdated: true, returnDocument: true }
-        )
+            { returnDocument: true }
+        ) as TaskDocument
 
         this.emit('task.run', task.uuid)
         this.emit(`task.${task.uuid}.run`)
@@ -537,8 +565,8 @@ export class Tasker extends EventEmitter {
 
             const onLog = async (log: object) => {
                 await this.logsCollection.insert(omit(log, 'taskerUuid'))
-                this.internalEmitter.emit('log.' + task.uuid, log)
                 const cleanedLog = omit(log, 'taskerUuid', 'taskUuid')
+                this.internalEmitter.emit('log.' + task.uuid, cleanedLog)
                 this.emit('task.log', task.uuid, cleanedLog)
                 this.emit(`task.${task.uuid}.log`, cleanedLog)
             }
@@ -563,7 +591,13 @@ export class Tasker extends EventEmitter {
 
             try {
                 const result = await this.runners[task.operation]({
-                    ...task,
+                    ...omit(task, '_id'),
+                    ...task.concurrency && { concurrency: task.concurrency.map(condition => {
+                        return {
+                            ...cloneDeep(condition),
+                            query: JSON.parse(condition.query)
+                        }
+                    })},
                     logger: taskLogger,
                     abortSignal: abortController.signal
                 })
@@ -573,8 +607,8 @@ export class Tasker extends EventEmitter {
                 task = await this.tasksCollection.updateOne(
                     { _id: task._id },
                     { $set: {status: 'done', result, endedAt: new Date }},
-                    { assertUpdated: true, returnDocument: true }
-                )
+                    { returnDocument: true }
+                ) as TaskDocument
 
                 this.emit('task.done', task.uuid, result)
                 this.emit(`task.${task.uuid}.done`, result)
@@ -587,8 +621,8 @@ export class Tasker extends EventEmitter {
                     task = await this.tasksCollection.updateOne(
                         { _id: task._id },
                         { $set: { status: 'aborted', abortReason: this.errorToJson(abortController.signal.reason), endedAt: new Date }},
-                        { assertUpdated: true, returnDocument: true }
-                    )
+                        { returnDocument: true }
+                    ) as TaskDocument
                     this.emit('task.aborted', task.uuid, abortController.signal.reason)
                     this.emit(`task.${task.uuid}.aborted`, abortController.signal.reason)
                     this.emit('task.ended', task.uuid, task.status, abortController.signal.reason)
@@ -597,8 +631,8 @@ export class Tasker extends EventEmitter {
                     task = await this.tasksCollection.updateOne(
                         { _id: task._id },
                         { $set: { status: 'failed', error: this.errorToJson(error as Error), endedAt: new Date }},
-                        { assertUpdated: true, returnDocument: true }
-                    )
+                        { returnDocument: true }
+                    ) as TaskDocument
                     this.emit('task.failed', task.uuid, error)
                     this.emit(`task.${task.uuid}.failed`, error)
                     this.emit('task.ended', task.uuid, task.status, error)

@@ -83,7 +83,7 @@ describe('Tasker', () => {
 
     }).timeout(5000)
 
-    it.only('test2', async() => {
+    it('test2', async() => {
         const tasker = new Tasker({
             persistDir: '/tmp',
             logger: createLogger(),
@@ -163,7 +163,7 @@ describe('Tasker', () => {
         tasker.start()
 
         setTimeout(async () => {
-            console.log(await tasker.findTasks({ status: 'running' }, {withLogs: true}))
+            console.log('findTasks', await tasker.findTasks({ status: 'running' }, {withLogs: true}))
         }, 2000)
 
         await new Promise(resolve => setTimeout(resolve, 40000))
