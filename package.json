@@ -53,6 +53,7 @@
     "src/http-request",
     "src/auth",
     "src/http-server",
-    "src/tasker"
+    "src/tasker",
+    "src/documents-collection"
   ]
 }

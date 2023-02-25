@@ -1,4 +1,4 @@
-import { DefaultDocumentCollection, DocumentCollectionQuery, DocumentCollectionSort } from './document-collection'
+import { DocumentCollection, NeDbDocumentCollection, DocumentCollectionQuery, DocumentCollectionSort } from '@gallofeliz/documents-collection'
 import { each, omit, mapValues, sortBy, cloneDeep, every, groupBy } from 'lodash'
 import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
@@ -139,8 +139,8 @@ export interface RetrieveTaskOpts {
 
 export class Tasker extends EventEmitter {
     protected started: boolean = false
-    protected tasksCollection: DefaultDocumentCollection<TaskDocument>
-    protected logsCollection: DefaultDocumentCollection<LogDocument>
+    protected tasksCollection: DocumentCollection<TaskDocument>
+    protected logsCollection: DocumentCollection<LogDocument>
     protected runners: Record<string, Runner> = {}
     protected logger: Logger
     protected abortControllers: Record<string, AbortController> = {}
@@ -154,7 +154,7 @@ export class Tasker extends EventEmitter {
         this.abortNewTasksOnStop = abortNewTasksOnStop
         this.logger = logger.child({ taskerUuid: uuid() })
         this.internalEmitter.setMaxListeners(Infinity)
-        this.tasksCollection = new DefaultDocumentCollection({
+        this.tasksCollection = new NeDbDocumentCollection<TaskDocument>({
             filePath: this.getDocumentCollectionFilename(persistDir, 'tasks'),
             indexes: [
                 { fieldName: 'status' },
@@ -162,7 +162,7 @@ export class Tasker extends EventEmitter {
                 { fieldName: 'operation' }
             ]
         })
-        this.logsCollection = new DefaultDocumentCollection({
+        this.logsCollection = new NeDbDocumentCollection<LogDocument>({
             filePath: this.getDocumentCollectionFilename(persistDir, 'logs'),
             indexes: [
                 { fieldName: 'taskUuid' }

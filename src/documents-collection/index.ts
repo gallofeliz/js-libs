@@ -1,7 +1,16 @@
 import Datastore from '@seald-io/nedb'
-import traverse from 'traverse'
-import { mapKeys } from 'lodash'
 import {Aggregator} from 'mingo'
+import { useOperators, OperatorType } from "mingo/core"
+import * as pip from "mingo/operators/pipeline"
+import * as acc from "mingo/operators/accumulator"
+import * as exp from "mingo/operators/expression"
+
+// @ts-ignore
+useOperators(OperatorType.PIPELINE, pip)
+// @ts-ignore
+useOperators(OperatorType.ACCUMULATOR, acc)
+// @ts-ignore
+useOperators(OperatorType.EXPRESSION, exp)
 
 export interface DocumentCollectionQuery {
     [filter: string]: any
@@ -23,7 +32,7 @@ export interface GenericDocument {
 
 export type AggregationPipeline = Array<{[k: string]: any}>
 
-export interface DocumentCollectionFindCursor<Document> extends AsyncIterable<Document> {
+export interface DocumentCollectionFindCursor<Document extends GenericDocument> extends AsyncIterable<Document> {
     toArray: () => Promise<Document[] | Partial<Document>[]>
     forEach: (fn: (document: Document) => void) => void
     map: <T>(fn: (document: Document) => T) => Promise<T[]>
@@ -31,8 +40,18 @@ export interface DocumentCollectionFindCursor<Document> extends AsyncIterable<Do
     // etc
 }
 
+export interface DocumentCollectionAggregateCursor<Document extends GenericDocument> extends AsyncIterable<Document> {
+    toArray: () => Promise<Document[] | Partial<Document>[]>
+    forEach: (fn: (document: Document) => void) => void
+    map: <T>(fn: (document: Document) => T) => Promise<T[]>
+    // count
+    // etc
+}
+
+
 export interface DocumentCollection<Document extends GenericDocument> {
-    insert(document: Omit<Document, '_id'>, {returnDocument}?: {returnDocument?: boolean}): Promise<string | Document>
+    insert(document: Omit<Document, '_id'>, {returnDocument}: {returnDocument: true}): Promise<Document>
+    insert(document: Omit<Document, '_id'>, {returnDocument}?: {returnDocument?: false}): Promise<string>
     insert(documents: Omit<Document, '_id'>[]): Promise<string[]>
 
     has(query: DocumentCollectionQuery): Promise<boolean>
@@ -47,12 +66,13 @@ export interface DocumentCollection<Document extends GenericDocument> {
     ): DocumentCollectionFindCursor<Document>
 
     update(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>): Promise<number>
-    updateOne(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>, {returnDocument}?: {returnDocument?: boolean}): Promise<boolean | Document | undefined>
+    updateOne(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>, {returnDocument}: {returnDocument: true}): Promise<Document | undefined>
+    updateOne(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>, {returnDocument}?: {returnDocument?: false}): Promise<boolean>
 
     removeOne(query: DocumentCollectionQuery): Promise<boolean>
     remove(query: DocumentCollectionQuery): Promise<number>
 
-    aggregate(pipeline: AggregationPipeline): Promise<any>
+    aggregate(pipeline: AggregationPipeline): DocumentCollectionAggregateCursor<Document>
 }
 
 export class DocumentAssertionError extends Error {
@@ -85,22 +105,50 @@ export class NeDbDocumentCollectionCursor<Document extends GenericDocument> impl
     }
 }
 
+export class MingoAggregateCursor<Document extends GenericDocument> implements DocumentCollectionAggregateCursor<Document> {
+    protected mingoAgg: any
+    protected cursor: any
+
+    constructor(mingoAgg: any, cursor: any) {
+        this.mingoAgg = mingoAgg
+        this.cursor = cursor
+    }
+
+    public async toArray() {
+        return this.mingoAgg.run(await this.cursor.toArray())
+    }
+
+    public map(fn: (document: Document) => any): Promise<any[]> {
+        return this.toArray().then(docs => docs.map(fn))
+    }
+
+    public forEach(fn: (document: Document) => void) {
+        this.toArray().then(docs => docs.forEach(fn))
+    }
+
+    public async *[Symbol.asyncIterator]() {
+        for (const doc of await this.toArray()) {
+            yield doc as any
+        }
+    }
+}
+
 export class NeDbDocumentCollection<Document extends GenericDocument> implements DocumentCollection<Document> {
     protected datastore: Datastore
 
-    public constructor({filePath, indexes}: {filePath: string, indexes?: Datastore.EnsureIndexOptions[]}) {
-        this.datastore = new Datastore({filename: filePath})
+    public constructor({filePath, indexes}: {filePath: string | null, indexes?: Datastore.EnsureIndexOptions[]}) {
+        this.datastore = new Datastore(filePath ? {filename: filePath} : {inMemoryOnly: true})
         this.load(indexes || [])
     }
 
-    public async aggregate(pipeline: AggregationPipeline) {
+    public aggregate(pipeline: AggregationPipeline) {
         let agg = new Aggregator(pipeline);
+        const cursor = this.find({}) as any
 
-        return agg.run(await this.find({}).toArray())
+        return new MingoAggregateCursor(agg, cursor) as any
     }
 
-    // @ts-ignore
-    public async insert(documentDocuments: Omit<Document, '_id'> | Omit<Document, '_id'>[], {returnDocument}: {returnDocument?: boolean} = {}): Promise<string | string[] | Document>  {
+    public async insert(documentDocuments: Omit<Document, '_id'> | Omit<Document, '_id'>[], {returnDocument}: {returnDocument?: boolean} = {}) {
         if (Array.isArray(documentDocuments)) {
             return (await this.datastore.insertAsync(documentDocuments)).map(d => d._id)
         }
@@ -114,14 +162,14 @@ export class NeDbDocumentCollection<Document extends GenericDocument> implements
     }
 
     // @ts-ignore
-    public async updateOne(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>, {returnDocument}: {returnDocument?: boolean} = {}) {
+    public async updateOne(query: DocumentCollectionQuery, update: DocumentCollectionUpdate<Document>, {returnDocument}: {returnDocument?: boolean} = {}): any {
         const upd = await this.datastore.updateAsync(query, update, {multi: false, returnUpdatedDocs: returnDocument})
 
-        if (upd.numAffected === 0) {
-            return returnDocument ? undefined : false
+        if (returnDocument) {
+            return upd.affectedDocuments ? upd.affectedDocuments : undefined
         }
 
-        return returnDocument ? upd.affectedDocuments : true
+        return upd.numAffected === 1
     }
 
     public async remove(query: DocumentCollectionQuery) {
@@ -159,5 +207,3 @@ export class NeDbDocumentCollection<Document extends GenericDocument> implements
          await Promise.all(indexes.map(index => this.datastore.ensureIndexAsync(index)))
     }
 }
-
-export {NeDbDocumentCollection as DefaultDocumentCollection}
