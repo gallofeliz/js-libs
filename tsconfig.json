@@ -1,5 +1,5 @@
 {
-  "exclude": ["**/*test*", "**/*tst.ts"],
+  "exclude": ["**/*test*", "**/*tst.ts", "src/tasker/**/*.ts"],
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
 

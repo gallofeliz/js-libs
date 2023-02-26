@@ -25,12 +25,6 @@ export interface ProcessConfig {
     resultSchema?: SchemaObject
 }
 
-export class AbortError extends Error {
-    name = 'AbortError'
-    code = 'ABORT_ERR'
-    message = 'The operation was aborted'
-}
-
 export async function runProcess<Result extends any>({abortSignal, ...config}: ProcessConfig & { abortSignal?: AbortSignal }): Promise<Result> {
     const process = createProcess<Result>(config)
 
@@ -180,7 +174,7 @@ export class Process<Result extends any> extends EventEmitter {
                 throw new Error('Process error : ' + stderr.trim())
             }
         } catch (e) {
-            if ((e as any).code === 'ABORT_ERR') {
+            if (e === abortSignal?.reason) {
                 this.logger.info('Abort requested, awaiting process ends')
                 await once(process, 'exit')
             }

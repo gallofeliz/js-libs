@@ -1,6 +1,8 @@
 # Tasker
 
 Tasks Management with persistance (non-distributed):
+- [X] Workflow :
+    - new -> running -> done/failed/aborted (= ended)
 - [X] Persisted (json-compatible tasks)
     - addTask(addTaskDef)
 - [X] Assign runners
@@ -48,6 +50,8 @@ Tasks Management with persistance (non-distributed):
     - task.XXX.ended(status, result | abortReason | error)
 - [!] Scheduler : Scheduling is a trigger and Tasker will not handle particular trigger, just accept new tasks ; Why to implement Scheduling trigger, and no fsWatching or API trigger ? I prefer delegating that
 - [X] Attach task AbortSignal
+- [ ] Remove old ended tasks
+- [ ] Checks runners exist on start on new tasks
 - [ ] Avoid duplicated new/running tasks ?
 - [ ] Retry on error (with same task or new one ?)
 - [ ] Stop Tasker abort or not new tasks, postpone or not running etc
