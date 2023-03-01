@@ -1,4 +1,4 @@
-import {SchemaObject, default as Ajv, Schema} from 'ajv'
+import {SchemaObject, default as Ajv} from 'ajv'
 import {clone} from 'lodash'
 export {SchemaObject}
 

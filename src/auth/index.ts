@@ -1,5 +1,5 @@
 import basicAuth from 'basic-auth'
-import { flatten, intersection, omitBy, uniq, reverse } from 'lodash'
+import { flatten, omitBy } from 'lodash'
 import safeCompare from 'safe-compare'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
@@ -8,7 +8,6 @@ import md5 from 'apache-md5'
 import crypt from 'apache-crypt'
 import {Request, Response, NextFunction} from 'express'
 import matcher from 'matcher'
-import auth from 'basic-auth'
 
 export function verifyHtpasswdPassword(inputPassword: string, passwordHash: string): boolean {
     if (passwordHash.substr(0, 5) === '{SHA}') {

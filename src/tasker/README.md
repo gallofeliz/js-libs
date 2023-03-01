@@ -48,7 +48,7 @@ Tasks Management with persistance (non-distributed):
     - task.XXX.failed(error)
     - task.ended(uuid, status, result | abortReason | error)
     - task.XXX.ended(status, result | abortReason | error)
-- [!] Scheduler : Scheduling is a trigger and Tasker will not handle particular trigger, just accept new tasks ; Why to implement Scheduling trigger, and no fsWatching or API trigger ? I prefer delegating that
+- [ ] Scheduling (not persisted)
 - [X] Attach task AbortSignal
 - [ ] Remove old ended tasks
 - [ ] Checks runners exist on start on new tasks

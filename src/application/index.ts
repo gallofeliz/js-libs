@@ -1,4 +1,4 @@
-import { loadConfig, ConfigOpts, ChangePatchOperation, WatchChangesEventEmitter } from '@gallofeliz/config'
+import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
 import { UniversalLogger, LoggerOpts, Logger } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'

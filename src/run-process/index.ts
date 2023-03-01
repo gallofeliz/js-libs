@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { once, EventEmitter } from 'events'
-const { nextTick, env: processEnv } = process
+const { env: processEnv } = process
 import jsonata from 'jsonata'
 import Readable from 'stream'
 import { pick } from 'lodash'

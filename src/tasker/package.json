@@ -17,6 +17,7 @@
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
     "@gallofeliz/documents-collection": "^0.1.0",
-    "cron-parser": "^4.7.1"
+    "cron-parser": "^4.7.1",
+    "lodash": "^4.17.21"
   }
 }

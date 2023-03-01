@@ -1,6 +1,6 @@
 import fs from 'fs'
 import YAML from 'yaml'
-import {extname, resolve, dirname} from 'path'
+import {resolve, dirname} from 'path'
 import jsonata from 'jsonata'
 import traverse from 'traverse'
 

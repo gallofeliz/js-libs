@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { mapValues, cloneDeep, last, mapKeys } from 'lodash'
+import { mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
 import { Obfuscator, ObfuscatorProcessors } from '@gallofeliz/obfuscator'

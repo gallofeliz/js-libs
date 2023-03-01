@@ -266,7 +266,11 @@ export class Tasker extends EventEmitter {
             throw new Error('Unexpected')
         }
 
-        const { value: nextDate, done: noMore } = schedule.schedule.next()
+        let { value: nextDate, done: noMore } = schedule.schedule.next()
+
+        if (schedule.countdown === 0) {
+            noMore = true
+        }
 
         if (noMore) {
             return
@@ -275,6 +279,7 @@ export class Tasker extends EventEmitter {
         schedule.nextTimeout = setTimeout(
             () => {
                 delete schedule.nextTimeout
+                schedule.countdown--
                 this.addTask(schedule.addTask)
                 this.scheduleNext(schedule)
             },

@@ -1,5 +1,4 @@
 import * as ts from 'typescript';
-import { execSync } from 'child_process'
 import * as tsjson from 'ts-json-schema-generator'
 
 export function tsToJsSchema<T extends any>(): Record<string, any> {
