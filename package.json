@@ -55,7 +55,6 @@
     "src/http-server",
     "src/tasker",
     "src/documents-collection",
-    "src/timer",
-    "src/scheduler"
+    "src/timer"
   ]
 }

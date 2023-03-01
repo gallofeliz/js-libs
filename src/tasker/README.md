@@ -77,3 +77,5 @@ Lock task to update it updateTask()
 No props on tasker but on tasks
 
 Abort on task dont support reboot résume
+
+Remove tasks after time / remove logs after time depends on level

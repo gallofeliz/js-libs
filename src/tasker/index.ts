@@ -1,11 +1,12 @@
 import { DocumentCollection, NeDbDocumentCollection, DocumentCollectionQuery, DocumentCollectionSort } from '@gallofeliz/documents-collection'
-import { each, omit, mapValues, sortBy, cloneDeep, every, groupBy } from 'lodash'
+import { each, omit, mapValues, cloneDeep, every, groupBy } from 'lodash'
 import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 import EventEmitter, { once } from 'events'
+import cronParser from 'cron-parser'
 
 export interface TaskerOpts {
-    persistDir: string
+    persistDir: string | null
     logger: Logger
     runners?: Record<string, Runner>
     abortNewTasksOnStop?: boolean
@@ -95,7 +96,7 @@ export interface Task<Operation extends string = any, Data extends any = any, Re
     uuid: string
     status: TaskStatus
     operation: Operation
-    data: Data
+    data?: Data
     priority: TaskPriority
     createdAt: Date
     concurrency?: TaskConcurrency
@@ -121,7 +122,7 @@ interface LogDocument {
 
 export interface AddTaskOpts {
     operation: string
-    data: any
+    data?: any
     priority?: TaskPriority
     concurrency?: TaskConcurrency
     runTimeout?: number
@@ -137,6 +138,22 @@ export interface RetrieveTaskOpts {
     logsMaxLevel?: LogLevel
 }
 
+export interface AddScheduleOpts {
+    addTask: AddTaskOpts //Omit<AddTaskOpts, 'abortSignal'>
+    schedule: string // string[] with ! prefix for exclusion ?
+    startDate?: Date
+    endDate?: Date
+    limit?: number
+}
+
+export interface Schedule {
+    uuid: string
+    addTask: AddTaskOpts //Omit<AddTaskOpts, 'abortSignal'>
+    schedule: cronParser.CronExpression<true>
+    nextTimeout?: NodeJS.Timeout
+    countdown: number
+}
+
 export class Tasker extends EventEmitter {
     protected started: boolean = false
     protected tasksCollection: DocumentCollection<TaskDocument>
@@ -148,6 +165,7 @@ export class Tasker extends EventEmitter {
     protected runNextsLock: boolean = false
     protected runNextsRequested: boolean = false
     protected abortNewTasksOnStop: boolean
+    protected schedules: Schedule[] = []
 
     public constructor({persistDir, runners, logger, abortNewTasksOnStop = false}: TaskerOpts) {
         super()
@@ -155,7 +173,8 @@ export class Tasker extends EventEmitter {
         this.logger = logger.child({ taskerUuid: uuid() })
         this.internalEmitter.setMaxListeners(Infinity)
         this.tasksCollection = new NeDbDocumentCollection<TaskDocument>({
-            filePath: this.getDocumentCollectionFilename(persistDir, 'tasks'),
+            filePath: persistDir === null ? null : this.getDocumentCollectionFilename(persistDir, 'tasks'),
+
             indexes: [
                 { fieldName: 'status' },
                 { fieldName: 'uuid', unique: true },
@@ -163,7 +182,7 @@ export class Tasker extends EventEmitter {
             ]
         })
         this.logsCollection = new NeDbDocumentCollection<LogDocument>({
-            filePath: this.getDocumentCollectionFilename(persistDir, 'logs'),
+            filePath: persistDir === null ? null : this.getDocumentCollectionFilename(persistDir, 'logs'),
             indexes: [
                 { fieldName: 'taskUuid' }
             ]
@@ -223,6 +242,44 @@ export class Tasker extends EventEmitter {
             throw new Error(operation + ' already assigned')
         }
         this.runners[operation] = run
+    }
+
+    public async addSchedule(addSchedule: AddScheduleOpts): Promise<void> {
+        const schedule = {
+            ...addSchedule,
+            uuid: uuid(),
+            countdown: addSchedule.limit ? addSchedule.limit : Infinity,
+            schedule: cronParser.parseExpression(addSchedule.schedule, {
+                iterator: true,
+                currentDate: addSchedule.startDate,
+                endDate: addSchedule.endDate
+            })
+        }
+
+        this.schedules.push(schedule)
+
+        this.scheduleNext(schedule)
+    }
+
+    protected scheduleNext(schedule: Schedule) {
+        if (schedule.nextTimeout) {
+            throw new Error('Unexpected')
+        }
+
+        const { value: nextDate, done: noMore } = schedule.schedule.next()
+
+        if (noMore) {
+            return
+        }
+
+        schedule.nextTimeout = setTimeout(
+            () => {
+                delete schedule.nextTimeout
+                this.addTask(schedule.addTask)
+                this.scheduleNext(schedule)
+            },
+            nextDate.getTime() - (new Date).getTime()
+        )
     }
 
     public async addTask(addTask: AddTaskOpts): Promise<string> {
