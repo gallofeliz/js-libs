@@ -1,5 +1,6 @@
 import { createLogger } from '@gallofeliz/logger'
-import { unlink } from 'fs/promises'
+import { strictEqual } from 'assert'
+//import { unlink } from 'fs/promises'
 import { Tasker } from '.'
 
 describe('Tasker', () => {
@@ -12,6 +13,50 @@ describe('Tasker', () => {
     //         }
     //     }
     // })
+
+    it.only('test3', async () => {
+        const tasker = new Tasker({
+            persistDir: null,
+            logger: createLogger(),
+            archivingFrequency: 100
+        })
+
+        tasker.assignRunner('sum', async ({logger}) => {
+            logger.info('hello')
+        })
+
+        tasker.start()
+
+        tasker.addTask({
+            operation: 'sum'
+        })
+
+        tasker.addTask({
+            operation: 'sum',
+            archiving: {
+                duration: 300
+            }
+        })
+
+        tasker.addTask({
+            operation: 'sum',
+            archiving: {
+                duration: 50
+            }
+        })
+
+        await new Promise(resolve => setTimeout(resolve, 200))
+
+        const tasks = await tasker.findTasks({})
+
+        console.log(tasks.length)
+
+        strictEqual(tasks.length, 2)
+
+        tasker.stop()
+
+
+    })
 
     it('test1', async() => {
         const tasker = new Tasker({

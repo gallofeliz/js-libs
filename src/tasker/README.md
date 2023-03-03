@@ -48,7 +48,7 @@ Tasks Management with persistance (non-distributed):
     - task.XXX.failed(error)
     - task.ended(uuid, status, result | abortReason | error)
     - task.XXX.ended(status, result | abortReason | error)
-- [ ] Scheduling (not persisted)
+- [-] Scheduling (not persisted) : Not its responsability. See @gallofeliz/scheduler
 - [X] Attach task AbortSignal
 - [ ] Remove old ended tasks
 - [ ] Checks runners exist on start on new tasks
@@ -73,8 +73,6 @@ Use projections to reduce data ?
 Stop new tasks on tasker stop configurable by task ?
 
 Lock task to update it updateTask()
-
-No props on tasker but on tasks
 
 Abort on task dont support reboot résume
 

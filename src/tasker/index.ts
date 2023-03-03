@@ -3,13 +3,12 @@ import { each, omit, mapValues, cloneDeep, every, groupBy } from 'lodash'
 import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 import EventEmitter, { once } from 'events'
-import cronParser from 'cron-parser'
 
 export interface TaskerOpts {
     persistDir: string | null
     logger: Logger
     runners?: Record<string, Runner>
-    abortNewTasksOnStop?: boolean
+    archivingFrequency?: number
 }
 
 export class AbortError extends Error {
@@ -107,6 +106,9 @@ export interface Task<Operation extends string = any, Data extends any = any, Re
     error?: Error
     abortReason?: Error
     runTimeout?: number
+    archiving?: {
+        duration?: number
+    }
 }
 
 type TaskDocument = Omit<Task, 'logs' | 'concurrency'> & {
@@ -131,27 +133,14 @@ export interface AddTaskOpts {
         query: {}
         expected: 'continue' | 'update' | 'skip'
     }*/
+    archiving?: {
+        duration?: number
+    }
 }
 
 export interface RetrieveTaskOpts {
     withLogs?: boolean
     logsMaxLevel?: LogLevel
-}
-
-export interface AddScheduleOpts {
-    addTask: AddTaskOpts //Omit<AddTaskOpts, 'abortSignal'>
-    schedule: string // string[] with ! prefix for exclusion ?
-    startDate?: Date
-    endDate?: Date
-    limit?: number
-}
-
-export interface Schedule {
-    uuid: string
-    addTask: AddTaskOpts //Omit<AddTaskOpts, 'abortSignal'>
-    schedule: cronParser.CronExpression<true>
-    nextTimeout?: NodeJS.Timeout
-    countdown: number
 }
 
 export class Tasker extends EventEmitter {
@@ -164,17 +153,16 @@ export class Tasker extends EventEmitter {
     protected internalEmitter = new EventEmitter
     protected runNextsLock: boolean = false
     protected runNextsRequested: boolean = false
-    protected abortNewTasksOnStop: boolean
-    protected schedules: Schedule[] = []
+    protected archivingFrequency: number
+    protected archivingInterval?: NodeJS.Timer
 
-    public constructor({persistDir, runners, logger, abortNewTasksOnStop = false}: TaskerOpts) {
+    public constructor({persistDir, runners, logger, archivingFrequency}: TaskerOpts) {
         super()
-        this.abortNewTasksOnStop = abortNewTasksOnStop
         this.logger = logger.child({ taskerUuid: uuid() })
         this.internalEmitter.setMaxListeners(Infinity)
+        this.archivingFrequency = archivingFrequency || 60 * 60 * 1000
         this.tasksCollection = new NeDbDocumentCollection<TaskDocument>({
             filePath: persistDir === null ? null : this.getDocumentCollectionFilename(persistDir, 'tasks'),
-
             indexes: [
                 { fieldName: 'status' },
                 { fieldName: 'uuid', unique: true },
@@ -188,18 +176,44 @@ export class Tasker extends EventEmitter {
             ]
         })
         each(runners, (runner, operation) => this.assignRunner(operation, runner))
+    }
 
-        const statusToAbort: TaskStatus[] = this.abortNewTasksOnStop ? ['new', 'running'] : ['running']
+    public async cleanEndedTasks() {
+        const toCleanTasks = await this.tasksCollection.aggregate(
+            [
+                {
+                    $match: {
+                        status: { $in: ['done', 'failed', 'aborted'] },
+                        'archiving.duration': { $exists: true },
+                        $expr: {
+                            $gt: [
+                                new Date,
+                                {
+                                    $dateAdd: {
+                                        startDate: "$endedAt",
+                                        unit: "millisecond",
+                                        amount: "$archiving.duration"
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    $project: {
+                        uuid: 1,
+                        _id: 0
+                    }
+                }
+            ]
+        ).toArray()
 
-        // Emit events ?
-        this.tasksCollection.update(
-            { status: { $in: statusToAbort } },
-            { $set: {
-                status: 'aborted',
-                abortReason: this.errorToJson(new AbortError('Unexpected running task on Tasker load')),
-                endedAt: new Date
-            }}
-        )
+        const uuids = toCleanTasks.map(task => task.uuid)
+
+        await Promise.all([
+            this.tasksCollection.remove({ uuid: { $in: uuids } }),
+            this.logsCollection.remove({ taskUuid: { $in: uuids } })
+        ])
     }
 
     public start(abortSignal?: AbortSignal) {
@@ -215,6 +229,21 @@ export class Tasker extends EventEmitter {
 
         this.started = true
         this.emit('started')
+
+        const statusToAbort: TaskStatus[] = /*this.abortNewTasksOnStop ? ['new', 'running'] : */['running']
+
+        // Emit events ?
+        this.tasksCollection.update(
+            { status: { $in: statusToAbort } },
+            { $set: {
+                status: 'aborted',
+                abortReason: this.errorToJson(new AbortError('Unexpected running task on Tasker load')),
+                endedAt: new Date
+            }}
+        )
+
+        this.archivingInterval = setInterval(() => this.cleanEndedTasks(), this.archivingFrequency)
+        this.cleanEndedTasks()
         this.runNexts()
     }
 
@@ -224,8 +253,9 @@ export class Tasker extends EventEmitter {
         }
 
         this.started = false
+        clearInterval(this.archivingInterval)
 
-        const statusToAbort: TaskStatus[] = this.abortNewTasksOnStop ? ['new', 'running'] : ['running']
+        const statusToAbort: TaskStatus[] = /*this.abortNewTasksOnStop ? ['new', 'running'] : */['running']
 
         const tasksToAbort = this.tasksCollection.find(
             { status: { $in: statusToAbort } },
@@ -242,49 +272,6 @@ export class Tasker extends EventEmitter {
             throw new Error(operation + ' already assigned')
         }
         this.runners[operation] = run
-    }
-
-    public async addSchedule(addSchedule: AddScheduleOpts): Promise<void> {
-        const schedule = {
-            ...addSchedule,
-            uuid: uuid(),
-            countdown: addSchedule.limit ? addSchedule.limit : Infinity,
-            schedule: cronParser.parseExpression(addSchedule.schedule, {
-                iterator: true,
-                currentDate: addSchedule.startDate,
-                endDate: addSchedule.endDate
-            })
-        }
-
-        this.schedules.push(schedule)
-
-        this.scheduleNext(schedule)
-    }
-
-    protected scheduleNext(schedule: Schedule) {
-        if (schedule.nextTimeout) {
-            throw new Error('Unexpected')
-        }
-
-        let { value: nextDate, done: noMore } = schedule.schedule.next()
-
-        if (schedule.countdown === 0) {
-            noMore = true
-        }
-
-        if (noMore) {
-            return
-        }
-
-        schedule.nextTimeout = setTimeout(
-            () => {
-                delete schedule.nextTimeout
-                schedule.countdown--
-                this.addTask(schedule.addTask)
-                this.scheduleNext(schedule)
-            },
-            nextDate.getTime() - (new Date).getTime()
-        )
     }
 
     public async addTask(addTask: AddTaskOpts): Promise<string> {

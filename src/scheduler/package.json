@@ -1,5 +1,5 @@
 {
-  "name": "@gallofeliz/tasker",
+  "name": "@gallofeliz/scheduler",
   "version": "0.1.0",
   "description": "",
   "scripts": {
@@ -16,7 +16,6 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
-    "@gallofeliz/documents-collection": "^0.1.0",
-    "lodash": "^4.17.21"
+    "cron-parser": "^4.7.1"
   }
 }
