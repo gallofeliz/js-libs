@@ -1,6 +1,6 @@
 import {runProcess, createProcess} from '.'
 import {createLogger} from '@gallofeliz/logger'
-import assert, { deepEqual, fail, strict, strictEqual } from 'assert'
+import assert, { deepEqual, fail, strictEqual } from 'assert'
 import { Writable } from 'stream'
 const logger = createLogger()
 //import { once, EventEmitter } from 'events'
@@ -151,7 +151,7 @@ describe('Run Process', () => {
         setTimeout(() => abortController.abort(), 100)
 
         try {
-            const result = await runProcess({
+            await runProcess({
                 logger,
                 command: 'wc -w',
                 outputType: 'text',
@@ -169,7 +169,7 @@ describe('Run Process', () => {
 
     it('Multi processes fail', async () => {
         try {
-            const result = await runProcess({
+            await runProcess({
                 logger,
                 command: 'wc -w',
                 outputType: 'text',

@@ -1,6 +1,6 @@
 import { httpRequest } from '.'
 import {createLogger} from '@gallofeliz/logger'
-import { deepEqual, strict, strictEqual } from 'assert'
+import { deepEqual, strictEqual } from 'assert'
 const logger = createLogger()
 
 describe('Http request', () => {

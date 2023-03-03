@@ -1,4 +1,4 @@
-import { NeDbDocumentCollection, DocumentCollection } from '.'
+import { NeDbDocumentCollection } from '.'
 
 describe('Documents-collection', () => {
 
