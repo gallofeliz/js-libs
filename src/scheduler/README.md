@@ -25,7 +25,7 @@ scheduler.addSchedule({
     fn() {
         triggers.push(new Date)
     },
-    schedule: '*/2 * * * * *',
+    schedule: '*/2 * * * * *', // Or 2000
     limit: 42
 })
 

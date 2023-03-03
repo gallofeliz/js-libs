@@ -43,7 +43,7 @@ class IntervalProvider implements ScheduleProvider<Date> {
     protected endDate?: Date
 
     constructor({ interval, startDate, endDate }: { interval: number, startDate?: Date, endDate?: Date }) {
-        this.currentDate = new Date
+        this.currentDate = startDate || new Date
 
         const startOf:OpUnitType|undefined = findKey({
             'day': 1000*60*60*24,
@@ -54,6 +54,10 @@ class IntervalProvider implements ScheduleProvider<Date> {
 
         if (startOf) {
             this.currentDate = dayjs(this.currentDate).startOf(startOf).toDate()
+        }
+
+        if (startDate && startDate.getTime() === this.currentDate.getTime()) {
+            this.currentDate = new Date(this.currentDate.getTime() - interval)
         }
 
         this.interval = interval
