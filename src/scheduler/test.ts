@@ -4,6 +4,37 @@ import { Scheduler } from '.'
 
 describe('Scheduler', () => {
 
+    it('test interval', async () => {
+        const scheduler = new Scheduler
+
+        const triggers: Date[] = []
+
+        scheduler.addSchedule({
+            id: 'baba',
+            fn(arg) {
+                console.log('called', arg)
+                triggers.push(new Date)
+            },
+            schedule: 1000*2,
+            limit: 3
+        })
+
+        scheduler.start()
+
+        setTimeout(() => console.log(scheduler.getNextTriggerDate('baba')), 500)
+
+        await wait(9000)
+
+        scheduler.stop()
+
+        strictEqual(triggers.length, 3)
+
+        strictEqual(Math.round((triggers[2].getTime() - triggers[0].getTime()) / 10) * 10, 4000)
+
+        console.log(scheduler.getNextTriggerDate('baba'))
+
+    }).timeout(10000)
+
     it('test1', async () => {
 
         const scheduler = new Scheduler

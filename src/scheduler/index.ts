@@ -1,4 +1,6 @@
-import cronParser from 'cron-parser'
+import cronParser, { CronDate } from 'cron-parser'
+import dayjs, {OpUnitType} from 'dayjs'
+import {findKey} from 'lodash'
 
 export interface ScheduleFnArg {
     scheduleId: any
@@ -10,14 +12,14 @@ export interface ScheduleFnArg {
 export interface AddScheduleOpts {
     id: any
     fn: (arg: ScheduleFnArg) => void | Promise<void>
-    schedule: string // string[] with ! prefix for exclusion ?
+    schedule: string | number // string[] with ! prefix for exclusion ?
     startDate?: Date
     endDate?: Date
     limit?: number
 }
 
 export interface Schedule extends AddScheduleOpts {
-    scheduleObjs?: cronParser.CronExpression<true>
+    scheduleObjs?: ScheduleProvider<Date | CronDate>
     nextTimeout?: NodeJS.Timeout
     nextTriggerDate?: Date
     countdown: number
@@ -29,6 +31,48 @@ export interface SchedulerOpts {
 }
 
 export type OnError = (error: Error, scheduleId: any) => void
+
+interface ScheduleProvider<T> {
+    next: () => IteratorResult<T, T>
+    prev: () => IteratorResult<T, T>
+}
+
+class IntervalProvider implements ScheduleProvider<Date> {
+    protected currentDate: Date
+    protected interval: number
+    protected endDate?: Date
+
+    constructor({ interval, startDate, endDate }: { interval: number, startDate?: Date, endDate?: Date }) {
+        this.currentDate = new Date
+
+        const startOf:OpUnitType|undefined = findKey({
+            'day': 1000*60*60*24,
+            'hour': 1000*60*60,
+            'minute': 1000*60,
+            'second': 1000
+        }, (v) => interval >= v) as OpUnitType|undefined
+
+        if (startOf) {
+            this.currentDate = dayjs(this.currentDate).startOf(startOf).toDate()
+        }
+
+        this.interval = interval
+        this.endDate = endDate
+    }
+    next() {
+        const next = new Date(this.currentDate.getTime() + this.interval)
+        if (this.endDate && next > this.endDate) {
+            return {done:true, value: next}
+        }
+        this.currentDate = next
+        return {done:false, value: next}
+    }
+    prev() {
+        const prev = new Date(this.currentDate.getTime() - this.interval)
+        this.currentDate = prev
+        return {done:false, value: prev}
+    }
+}
 
 export class Scheduler {
     protected schedules: Record<any, Schedule> = {}
@@ -56,13 +100,22 @@ export class Scheduler {
         this.started = true
 
         Object.values(this.schedules).forEach(schedule => {
-            schedule.scheduleObjs = cronParser.parseExpression(schedule.schedule, {
-                iterator: true,
-                currentDate: schedule.startDate
-                    ? (schedule.startDate > new Date ? schedule.startDate : new Date)
-                    : undefined,
-                endDate: schedule.endDate
-            })
+            if (typeof schedule.schedule === 'number') {
+                schedule.scheduleObjs = new IntervalProvider({
+                    interval: schedule.schedule,
+                    startDate: schedule.startDate,
+                    endDate: schedule.endDate
+                })
+            } else {
+                schedule.scheduleObjs = cronParser.parseExpression(schedule.schedule, {
+                    iterator: true,
+                    currentDate: schedule.startDate
+                        ? (schedule.startDate > new Date ? schedule.startDate : new Date)
+                        : undefined,
+                    endDate: schedule.endDate
+                })
+            }
+
             this.scheduleNext(schedule)
         })
     }
@@ -120,7 +173,7 @@ export class Scheduler {
             return
         }
 
-        schedule.nextTriggerDate = nextDate.toDate()
+        schedule.nextTriggerDate = nextDate instanceof Date ? nextDate : nextDate.toDate()
 
         schedule.nextTimeout = setTimeout(
             async () => {
