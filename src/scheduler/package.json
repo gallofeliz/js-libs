@@ -1,6 +1,6 @@
 {
   "name": "@gallofeliz/scheduler",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -17,6 +17,7 @@
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
     "cron-parser": "^4.7.1",
-    "dayjs": "^1.11.7"
+    "dayjs": "^1.11.7",
+    "lodash": "^4.17.21"
   }
 }
