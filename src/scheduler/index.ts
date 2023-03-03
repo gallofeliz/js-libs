@@ -1,21 +1,27 @@
 import cronParser from 'cron-parser'
 
+export interface ScheduleFnArg {
+    scheduleId: any
+    triggerDate: Date
+    countdown: number
+    callsCount: number
+}
+
 export interface AddScheduleOpts {
     id: any
-    fn: () => void | Promise<void>
+    fn: (arg: ScheduleFnArg) => void | Promise<void>
     schedule: string // string[] with ! prefix for exclusion ?
     startDate?: Date
     endDate?: Date
     limit?: number
 }
 
-export interface Schedule {
-    id: any
-    fn: () => void | Promise<void>
-    schedule: cronParser.CronExpression<true>
+export interface Schedule extends AddScheduleOpts {
+    scheduleObjs?: cronParser.CronExpression<true>
     nextTimeout?: NodeJS.Timeout
     nextTriggerDate?: Date
     countdown: number
+    callsCount: number
 }
 
 export interface SchedulerOpts {
@@ -49,7 +55,16 @@ export class Scheduler {
 
         this.started = true
 
-        Object.values(this.schedules).forEach(schedule => this.scheduleNext(schedule))
+        Object.values(this.schedules).forEach(schedule => {
+            schedule.scheduleObjs = cronParser.parseExpression(schedule.schedule, {
+                iterator: true,
+                currentDate: schedule.startDate
+                    ? (schedule.startDate > new Date ? schedule.startDate : new Date)
+                    : undefined,
+                endDate: schedule.endDate
+            })
+            this.scheduleNext(schedule)
+        })
     }
 
     public getNextTriggerDate(id: any): Date | null {
@@ -67,6 +82,7 @@ export class Scheduler {
             clearTimeout(schedule.nextTimeout)
             delete schedule.nextTimeout
             delete schedule.nextTriggerDate
+            delete schedule.scheduleObjs
         })
         this.started = false
     }
@@ -79,11 +95,7 @@ export class Scheduler {
         const schedule = {
             ...addSchedule,
             countdown: addSchedule.limit ? addSchedule.limit : Infinity,
-            schedule: cronParser.parseExpression(addSchedule.schedule, {
-                iterator: true,
-                currentDate: addSchedule.startDate,
-                endDate: addSchedule.endDate
-            })
+            callsCount: 0
         }
 
         this.schedules[addSchedule.id] = schedule
@@ -94,11 +106,11 @@ export class Scheduler {
     }
 
     protected scheduleNext(schedule: Schedule) {
-        if (schedule.nextTimeout || !this.started) {
+        if (schedule.nextTimeout || !this.started || !schedule.scheduleObjs) {
             throw new Error('Unexpected')
         }
 
-        let { value: nextDate, done: noMore } = schedule.schedule.next()
+        let { value: nextDate, done: noMore } = schedule.scheduleObjs.next()
 
         if (schedule.countdown === 0) {
             noMore = true
@@ -112,11 +124,18 @@ export class Scheduler {
 
         schedule.nextTimeout = setTimeout(
             async () => {
+                schedule.countdown--
+                schedule.callsCount++
+                const arg: ScheduleFnArg = {
+                    scheduleId: schedule.id,
+                    triggerDate: schedule.nextTriggerDate as Date,
+                    countdown: schedule.countdown,
+                    callsCount: schedule.callsCount
+                }
                 delete schedule.nextTimeout
                 delete schedule.nextTriggerDate
-                schedule.countdown--
                 try {
-                    await schedule.fn()
+                    await schedule.fn(arg)
                 } catch (e) {
                     if (!this.onError) {
                         throw e

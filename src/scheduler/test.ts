@@ -12,7 +12,8 @@ describe('Scheduler', () => {
 
         scheduler.addSchedule({
             id: 'baba',
-            fn() {
+            fn(arg) {
+                console.log('called', arg)
                 triggers.push(new Date)
             },
             schedule: '*/2 * * * * *',

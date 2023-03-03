@@ -1,6 +1,15 @@
 # Scheduler
 
-Simple scheduling
+Simple scheduling:
+- [X] Schedule cron
+- [X] Get next scheduled date
+- [X] Start/Stoppable
+- [X] Inject exact Date to fn() and others properties
+- [ ] Array schedule ?
+- [ ] Schedule cron + dates + others formats
+- [ ] Excludes ?
+- [ ] Jitter and roundInterval (like https://github.com/influxdata/telegraf/blob/master/docs/CONFIGURATION.md)
+- [ ] Run on startup (once ? Each time ?)
 
 ```typescript
 import { Scheduler } from '@gallofeliz/scheduler'
