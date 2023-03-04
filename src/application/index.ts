@@ -81,8 +81,8 @@ class App<Config> {
     protected appDefinition: AppDefinition<Config>
 
     constructor(appDefinition: AppDefinition<Config>) {
-        this.name = appDefinition.name || require('./package.json').name
-        this.version = appDefinition.version  || require('./package.json').version
+        this.name = appDefinition.name || require(process.cwd() + '/package.json').name
+        this.version = appDefinition.version  || require(process.cwd() + '/package.json').version
         this.shortName = this.name.split('/').reverse()[0]
         this.runFn = appDefinition.run
         this.appDefinition = appDefinition
