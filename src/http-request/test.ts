@@ -27,7 +27,8 @@ describe('Http request', () => {
 
     it('abort', async() => {
         const ac = new AbortController
-        ac.abort()
+        const reason = new Error('Stop nowwww !!!')
+        ac.abort(reason)
         try {
             await httpRequest({
                 logger,
@@ -36,8 +37,7 @@ describe('Http request', () => {
                 responseType: 'auto'
             })
         } catch (e) {
-            strictEqual((e as any).code, 'ABORT_ERR')
-            strictEqual((e as any).name, 'AbortError')
+            strictEqual(e, reason)
         }
     })
 })

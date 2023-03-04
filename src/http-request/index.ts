@@ -27,14 +27,6 @@ export interface HttpRequestConfig {
    resultSchema?: SchemaObject
 }
 
-export class AbortError extends Error {
-    name = 'AbortError'
-    code = 'ABORT_ERR'
-    constructor(message: string = 'This operation was aborted') {
-        super(message)
-    }
-}
-
 export async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
     if (abortSignal?.aborted) {
       throw abortSignal.reason
