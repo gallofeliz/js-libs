@@ -76,8 +76,9 @@ const server = new HttpServer({
                 path: '/image',
                 requiredAuthorization: null,
                 outputContentType: 'image/jpeg',
-                async handler({logger}, res) {
+                async handler({logger, abortSignal}, res) {
                     await httpRequest({
+                        abortSignal,
                         logger,
                         responseStream: res,
                         url: 'https://www.poulesenville.com/wp-content/uploads/elementor/thumbs/img-0549-owvoi9sxmd60uttg8x4baqvc5dldoncb52q86velg0.jpeg'

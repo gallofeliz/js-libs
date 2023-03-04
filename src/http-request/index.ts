@@ -104,7 +104,13 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
 
     const gotRequest = got(gotOpts) as CancelableRequest<Response<string>>
 
-    const onSignalAbort = () => gotRequest.cancel()
+    const onSignalAbort = () => {
+        if (request.responseStream) {
+            (gotRequest as any).destroy()
+        } else {
+            gotRequest.cancel()
+        }
+    }
     abortSignal?.addEventListener('abort', onSignalAbort)
 
     try {

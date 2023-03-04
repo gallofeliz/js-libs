@@ -127,8 +127,10 @@ export class HttpServer {
                 const reqAbortController = new AbortController;
                 (req as HttpServerRequest).abortSignal = reqAbortController.signal
 
-                res.once('close', () => {
-                    reqAbortController.abort()
+                req.once('close', () => {
+                    if (!res.finished) {
+                        reqAbortController.abort()
+                    }
                 })
 
                 next()
@@ -515,11 +517,12 @@ export class HttpServer {
                         await route.handler(req as HttpServerRequest, res as HttpServerResponse)
 
                     } catch (e) {
-                        if ((req as HttpServerRequest).abortSignal.aborted && (e as any).code === 'ABORT_ERR') {
-                            // nothing to do : res and req are closed
+                        if ((req as HttpServerRequest).abortSignal.reason === e) {
+                            if (!res.finished) {
+                                res.end()
+                            }
                             return
                         }
-                        next(e)
                         return
                     }
 
