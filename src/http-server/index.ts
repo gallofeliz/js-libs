@@ -32,7 +32,7 @@ export type HttpServerRequest<
     auth: Auth
 }
 
-export interface HttpServerResponse<Body = any> extends express.Response {
+export interface HttpServerResponse<Body = any> extends expressCore.Response {
     /**
      * Send content
      */
@@ -42,7 +42,7 @@ export interface HttpServerResponse<Body = any> extends express.Response {
 export interface HttpServerConfig {
     name?: string
     version?: string
-    port: number
+    port?: number
     host?: string
     auth?: {
         users: User[]
@@ -188,7 +188,7 @@ export class HttpServer {
             return
         }
 
-        this.server = this.app.listen(this.config.port, this.config.host || '0.0.0.0')
+        this.server = this.app.listen(this.config.port || 80, this.config.host || '0.0.0.0')
 
         this.server.on('connection', (conn) => {
             const key = conn.remoteAddress + ':' + conn.remotePort
