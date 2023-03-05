@@ -52,35 +52,40 @@ export interface HttpServerConfig {
         defaultRequiredAuthentication?: boolean
         defaultRequiredAutorisation?: AuthMiddlewareOpts['requiredAuthorization']
     }
-    webUi?: {
-        filesPath: string
+    routes: Array<ApiRoute | StaticRoute>
+    swagger?: {
+        apiPath?: string
+        uiPath?: string
         requiredAuthentication?: boolean
         requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
     }
-    api?: {
-        prefix?: string
-        swagger?: {
-            apiPath?: string
-            uiPath?: string
-            requiredAuthentication?: boolean
-            requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
-        }
-        routes: Array<{
-            description?: string
-            method?: string
-            path: string
-            handler(request: HttpServerRequest<any>, response: HttpServerResponse): Promise<void>
-            inputBodySchema?: SchemaObject
-            inputQuerySchema?: SchemaObject
-            inputParamsSchema?: SchemaObject
-            outputBodySchema?: SchemaObject
-            inputContentType?: string
-            outputContentType?: string
-            requiredAuthentication?: boolean
-            requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
-        }>
-    }
     logger: UniversalLogger
+}
+
+export interface ApiRoute {
+    description?: string
+    method?: string
+    path: string
+    handler(request: HttpServerRequest<any>, response: HttpServerResponse): Promise<void>
+    inputBodySchema?: SchemaObject
+    inputQuerySchema?: SchemaObject
+    inputParamsSchema?: SchemaObject
+    outputBodySchema?: SchemaObject
+    inputContentType?: string
+    outputContentType?: string
+    requiredAuthentication?: boolean
+    requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
+}
+
+export interface StaticRoute {
+    path: string
+    srcPath: string
+    requiredAuthentication?: boolean
+    requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
+}
+
+function isStaticRoute(route: ApiRoute | StaticRoute): route is StaticRoute {
+    return !!(route as StaticRoute).srcPath
 }
 
 // function nothingMiddleware() {
@@ -151,26 +156,7 @@ export class HttpServer {
                 return ''
             }, {stream: { write: () => {} }}))
 
-        this.configureApi()
-
-        if (this.config.webUi) {
-            this.app.use('/',
-                createAuthMiddleware({
-                    realm: this.config.auth?.realm || this.config.name || 'app',
-                    requiredAuthentication: this.config.webUi.requiredAuthentication !== undefined
-                        ? this.config.webUi.requiredAuthentication
-                        : this.config.auth?.defaultRequiredAuthentication || false,
-                    requiredAuthorization: this.config.webUi.requiredAuthorization !== undefined
-                        ? this.config.webUi.requiredAuthorization
-                        : (this.config.auth?.defaultRequiredAutorisation === undefined
-                            ? null
-                            : this.config.auth?.defaultRequiredAutorisation
-                        ),
-                    auth: this.auth
-                }),
-                express.static(this.config.webUi.filesPath)
-            )
-        }
+        this.configureRoutes()
 
         this.app.use((err: Error, req: any, res: express.Response, next: any) => {
             this.logger.notice('Http Server error', { e: err })
@@ -230,11 +216,7 @@ export class HttpServer {
         delete this.server
     }
 
-    protected configureApi() {
-        if (!this.config.api) {
-            return
-        }
-
+    protected configureRoutes() {
         const swaggerDocument: OpenApi = {
               "openapi": "3.0.0",
               "info": {
@@ -257,17 +239,13 @@ export class HttpServer {
 
         }
 
-        const apiRouter = express.Router()
-        this.app.use('/' + (this.config.api.prefix ? this.config.api.prefix.replace(/^\//, '') : ''), apiRouter)
-
-
         const swaggerAuthMiddleware = createAuthMiddleware({
             realm: this.config.auth?.realm || this.config.name || 'app',
-            requiredAuthentication: this.config.api.swagger?.requiredAuthentication !== undefined
-                ? this.config.api.swagger?.requiredAuthentication
+            requiredAuthentication: this.config.swagger?.requiredAuthentication !== undefined
+                ? this.config.swagger?.requiredAuthentication
                 : this.config.auth?.defaultRequiredAuthentication || false,
-            requiredAuthorization: this.config.api.swagger?.requiredAuthorization !== undefined
-                ? this.config.api.swagger?.requiredAuthorization
+            requiredAuthorization: this.config.swagger?.requiredAuthorization !== undefined
+                ? this.config.swagger?.requiredAuthorization
                 : (this.config.auth?.defaultRequiredAutorisation === undefined
                     ? null
                     : this.config.auth?.defaultRequiredAutorisation
@@ -275,8 +253,8 @@ export class HttpServer {
             auth: this.auth
         })
 
-        apiRouter.get(
-            this.config.api.swagger?.apiPath || '/swagger',
+        this.app.get(
+            this.config.swagger?.apiPath || '/swagger',
             swaggerAuthMiddleware,
             (req, res) => {
                 res.send({
@@ -288,25 +266,49 @@ export class HttpServer {
             }
         )
 
-        const swagerrUiPath = this.config.api.swagger?.uiPath || this.config.api.routes.some(r => r.path === '/') ? '/swagger-ui' : '/'
+        const swagerrUiPath = this.config.swagger?.uiPath || this.config.routes.some(r => r.path === '/') ? '/swagger-ui' : '/'
 
-        apiRouter.use(
+        this.app.use(
             swagerrUiPath,
             swaggerAuthMiddleware,
             swaggerUi.serve
         );
 
-        apiRouter.get(swagerrUiPath,
+        this.app.get(swagerrUiPath,
             swaggerAuthMiddleware,
             swaggerUi.setup(null as any, {
                     swaggerOptions: {
-                        url: this.config.api.swagger?.apiPath || '/swagger'
+                        url: this.config.swagger?.apiPath || '/swagger'
                     }
                 }
             )
         )
 
-        this.config.api.routes.forEach(route => {
+        this.config.routes.forEach(route => {
+
+            const routeAuthMiddlewareOpts = {
+                realm: this.config.auth?.realm || this.config.name || 'app',
+                requiredAuthentication: route.requiredAuthentication !== undefined
+                    ? route.requiredAuthentication
+                    : this.config.auth?.defaultRequiredAuthentication || false,
+                requiredAuthorization: route.requiredAuthorization !== undefined
+                    ? route.requiredAuthorization
+                    : (this.config.auth?.defaultRequiredAutorisation === undefined
+                        ? null
+                        : this.config.auth?.defaultRequiredAutorisation
+                    ),
+                auth: this.auth
+            }
+
+            if (isStaticRoute(route)) {
+                this.app.use(
+                    route.path,
+                    createAuthMiddleware(routeAuthMiddlewareOpts),
+                    express.static(route.srcPath)
+                )
+                return
+            }
+
             const method = route.method?.toLowerCase() || 'get'
             const swaggerRoutePath = route.path.replace(/:([a-z]+)/gi, '{$1}')
 
@@ -390,21 +392,7 @@ export class HttpServer {
                 }
             }
 
-            const routeAuthMiddlewareOpts = {
-                realm: this.config.auth?.realm || this.config.name || 'app',
-                requiredAuthentication: route.requiredAuthentication !== undefined
-                    ? route.requiredAuthentication
-                    : this.config.auth?.defaultRequiredAuthentication || false,
-                requiredAuthorization: route.requiredAuthorization !== undefined
-                    ? route.requiredAuthorization
-                    : (this.config.auth?.defaultRequiredAutorisation === undefined
-                        ? null
-                        : this.config.auth?.defaultRequiredAutorisation
-                    ),
-                auth: this.auth
-            };
-
-            (swaggerDocument.paths[swaggerRoutePath][method as 'get'] as OpenApiOperation) = {
+            ;(swaggerDocument.paths[swaggerRoutePath][method as 'get'] as OpenApiOperation) = {
                 description: route.description,
                 security: (() => {
                     if (routeAuthMiddlewareOpts.requiredAuthentication) {
@@ -428,7 +416,7 @@ export class HttpServer {
                 }
             }
 
-            apiRouter[method as 'all'](route.path,
+            this.app[method as 'all'](route.path,
                 createAuthMiddleware(routeAuthMiddlewareOpts),
                 async (req, res, next) => {
                     const uuid = (req as any).uuid

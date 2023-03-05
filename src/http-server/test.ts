@@ -10,24 +10,22 @@ describe('Http Server', () => {
         const server = new HttpServer({
             port: 8080,
             logger,
-            api: {
-                routes: [
-                    {
-                        method: 'POST',
-                        path: '/test',
-                        async handler({body, logger}, res) {
-                            logger.info('I am the test handler')
-                            res.send(body)
-                        },
-                        inputBodySchema: {
-                            oneOf: [
-                                {type: 'number'},
-                                {type: 'object', properties: {test: {type: 'number'}}}
-                            ]
-                        }
+            routes: [
+                {
+                    method: 'POST',
+                    path: '/test',
+                    async handler({body, logger}, res) {
+                        logger.info('I am the test handler')
+                        res.send(body)
+                    },
+                    inputBodySchema: {
+                        oneOf: [
+                            {type: 'number'},
+                            {type: 'object', properties: {test: {type: 'number'}}}
+                        ]
                     }
-                ]
-            }
+                }
+            ]
         })
 
         await server.start()

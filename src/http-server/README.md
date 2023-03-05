@@ -33,47 +33,53 @@ runServer({
             'role-admin': ['role-user', 'article[*].publish', 'users[*].delete', '!users[admin].delete']
         }
     },
-    api: {
-        routes: [
-            {
-                description: 'Welcome route !',
-                path: '/welcome',
-                outputBodySchema: tsToJsSchema<Welcome>(),
-                async handler(_, {send}) {
-                    send({message: 'Welcome !'})
+    routes: [
+        {
+            path: '/file',
+            srcPath: 'package.json'
+        },
+        {
+            path: '/dir',
+            srcPath: __dirname
+        },
+        {
+            description: 'Welcome route !',
+            path: '/welcome',
+            outputBodySchema: tsToJsSchema<Welcome>(),
+            async handler(_, {send}) {
+                send({message: 'Welcome !'})
+            }
+        },
+        {
+            method: 'GET',
+            inputParamsSchema: {
+                type: 'object',
+                properties: {
+                    id: { type: 'number' }
                 }
             },
-            {
-                method: 'GET',
-                inputParamsSchema: {
-                    type: 'object',
-                    properties: {
-                        id: { type: 'number' }
-                    }
-                },
-                inputQuerySchema: {
-                    type: 'object',
-                    properties: {
-                        full: { type: 'boolean' }
-                    }
-                },
-                outputBodySchema: {
-                    type: 'string'
-                },
-                path: '/article/:id',
-                requiredAuthorization(res) { return 'article['+ res.params.id +'].read' },
-                async handler({query, params, user, auth}: HttpServerRequest<{id: number}, {full: boolean}>, {send}: HttpServerResponse<string>) {
-
-                    const article = articleService.get(params.id, { full: query.full })
-
-                    send({
-                        article,
-                        writable: auth.isAuthorized(user, 'article[' + params.id + '].write'),
-                        publishable: auth.isAuthorized(user, 'article[' + params.id + '].publish')
-                    })
+            inputQuerySchema: {
+                type: 'object',
+                properties: {
+                    full: { type: 'boolean' }
                 }
+            },
+            outputBodySchema: {
+                type: 'string'
+            },
+            path: '/article/:id',
+            requiredAuthorization(res) { return 'article['+ res.params.id +'].read' },
+            async handler({query, params, user, auth}: HttpServerRequest<{id: number}, {full: boolean}>, {send}: HttpServerResponse<string>) {
+
+                const article = articleService.get(params.id, { full: query.full })
+
+                send({
+                    article,
+                    writable: auth.isAuthorized(user, 'article[' + params.id + '].write'),
+                    publishable: auth.isAuthorized(user, 'article[' + params.id + '].publish')
+                })
             }
-        ]
-    }
+        }
+    ]
 })
 ```
