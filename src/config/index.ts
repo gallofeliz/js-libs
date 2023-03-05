@@ -78,7 +78,7 @@ function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: st
     const envs = (!fullPrefix ? process.env : mapKeys(pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix)), (v, k) => k?.substring(fullPrefix.length))) as Record<string, string>
     // If prefix add warn if not found good path ?
     return mapKeys(envs, (value, key) => {
-        return findGoodPath(key, schema)
+        return findGoodPath(key.split(delimiter).join('.'), schema)
     })
 }
 

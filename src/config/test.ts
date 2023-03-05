@@ -14,6 +14,9 @@ export interface Config {
         // }>
     }
     envShell?: string
+    deep: {
+        config: boolean
+    }
 }
 
 // @ts-ignore
@@ -22,6 +25,8 @@ describe('Config', () => {
     it('test', async () => {
 
         process.env.APP_ENVSHELL = 'hello world'
+
+        process.env.APP_DEEP_CONFIG = 'true'
 
         deepEqual(
             await loadConfig<Config, Config>({
@@ -37,7 +42,10 @@ describe('Config', () => {
                         bidule: true
                     }
                 },
-                envShell: 'hello world'
+                envShell: 'hello world',
+                deep: {
+                    config: true
+                }
             }
         )
 
