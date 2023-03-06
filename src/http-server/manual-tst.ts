@@ -41,6 +41,10 @@ const server = new HttpServer({
             admin: ['*']
         }
     },
+    swagger: {
+        apiPath: '/swag-api',
+        uiPath: '/swag'
+    },
     routes: [
         {
             path: '/file',
@@ -49,6 +53,12 @@ const server = new HttpServer({
         {
             path: '/dir',
             srcPath: __dirname
+        },
+        {
+            path: '/self',
+            async handler(_, res) {
+                res.sendFile(__filename)
+            }
         },
         {
             description: 'Welcome route !',

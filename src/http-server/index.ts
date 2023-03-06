@@ -16,6 +16,7 @@ import * as expressCore from 'express-serve-static-core'
 import { createAuthMiddleware, Auth, User , AuthMiddlewareOpts} from '@gallofeliz/auth'
 import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
 import swaggerUi from 'swagger-ui-express'
+import { promisify } from 'util'
 
 export type HttpServerRequest<
     Params = expressCore.ParamsDictionary,
@@ -37,6 +38,7 @@ export interface HttpServerResponse<Body = any> extends expressCore.Response {
      * Send content
      */
     send(content: Body): this
+    sendFile(path: string, options?: any): Promise<void>
 }
 
 export interface HttpServerConfig {
@@ -54,8 +56,8 @@ export interface HttpServerConfig {
     }
     routes: Array<ApiRoute | StaticRoute>
     swagger?: {
-        apiPath?: string
-        uiPath?: string
+        apiPath: string
+        uiPath: string
         requiredAuthentication?: boolean
         requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
     }
@@ -239,50 +241,52 @@ export class HttpServer {
 
         }
 
-        const swaggerAuthMiddleware = createAuthMiddleware({
-            realm: this.config.auth?.realm || this.config.name || 'app',
-            requiredAuthentication: this.config.swagger?.requiredAuthentication !== undefined
-                ? this.config.swagger?.requiredAuthentication
-                : this.config.auth?.defaultRequiredAuthentication || false,
-            requiredAuthorization: this.config.swagger?.requiredAuthorization !== undefined
-                ? this.config.swagger?.requiredAuthorization
-                : (this.config.auth?.defaultRequiredAutorisation === undefined
-                    ? null
-                    : this.config.auth?.defaultRequiredAutorisation
-                ),
-            auth: this.auth
-        })
+        if (this.config.swagger) {
 
-        this.app.get(
-            this.config.swagger?.apiPath || '/swagger',
-            swaggerAuthMiddleware,
-            (req, res) => {
-                res.send({
-                    ...swaggerDocument,
-                    servers: [{
-                        url: req.protocol + '://' + req.header('host')
-                    }]
-                })
-            }
-        )
+            const swaggerAuthMiddleware = createAuthMiddleware({
+                realm: this.config.auth?.realm || this.config.name || 'app',
+                requiredAuthentication: this.config.swagger.requiredAuthentication !== undefined
+                    ? this.config.swagger.requiredAuthentication
+                    : this.config.auth?.defaultRequiredAuthentication || false,
+                requiredAuthorization: this.config.swagger.requiredAuthorization !== undefined
+                    ? this.config.swagger.requiredAuthorization
+                    : (this.config.auth?.defaultRequiredAutorisation === undefined
+                        ? null
+                        : this.config.auth?.defaultRequiredAutorisation
+                    ),
+                auth: this.auth
+            })
 
-        const swagerrUiPath = this.config.swagger?.uiPath || this.config.routes.some(r => r.path === '/') ? '/swagger-ui' : '/'
-
-        this.app.use(
-            swagerrUiPath,
-            swaggerAuthMiddleware,
-            swaggerUi.serve
-        );
-
-        this.app.get(swagerrUiPath,
-            swaggerAuthMiddleware,
-            swaggerUi.setup(null as any, {
-                    swaggerOptions: {
-                        url: this.config.swagger?.apiPath || '/swagger'
-                    }
+            this.app.get(
+                this.config.swagger.apiPath,
+                swaggerAuthMiddleware,
+                (req, res) => {
+                    res.send({
+                        ...swaggerDocument,
+                        servers: [{
+                            url: req.protocol + '://' + req.header('host')
+                        }]
+                    })
                 }
             )
-        )
+
+            this.app.use(
+                this.config.swagger.uiPath,
+                swaggerAuthMiddleware,
+                swaggerUi.serve
+            );
+
+            this.app.get(this.config.swagger.uiPath,
+                swaggerAuthMiddleware,
+                swaggerUi.setup(null as any, {
+                        swaggerOptions: {
+                            url: this.config.swagger.apiPath
+                        }
+                    }
+                )
+            )
+
+        }
 
         this.config.routes.forEach(route => {
 
@@ -451,6 +455,15 @@ export class HttpServer {
                         return
                     }
 
+                    let calledSendFile = false
+
+                    res.sendFile = ((fn: Function) => {
+                        return async(...args) => {
+                            calledSendFile = true
+                            return fn(...args)
+                        }
+                    })(promisify(res.sendFile.bind(res)))
+
                     res.send = (content) => {
 
                         if (route.outputContentType) {
@@ -514,7 +527,7 @@ export class HttpServer {
                         return
                     }
 
-                    if (!res.finished) {
+                    if (!res.finished && !calledSendFile) {
                         res.end()
                         return
                     }
