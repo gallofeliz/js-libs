@@ -17,6 +17,8 @@ import { createAuthMiddleware, Auth, User , AuthMiddlewareOpts} from '@gallofeli
 import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
 import swaggerUi from 'swagger-ui-express'
 import { promisify } from 'util'
+import { statSync } from 'fs'
+import { resolve } from 'path'
 
 export type HttpServerRequest<
     Params = expressCore.ParamsDictionary,
@@ -305,11 +307,23 @@ export class HttpServer {
             }
 
             if (isStaticRoute(route)) {
-                this.app.use(
-                    route.path,
-                    createAuthMiddleware(routeAuthMiddlewareOpts),
-                    express.static(route.srcPath)
-                )
+
+                if (!statSync(route.srcPath).isDirectory()) {
+                    this.app.get(
+                        route.path,
+                        createAuthMiddleware(routeAuthMiddlewareOpts),
+                        (_, res, next) => {
+                            res.sendFile(resolve(process.cwd(), route.srcPath), next)
+                        }
+                    )
+                } else {
+                    this.app.use(
+                        route.path,
+                        createAuthMiddleware(routeAuthMiddlewareOpts),
+                        express.static(route.srcPath)
+                    )
+                }
+
                 return
             }
 

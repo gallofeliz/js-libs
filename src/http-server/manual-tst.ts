@@ -47,6 +47,10 @@ const server = new HttpServer({
     },
     routes: [
         {
+            path: '/',
+            srcPath: 'README.md'
+        },
+        {
             path: '/file',
             srcPath: 'package.json'
         },
