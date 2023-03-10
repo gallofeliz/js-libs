@@ -27,4 +27,8 @@ describe('Logger', () => {
 
   })
 
+  it('warning', () => {
+    process.emitWarning('No good good good', { code: 'NOT_GOOD_GOOD_GOOD' })
+  })
+
 })

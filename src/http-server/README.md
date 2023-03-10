@@ -12,6 +12,7 @@ Advanced Http Server:
 - [✓] Auto close Response (async use)
 - [✓] Abortable
 - [-] Well tested :(
+- [ ] Route scope public/private for swagger ?
 
 Examples
 

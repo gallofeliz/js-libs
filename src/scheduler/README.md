@@ -10,6 +10,8 @@ Simple scheduling:
 - [ ] Excludes ?
 - [ ] Jitter (like https://github.com/influxdata/telegraf/blob/master/docs/CONFIGURATION.md)
 - [ ] Run on startup (once ? Each time ?)
+- [ ] Logs, events
+- [ ] Timezone ?
 
 ```typescript
 import { Scheduler } from '@gallofeliz/scheduler'

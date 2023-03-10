@@ -59,9 +59,9 @@ const server = new HttpServer({
             srcPath: __dirname
         },
         {
-            path: '/self',
+            path: '/syslog',
             async handler(_, res) {
-                res.sendFile(__filename)
+                await res.sendFile('/var/log/syslog')
             }
         },
         {

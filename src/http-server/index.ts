@@ -469,14 +469,7 @@ export class HttpServer {
                         return
                     }
 
-                    let calledSendFile = false
-
-                    res.sendFile = ((fn: Function) => {
-                        return async(...args) => {
-                            calledSendFile = true
-                            return fn(...args)
-                        }
-                    })(promisify(res.sendFile.bind(res)))
+                    res.sendFile = promisify(res.sendFile.bind(res))
 
                     res.send = (content) => {
 
@@ -541,7 +534,7 @@ export class HttpServer {
                         return
                     }
 
-                    if (!res.finished && !calledSendFile) {
+                    if (!res.finished) {
                         res.end()
                         return
                     }
