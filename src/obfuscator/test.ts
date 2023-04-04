@@ -1,10 +1,10 @@
-import { deepEqual } from "assert"
+import { deepEqual } from 'assert'
 import {
     obfuscate,
     createObjectValuesByKeysObfuscatorProcessor,
     createValuesObfuscatorProcessor,
     defaultProcessors
-} from "."
+} from '.'
 
 describe('Obfuscator', () => {
 
@@ -43,32 +43,32 @@ describe('Obfuscator', () => {
         deepEqual(
             obfuscate(data),
             {
-                "id": 54,
-                "context": {
-                    "user": "root",
-                    "password": "***"
+                'id': 54,
+                'context': {
+                    'user': 'root',
+                    'password': '***'
                 },
-                "urls": {
-                    "main": "https://user:***@localhost"
+                'urls': {
+                    'main': 'https://user:***@localhost'
                 },
-                "email": "toto@gmail.com",
-                "firstName": "Albert",
-                "lastName": "Dupont",
-                "fullname": "Albert Dupont",
+                'email': 'toto@gmail.com',
+                'firstName': 'Albert',
+                'lastName': 'Dupont',
+                'fullname': 'Albert Dupont',
                 'city': 'Madrid',
                 'country': null,
                 'zip': undefined,
-                "age": 34,
-                "sex": "M",
-                "very": {
-                    "deep": {
-                        "object": {
+                'age': 34,
+                'sex': 'M',
+                'very': {
+                    'deep': {
+                        'object': {
                             'city': 'Paris',
-                            "with": [
+                            'with': [
                                 [
-                                    "4444-3333-2222-1111",
-                                    "192.168.0.1",
-                                    "ok"
+                                    '4444-3333-2222-1111',
+                                    '192.168.0.1',
+                                    'ok'
                                 ]
                             ]
                         }
@@ -91,32 +91,32 @@ describe('Obfuscator', () => {
                 }
             ),
             {
-                "id": 54,
-                "context": {
-                    "user": "root",
-                    "password": "***"
+                'id': 54,
+                'context': {
+                    'user': 'root',
+                    'password': '***'
                 },
-                "urls": {
-                    "main": "https://user:***@localhost"
+                'urls': {
+                    'main': 'https://user:***@localhost'
                 },
-                "email": "***",
-                "firstName": "Albert",
-                "lastName": "Dupont",
-                "fullname": "Albert Dupont",
+                'email': '***',
+                'firstName': 'Albert',
+                'lastName': 'Dupont',
+                'fullname': 'Albert Dupont',
                 'city': 'Madrid',
                 'country': null,
                 'zip': undefined,
-                "age": 34,
-                "sex": "M",
-                "very": {
-                    "deep": {
-                        "object": {
+                'age': 34,
+                'sex': 'M',
+                'very': {
+                    'deep': {
+                        'object': {
                             'city': 'Paris',
-                            "with": [
+                            'with': [
                                 [
-                                    "4444-3333-2222-1111",
-                                    "192.168.0.1",
-                                    "ok"
+                                    '4444-3333-2222-1111',
+                                    '192.168.0.1',
+                                    'ok'
                                 ]
                             ]
                         }
@@ -150,32 +150,32 @@ describe('Obfuscator', () => {
                 'SECRET'
             ),
             {
-                "id": 54,
-                "context": {
-                    "user": "SECRET",
-                    "password": "SECRET"
+                'id': 54,
+                'context': {
+                    'user': 'SECRET',
+                    'password': 'SECRET'
                 },
-                "urls": {
-                    "main": "https://user:pass@localhost"
+                'urls': {
+                    'main': 'https://user:pass@localhost'
                 },
-                "email": "SECRET",
-                "firstName": "SECRET",
-                "lastName": "SECRET",
-                "fullname": "SECRET",
+                'email': 'SECRET',
+                'firstName': 'SECRET',
+                'lastName': 'SECRET',
+                'fullname': 'SECRET',
                 'city': 'Madrid',
                 'country': null,
                 'zip': undefined,
-                "age": 34,
-                "sex": "SECRET",
-                "very": {
-                    "deep": {
-                        "object": {
+                'age': 34,
+                'sex': 'SECRET',
+                'very': {
+                    'deep': {
+                        'object': {
                             'city': 'SECRET',
-                            "with": [
+                            'with': [
                                 [
-                                    "SECRET",
-                                    "SECRET",
-                                    "ok"
+                                    'SECRET',
+                                    'SECRET',
+                                    'ok'
                                 ]
                             ]
                         }
