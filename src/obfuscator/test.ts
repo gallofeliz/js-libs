@@ -10,6 +10,8 @@ describe('Obfuscator', () => {
 
     const data = {
         id: 54,
+        date: new Date,
+        error: new Error('Unable to connect to https://user:pass@localhost'),
         context: {
             user: 'root',
             password: 'root'
@@ -44,6 +46,8 @@ describe('Obfuscator', () => {
             obfuscate(data),
             {
                 'id': 54,
+                'date': data.date,
+                'error': data.error,
                 'context': {
                     'user': 'root',
                     'password': '***'
@@ -92,6 +96,8 @@ describe('Obfuscator', () => {
             ),
             {
                 'id': 54,
+                'date': data.date,
+                'error': data.error,
                 'context': {
                     'user': 'root',
                     'password': '***'
@@ -130,6 +136,8 @@ describe('Obfuscator', () => {
 
     it('custom processors', () => {
 
+        let expectedErr;
+
         deepEqual(
             obfuscate(
                 data,
@@ -145,12 +153,31 @@ describe('Obfuscator', () => {
                             data.city = obstr
                         }
                         return data
+                    },
+                    (data, obstr) => {
+                        if (data instanceof Error) {
+                            const newMsg = data.message.replace(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi, obstr)
+
+                            if (data.message !== newMsg) {
+                                const newError = new Error(newMsg)
+
+                                // etc
+
+                                expectedErr = newError
+
+                                return newError
+                            }
+                        }
+
+                        return data
                     }
                 ],
                 'SECRET'
             ),
             {
                 'id': 54,
+                'date': data.date,
+                'error': expectedErr,
                 'context': {
                     'user': 'SECRET',
                     'password': 'SECRET'
