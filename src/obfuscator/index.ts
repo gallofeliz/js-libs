@@ -6,42 +6,38 @@ export type ObfuscatorMatcher = (data: any) => boolean
 export type ObfuscatorProcessors = ObfuscatorProcessor[] | Record<string, ObfuscatorProcessor>
 
 export function createObjectValuesByKeysObfuscatorProcessor<T>(keyMatch: RegExp | ObfuscatorMatcher | any): ObfuscatorProcessor<T> {
-    return (data: T, key: any, obfuscateString: string) => {
-        if (keyMatch instanceof RegExp) {
-            if (typeof key === 'string' && key.match(keyMatch)) {
-                return obfuscateString
-            }
-        } else if (keyMatch instanceof Function) {
-            if (keyMatch(key)) {
-                return obfuscateString
-            }
-        } else {
-            if (key === keyMatch) {
-                return obfuscateString
-            }
+    if (keyMatch instanceof RegExp) {
+        return (data: T, key: any, obfuscateString: string) => {
+            return typeof key === 'string' && key.match(keyMatch) ? obfuscateString : data
         }
+    }
 
-        return data
+    if (keyMatch instanceof Function) {
+        return (data: T, key: any, obfuscateString: string) => {
+            return keyMatch(key) ? obfuscateString : data
+        }
+    }
+
+    return (data: T, key: any, obfuscateString: string) => {
+        return key === keyMatch ? obfuscateString : data
     }
 }
 
 export function createValuesObfuscatorProcessor<T>(valueMatch: RegExp | ObfuscatorMatcher | any): ObfuscatorProcessor<T> {
-    return (data: T, _, obfuscateString: string) => {
-        if (valueMatch instanceof RegExp) {
-            if (typeof data === 'string' && data.match(valueMatch)) {
-                return data.replace(valueMatch, obfuscateString)
-            }
-        } else if (valueMatch instanceof Function) {
-            if (valueMatch(data)) {
-                return obfuscateString
-            }
-        } else {
-            if (data === valueMatch) {
-                return obfuscateString
-            }
+    if (valueMatch instanceof RegExp) {
+        return (data: T, _, obfuscateString: string) => {
+            return typeof data === 'string' && data.match(valueMatch) ? data.replace(valueMatch, obfuscateString) : data
         }
+    }
 
-        return data
+    if (valueMatch instanceof Function) {
+        return (data: T, _, obfuscateString: string) => {
+            return valueMatch(data) ? obfuscateString : data
+        }
+    }
+
+    return (data: T, _, obfuscateString: string) => {
+        return data === valueMatch ? obfuscateString : data
     }
 }
 
@@ -76,7 +72,11 @@ export class Obfuscator {
 export const defaultProcessors = {
     authInUrls: createValuesObfuscatorProcessor(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi),
     objKeysLooksLikeSecrets: createObjectValuesByKeysObfuscatorProcessor(/password|crendential|secret|token/i),
-    objKeysAreSecrets: createObjectValuesByKeysObfuscatorProcessor(/^auth$/i)
+    objKeysAreSecrets: createObjectValuesByKeysObfuscatorProcessor(/^auth$/i),
+    secretsInUrlsEncodedLike: createValuesObfuscatorProcessor(/(?<=(password|credentials|token)=)[^&; ]+/gi),
+    secretsInJsonLike: createValuesObfuscatorProcessor(/(?<="(password|credentials|token)": ?")(\\"|[^"])+(?=")/gi),
+    authInHeaders: createValuesObfuscatorProcessor(/(?<=authorization: ?\w+ )\w+/gi),
+    sessionsInCookies: createValuesObfuscatorProcessor(/(?<=Cookie:.*)(?<=(phpsessid|session)=)\w+/gi),
 }
 
 export function obfuscate<T>(data: T, processors?: ObfuscatorProcessors, obfuscateString?: string): T extends Object ? T : T | string {

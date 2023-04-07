@@ -57,7 +57,17 @@ describe('Obfuscator', () => {
     it('default processors', () => {
 
         deepEqual(
-            obfuscate(data),
+            obfuscate({
+                ...data,
+                form1: 'user=me&password=hacked',
+                form2: 'credentials=hacked%26!&user=me',
+                stringifiedJson1: JSON.stringify({user: 'me', password: 'hacked'}),
+                stringifiedJson2: JSON.stringify({password: 'hacked"!', user: 'me'}),
+                headers: 'Content-Type: text/plain'
+                + '\nAuthorization: Basic YWxhZGRpbjpvcGVuc2VzYW1l'
+                + '\nCookie: PHPSESSID=298zf09hf012fh2; csrftoken=u32t4o3tb3gg43; _gat=1'
+                + '\nCache-Control: max-age=604800'
+            }),
             {
                 'id': 54,
                 'date': data.date,
@@ -78,6 +88,14 @@ describe('Obfuscator', () => {
                 'zip': undefined,
                 'age': 34,
                 'sex': 'M',
+                'form1': 'user=me&password=***',
+                'form2': 'credentials=***&user=me',
+                'stringifiedJson1': JSON.stringify({user: 'me', password: '***'}),
+                'stringifiedJson2': JSON.stringify({password: '***', user: 'me'}),
+                'headers': 'Content-Type: text/plain'
+                + '\nAuthorization: Basic ***'
+                + '\nCookie: PHPSESSID=***; csrftoken=***; _gat=1'
+                + '\nCache-Control: max-age=604800',
                 'very': {
                     'deep': {
                         'object': {
