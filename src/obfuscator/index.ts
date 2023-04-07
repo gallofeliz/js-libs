@@ -1,36 +1,32 @@
 import traverse from 'traverse'
 import { cloneDeep } from 'lodash'
 
-export type ObfuscatorProcessor<T = any> = (data: T, obfuscateString: string) => T | string
+export type ObfuscatorProcessor<T = any> = (data: T, key: any, obfuscateString: string) => T | string
 export type ObfuscatorMatcher = (data: any) => boolean
 export type ObfuscatorProcessors = ObfuscatorProcessor[] | Record<string, ObfuscatorProcessor>
 
 export function createObjectValuesByKeysObfuscatorProcessor<T>(keyMatch: RegExp | ObfuscatorMatcher | any): ObfuscatorProcessor<T> {
-    return (data: T, obfuscateString: string) => {
-        if (!(data instanceof Object)) {
-            return data
-        }
-        for (const key in data) {
-            if (keyMatch instanceof RegExp) {
-                if (typeof key === 'string' && key.match(keyMatch)) {
-                    (data as Record<string, any>)[key] = obfuscateString
-                }
-            } else if (keyMatch instanceof Function) {
-                if (keyMatch(key)) {
-                    (data as Record<any, any>)[key] = obfuscateString
-                }
-            } else {
-                if (key === keyMatch) {
-                    (data as Record<string, any>)[key] = obfuscateString
-                }
+    return (data: T, key: any, obfuscateString: string) => {
+        if (keyMatch instanceof RegExp) {
+            if (typeof key === 'string' && key.match(keyMatch)) {
+                return obfuscateString
+            }
+        } else if (keyMatch instanceof Function) {
+            if (keyMatch(key)) {
+                return obfuscateString
+            }
+        } else {
+            if (key === keyMatch) {
+                return obfuscateString
             }
         }
+
         return data
     }
 }
 
 export function createValuesObfuscatorProcessor<T>(valueMatch: RegExp | ObfuscatorMatcher | any): ObfuscatorProcessor<T> {
-    return (data: T, obfuscateString: string) => {
+    return (data: T, _, obfuscateString: string) => {
         if (valueMatch instanceof RegExp) {
             if (typeof data === 'string' && data.match(valueMatch)) {
                 return data.replace(valueMatch, obfuscateString)
@@ -58,19 +54,22 @@ export class Obfuscator {
         this.obfuscateString = obfuscateString
     }
     obfuscate<T>(data: T): T extends Object ? T : T | string  {
-        const wrap = cloneDeep({data})
+        const processors: ObfuscatorProcessor[] = Array.isArray(this.processors) ? this.processors : Object.values(this.processors)
+        const obfuscateString = this.obfuscateString
 
-        traverse(wrap).forEach((data: any) => {
-            for (const processor of Array.isArray(this.processors) ? this.processors : Object.values(this.processors)) {
-                data = processor(data, this.obfuscateString)
-                if (data === this.obfuscateString) {
+        if (processors.length === 0) {
+            return data as any
+        }
+
+        return traverse(cloneDeep(data)).forEach(function (data: any) {
+            for (const processor of processors) {
+                data = processor(data, this.key, obfuscateString)
+                if (data === obfuscateString) {
                     break
                 }
             }
             return data
-        })
-
-        return wrap.data as any
+        }) as any
     }
 }
 

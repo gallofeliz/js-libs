@@ -1,4 +1,4 @@
-import { deepEqual } from 'assert'
+import { deepEqual, strictEqual } from 'assert'
 import {
     obfuscate,
     createObjectValuesByKeysObfuscatorProcessor,
@@ -39,6 +39,20 @@ describe('Obfuscator', () => {
             }
         }
     }
+
+    it('simple value', () => {
+        strictEqual(
+            obfuscate('Hello https://melanie:secret@google.fr/path !'),
+            'Hello https://melanie:***@google.fr/path !'
+        )
+    })
+
+    it('no processors', () => {
+        strictEqual(
+            obfuscate(data, []),
+            data
+        )
+    })
 
     it('default processors', () => {
 
@@ -82,7 +96,6 @@ describe('Obfuscator', () => {
         )
 
     })
-
 
     it('extended default processors', () => {
 
@@ -133,7 +146,6 @@ describe('Obfuscator', () => {
 
     })
 
-
     it('custom processors', () => {
 
         let expectedErr;
@@ -148,13 +160,13 @@ describe('Obfuscator', () => {
                     createValuesObfuscatorProcessor(/^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}$/),
                     createValuesObfuscatorProcessor('root'),
                     createValuesObfuscatorProcessor((v: string) => v === '192.168.0.1'),
-                    (data, obstr) => {
-                        if (data instanceof Object && data.city === 'Paris') {
-                            data.city = obstr
+                    (data, key, obstr) => {
+                        if (key === 'city' && data === 'Paris') {
+                            return obstr
                         }
                         return data
                     },
-                    (data, obstr) => {
+                    (data, key, obstr) => {
                         if (data instanceof Error) {
                             const newMsg = data.message.replace(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi, obstr)
 
