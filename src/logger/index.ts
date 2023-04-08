@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { mapKeys } from 'lodash'
+import { mapKeys, cloneDeep } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
 import { Obfuscator, ObfuscatorProcessors } from '@gallofeliz/obfuscator'
@@ -84,11 +84,44 @@ export function createLogger(loggerOpts: LoggerOpts = {}) {
     return new Logger(loggerOpts)
 }
 
+class JsToJSONCompatibleJS {
+    protected processors = [
+        (value: any) => {
+            if (value instanceof Error) {
+                return {
+                    ...value,
+                    name: value.name,
+                    message: value.message,
+                    stack: value.stack
+                }
+            }
+
+            return value
+        },
+        (value: any) => {
+            if (value instanceof Object && value.toJSON) {
+                return value.toJSON()
+            }
+
+            return value
+        }
+    ]
+
+    public convert(data: any) {
+        data = cloneDeep(data)
+
+        return traverse(data).forEach((value) => {
+            return this.processors.reduce((value, processor) => processor(value), value)
+        })
+    }
+}
+
 export class Logger extends EventEmitter implements UniversalLogger {
     protected metadata: Object
     protected level: LogLevel
     protected transports: Transport[]
     protected obfuscator: Obfuscator
+    protected jsToJSONCompatibleJS = new JsToJSONCompatibleJS
 
     /**
         Add bumble events ? But so use parent transport ?
@@ -158,26 +191,18 @@ export class Logger extends EventEmitter implements UniversalLogger {
             return
         }
 
-        const data = traverse({
-            ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
-            timestamp: new Date,
-            level,
-            message,
-        }).map((v) => {
-            if (v instanceof Error) {
-                return {
-                    ...v,
-                    name: v.name,
-                    message: v.message,
-                    stack: v.stack
-                }
+        // Processors
+        const log = this.obfuscator.obfuscate(
+            this.jsToJSONCompatibleJS.convert(
+            {
+                ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
+                timestamp: new Date,
+                level,
+                message,
             }
-            return v
-        })
+        ))
 
-        const log = this.obfuscator.obfuscate(data)
-
-        this.emit('log', log) //, cb)
+        this.emit('log', log)
 
         await Promise.all(this.transports.map(transport => transport.write(log)))
     }

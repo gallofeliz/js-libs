@@ -6,7 +6,8 @@ Simple logger:
 - Manage transports ; defaut JSON
 - Secrets Obfuscation
 - Log warnings, unhandled
-
+- [ ] Component to transform js -> json before obfuscation
+- [ ] Processors / hooks with obfuscation and others transformations inside with specified order (ex 50 and 100) to give ability to add others processors before, inside, after etc
 
 ```typescript
 

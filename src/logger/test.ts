@@ -1,8 +1,25 @@
+import EventEmitter from 'events'
 import {createLogger} from '.'
 
 const logger = createLogger({level:'info'})
 
 const child = logger.child({child: true})
+
+class Thing extends EventEmitter {
+    protected name: string
+
+    constructor() {
+      super()
+      this.name = 'Patrick'
+    }
+
+    toJSON() {
+      return {
+        name: this.name,
+        password: 'verySecret'
+      }
+    }
+}
 
 describe('Logger', () => {
 
@@ -13,12 +30,23 @@ describe('Logger', () => {
     })
 
     const data: any = {the: 'data', password: 'secrettttt', array: [1, '2', new Date]}
+    const error = new Error('Badaboom unable to connect to rtsp://melanie:secret@cam/stream1')
+
+    data.thing = new Thing
+
+    ;(error as any).date = new Date
+
     data.sub = {
       hello: [{
         world: {
           data
         }
-      }]
+      }],
+      deep: {
+        object: {
+          error
+        }
+      }
     }
 
     logger.info('The message', data)
