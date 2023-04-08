@@ -1,9 +1,7 @@
 import { deepEqual, strictEqual } from 'assert'
 import {
     obfuscate,
-    createObjectValuesByKeysObfuscatorProcessor,
-    createValuesObfuscatorProcessor,
-    defaultProcessors
+    builtinRulesBuilders
 } from '.'
 
 describe('Obfuscator', () => {
@@ -42,19 +40,19 @@ describe('Obfuscator', () => {
 
     it('simple value', () => {
         strictEqual(
-            obfuscate('Hello https://melanie:secret@google.fr/path !'),
+            obfuscate('Hello https://melanie:secret@google.fr/path !', [builtinRulesBuilders.authInUrls()]),
             'Hello https://melanie:***@google.fr/path !'
         )
     })
 
-    it('no processors', () => {
+    it('no rules', () => {
         strictEqual(
             obfuscate(data, []),
             data
         )
     })
 
-    it('default processors', () => {
+    it('all rules', () => {
 
         deepEqual(
             obfuscate({
@@ -67,7 +65,15 @@ describe('Obfuscator', () => {
                 + '\nAuthorization: Basic YWxhZGRpbjpvcGVuc2VzYW1l'
                 + '\nCookie: PHPSESSID=298zf09hf012fh2; csrftoken=u32t4o3tb3gg43; _gat=1'
                 + '\nCache-Control: max-age=604800'
-            }),
+            }, [
+                builtinRulesBuilders.authInHeaders(),
+                builtinRulesBuilders.authInUrls(),
+                builtinRulesBuilders.objKeysAreSecrets(),
+                builtinRulesBuilders.objKeysLooksLikeSecrets(),
+                builtinRulesBuilders.secretsInJsonLike(),
+                builtinRulesBuilders.secretsInUrlsEncodedLike(),
+                builtinRulesBuilders.sessionsInCookies()
+            ]),
             {
                 'id': 54,
                 'date': data.date,
@@ -115,15 +121,21 @@ describe('Obfuscator', () => {
 
     })
 
-    it('extended default processors', () => {
+    it('extended all rules', () => {
 
         deepEqual(
             obfuscate(
                 data,
-                {
-                    ...defaultProcessors,
-                    emails: createObjectValuesByKeysObfuscatorProcessor('email')
-                }
+                [
+                    builtinRulesBuilders.authInHeaders(),
+                    builtinRulesBuilders.authInUrls(),
+                    builtinRulesBuilders.objKeysAreSecrets(),
+                    builtinRulesBuilders.objKeysLooksLikeSecrets(),
+                    builtinRulesBuilders.secretsInJsonLike(),
+                    builtinRulesBuilders.secretsInUrlsEncodedLike(),
+                    builtinRulesBuilders.sessionsInCookies(),
+                    builtinRulesBuilders.keyMatchs('email')
+                ]
             ),
             {
                 'id': 54,
@@ -164,7 +176,7 @@ describe('Obfuscator', () => {
 
     })
 
-    it('custom processors', () => {
+    it('custom rules', () => {
 
         let expectedErr;
 
@@ -172,12 +184,12 @@ describe('Obfuscator', () => {
             obfuscate(
                 data,
                 [
-                    createObjectValuesByKeysObfuscatorProcessor('email'),
-                    createObjectValuesByKeysObfuscatorProcessor(/name/i),
-                    createObjectValuesByKeysObfuscatorProcessor((v: string) => v === 'sex'),
-                    createValuesObfuscatorProcessor(/^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}$/),
-                    createValuesObfuscatorProcessor('root'),
-                    createValuesObfuscatorProcessor((v: string) => v === '192.168.0.1'),
+                    builtinRulesBuilders.keyMatchs('email'),
+                    builtinRulesBuilders.keyMatchs(/name/i),
+                    builtinRulesBuilders.keyMatchs((v: string) => v === 'sex'),
+                    builtinRulesBuilders.matchs(/^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}$/),
+                    builtinRulesBuilders.matchs('root'),
+                    builtinRulesBuilders.matchs((v: string) => v === '192.168.0.1'),
                     (data, key, obstr) => {
                         if (key === 'city' && data === 'Paris') {
                             return obstr

@@ -8,17 +8,32 @@ Obfuscate sensible data:
 ```typescript
 import {
     obfuscate,
-    createObjectValuesByKeysObfuscatorProcessor,
-    createValuesObfuscatorProcessor
+    builtinRulesBuilders
 } from "@gallofeliz/obfuscator"
 
-const obfuscated = obfuscate(data)
-
 const obfuscated = obfuscate(
-    data,
+    {
+        url: 'https://root:root@gmail.com',
+        user: 'root',
+        password: 'root',
+        email: 'root@localhost',
+        age: 42
+    },
     [
-        createObjectValuesByKeysObfuscatorProcessor(['email', /name/i, (v: string) => v === 'sex']),
-        createValuesObfuscatorProcessor([/^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}$/, 'root', (v: string) => v === '192.168.0.1'])
-    ]
+        builtinRulesBuilders.authInUrls(),
+        builtinRulesBuilders.objKeysLooksLikeSecrets(),
+        builtinRulesBuilders.keyMatchs('email')
+    ],
+    '(obfucated)'
 )
+
+/*
+    {
+        url: 'https://root:(obfucated)@gmail.com',
+        user: 'root',
+        password: '(obfucated)',
+        email: '(obfucated)',
+        age: 42
+    }
+*/
 ```
