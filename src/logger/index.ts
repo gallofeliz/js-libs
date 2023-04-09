@@ -1,8 +1,7 @@
-import { EventEmitter } from 'events'
 import { cloneDeep, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
-import { Obfuscator } from '@gallofeliz/obfuscator'
+import { Obfuscator, ObfuscatorRule } from '@gallofeliz/obfuscator'
 import { JsToJSONCompatibleJS, JsToJSONCompatibleJSRule } from './js-json'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
@@ -238,115 +237,10 @@ export class ConsoleHandler extends BaseHandler {
     }
 }
 
-
-
-
-// old (v2)
-
-export interface OldLoggerOpts {
-    level?: LogLevel
-    metadata?: Object
-    handler?: Handler
-    logUnhandled?: boolean
-    logWarnings?: boolean
-    obfuscation?: {
-        rules?: any[]
-        replacement?: string
-    }
-    convertion?: {
-        customRules: JsToJSONCompatibleJSRule[]
-    },
-    parentLogger?: Logger
+export function createJsConvertionProcessor(rules?: JsToJSONCompatibleJSRule[]) {
+    return new JsToJSONCompatibleJS(rules)
 }
 
-
-
-
-
-
-
-
-
-// export class LoggerOld extends EventEmitter implements UniversalLogger {
-//     protected metadata: Object
-//     protected level: LogLevel
-//     protected handler: Handler
-//     protected obfuscator: Obfuscator
-//     protected jsToJSONCompatibleJS: JsToJSONCompatibleJS
-//     protected parentLogger: Logger | null = null
-
-//     /**
-//         Add bumble events ? But so use parent transport ?
-//     **/
-//     public constructor({level, metadata, handler, logUnhandled, logWarnings, obfuscation, convertion, parentLogger}: LoggerOpts = {}) {
-//         super()
-//         this.level = level || 'info'
-//         this.metadata = metadata || {}
-//         this.handler = handler || new JsonConsoleHandler
-//         this.obfuscator = new Obfuscator(obfuscation?.rules || [], obfuscation?.replacement)
-//         this.jsToJSONCompatibleJS = new JsToJSONCompatibleJS(convertion?.customRules)
-
-//         if (parentLogger) {
-//             this.parentLogger = parentLogger
-//         }
-
-//         if (logUnhandled !== false) {
-//             this.logUnhandled()
-//         }
-
-//         if (logWarnings !== false) {
-//             this.logWarnings()
-//         }
-//     }
-
-
-//     public child(metadata?: Object): Logger {
-//         const child = new Logger({
-//             level: this.level,
-//             metadata: {...this.metadata, ...(metadata || {})},
-//             handler: this.handler,
-//             logUnhandled: false,
-//             logWarnings: false,
-//             parentLogger: this
-//         })
-
-//         child.obfuscator = this.obfuscator
-//         child.jsToJSONCompatibleJS = this.jsToJSONCompatibleJS
-
-//         return child
-//     }
-//     public async log(level: LogLevel, message: string, metadata?: Object) {
-//         if (!shouldBeLogged(level, this.level)) {
-//             return
-//         }
-
-//         // Processors
-//         const log = this.obfuscator.obfuscate(
-//             this.jsToJSONCompatibleJS.convert(
-//             {
-//                 ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
-//                 timestamp: new Date,
-//                 level,
-//                 message,
-//             }
-//         ))
-
-//         this.emit('log', log)
-
-//         if (this.parentLogger) {
-//             this.parentLogger.onChildEmit(log)
-//         }
-
-//         await this.handler.write(log)
-//     }
-
-//     protected onChildEmit(log: Log) {
-//         this.emit('log', log)
-
-//         if (this.parentLogger) {
-//             this.parentLogger.onChildEmit(log)
-//         }
-//     }
-// }
-
-
+export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string) {
+    return new Obfuscator(rules, replacement)
+}
