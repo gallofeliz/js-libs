@@ -1,18 +1,18 @@
 import traverse from 'traverse'
 import { cloneDeep } from 'lodash'
 
-export type ObfuscationRule<T = any> = (data: T, key: any, obfuscateString: string) => T | string
-
-// export interface ObfuscationRule2 {
-//     test: (value: any, key: string) => boolean
-//     obfuscate?: (value: any) => any
-// }
+export type ObfuscationRule<T = any> = (args: {
+    data: T,
+    key: string | undefined,
+    replacement: string,
+    path: string | undefined
+}) => T | string
 
 export interface ObfuscatorOpts {
     rules?: ObfuscationRule[]
     replaceDefaultRules?: boolean
     replacement?: string
-    softMode?: boolean
+    handleErrors?: boolean
 }
 
 function createDefaultRules() {
@@ -25,10 +25,12 @@ function createDefaultRules() {
 export class Obfuscator {
     protected rules: ObfuscationRule[]
     protected replacement: string
+    protected handleErrors: boolean
 
     constructor(opts: ObfuscatorOpts = {}) {
         this.rules = (opts.rules || []).concat(opts.replaceDefaultRules ? [] : createDefaultRules())
         this.replacement = opts.replacement || '***'
+        this.handleErrors = opts.handleErrors === undefined ? true : opts.handleErrors
     }
 
     public obfuscate<T>(data: T): T extends Object ? T : T | string  {
@@ -38,10 +40,9 @@ export class Obfuscator {
         const self = this
 
         return traverse(cloneDeep(data)).forEach(function (data: any) {
-            if (data instanceof Error) {
+            if (data instanceof Error && self.handleErrors) {
                 const newRawData = self.obfuscate({
                     ...data,
-                    // name: data.name,
                     message: data.message,
                     stack: data.stack
                 })
@@ -54,7 +55,12 @@ export class Obfuscator {
             }
 
             for (const rule of self.rules) {
-                data = rule(data, this.key, self.replacement)
+                data = rule({
+                    data,
+                    key: this.key,
+                    replacement: self.replacement,
+                    path: this.path.length ? this.path.join('.') : undefined
+                })
                 if (data === self.replacement) {
                     break
                 }
@@ -69,44 +75,95 @@ export function obfuscate<T>(data: T, opts?: ObfuscatorOpts): T extends Object ?
 }
 
 export const rulesBuilder = {
-    keyMatchs(keyMatch: RegExp | ((data: any) => boolean) | any): ObfuscationRule {
+    keyMatchs(keyMatch: RegExp | ((data: any) => boolean) | string): ObfuscationRule {
         if (keyMatch instanceof RegExp) {
-            return (data: any, key: any, obfuscateString: string) => {
-                return typeof key === 'string' && key.match(keyMatch) ? obfuscateString : data
+            return ({data, key, replacement}) => {
+                return typeof key === 'string' && keyMatch.test(key) ? replacement : data
             }
         }
 
         if (keyMatch instanceof Function) {
-            return (data: any, key: any, obfuscateString: string) => {
-                return keyMatch(key) ? obfuscateString : data
+            return ({data, key, replacement}) => {
+                return keyMatch(key) ? replacement : data
             }
         }
 
-        return (data: any, key: any, obfuscateString: string) => {
-            return key === keyMatch ? obfuscateString : data
+        return ({data, key, replacement}) => {
+            return key === keyMatch ? replacement : data
+        }
+    },
+    pathMatchs(pathMatch: RegExp | string): ObfuscationRule {
+        if (pathMatch instanceof RegExp) {
+            return ({data, path, replacement}) => {
+                return typeof path === 'string' && pathMatch.test(path) ? replacement : data
+            }
+        }
+
+        return ({data, path, replacement}) => {
+            return path === pathMatch ? replacement : data
         }
     },
     matchs(valueMatch: RegExp | ((data: any) => boolean) | any): ObfuscationRule {
         if (valueMatch instanceof RegExp) {
-            return (data, _, obfuscateString: string) => {
-                return typeof data === 'string' && data.match(valueMatch) ? data.replace(valueMatch, obfuscateString) : data
+            return ({data, replacement}) => {
+                return typeof data === 'string' && data.match(valueMatch) ? data.replace(valueMatch, replacement) : data
             }
         }
 
         if (valueMatch instanceof Function) {
-            return (data, _, obfuscateString: string) => {
-                return valueMatch(data) ? obfuscateString : data
+            return ({data, replacement}) => {
+                return valueMatch(data) ? replacement : data
             }
         }
 
-        return (data, _, obfuscateString: string) => {
-            return data === valueMatch ? obfuscateString : data
+        return ({data, replacement}) => {
+            return data === valueMatch ? replacement : data
         }
     },
     matchsUriCredentials: () => rulesBuilder.matchs(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi),
     keyMatchsSecret: () => rulesBuilder.keyMatchs(/^password|crendentials|secretKey/i),
-    secretsInUrlsEncodedLike: () => rulesBuilder.matchs(/(?<=(password|credentials|token)=)[^&; ]+/gi),
-    secretsInJsonLike: () => rulesBuilder.matchs(/(?<="(password|credentials|token)": ?")(\\"|[^"])+(?=")/gi),
-    authInHeaders: () => rulesBuilder.matchs(/(?<=authorization: ?\w+ )\w+/gi),
-    sessionsInCookies: () => rulesBuilder.matchs(/(?<=Cookie:.*)(?<=(phpsessid|session)=)\w+/gi)
+    urlEncodedMatchsCredentials: (pathMatchs: RegExp | string): ObfuscationRule => (({data, replacement, path}) => {
+        if (pathMatchs instanceof RegExp) {
+            if (!path || !pathMatchs.test(path)) {
+                return data
+            }
+        } else {
+            if (pathMatchs !== path) {
+                return data
+            }
+        }
+
+        return data.replace(/(?<=(password|credentials|secretKey)=)[^&; ]+/gi, replacement)
+    }),
+    jsonStringifiedMatchsCredentials: (pathMatchs: RegExp | string): ObfuscationRule => (({data, replacement, path}) => {
+        if (pathMatchs instanceof RegExp) {
+            if (!path || !pathMatchs.test(path)) {
+                return data
+            }
+        } else {
+            if (pathMatchs !== path) {
+                return data
+            }
+        }
+
+        return data.replace(/(?<="(password|credentials|secretKey)": ?")(\\"|[^"])+(?=")/gi, replacement)
+    }),
+    cookieMatchsCredentials: (pathMatchs: RegExp | string): ObfuscationRule => (({data, replacement, path}) => {
+        if (pathMatchs instanceof RegExp) {
+            if (!path || !pathMatchs.test(path)) {
+                return data
+            }
+        } else {
+            if (pathMatchs !== path) {
+                return data
+            }
+        }
+
+        return typeof data === 'string'
+            ? data.split(';').map(c => c.replace(/(?<=(phpsessid|session|token)=)\w+/gi, replacement)).join(';')
+            : data
+    })
+    // secretsInJsonLike: () => rulesBuilder.matchs(/(?<="(password|credentials|token)": ?")(\\"|[^"])+(?=")/gi),
+    // authInHeaders: () => rulesBuilder.matchs(/(?<=authorization: ?\w+ )\w+/gi),
+    // sessionsInCookies: () => rulesBuilder.matchs(/(?<=Cookie:.*)(?<=(phpsessid|session)=)\w+/gi)
 }
