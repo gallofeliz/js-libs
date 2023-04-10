@@ -105,8 +105,16 @@ export class Logger implements UniversalLogger {
         return this.processors
     }
 
+    public setProcessors(processors: Processor[]) {
+        this.processors = processors
+    }
+
     public getHandlers() {
         return this.handlers
+    }
+
+    public setHandlers(handlers: Handler[]) {
+        this.handlers = handlers
     }
 
     public async log(level: LogLevel, message: string, metadata?: Object): Promise<void> {
@@ -168,7 +176,12 @@ export interface BaseHandlerOpts {
     formatter?: Formatter
 }
 
-export const jsonFormatter = (log: Log) => stringify(log)
+export function createJsonFormatter(rules?: JsToJSONCompatibleJSRule[], replaceDefaultRules?: boolean) {
+    const f = new JsToJSONCompatibleJS(rules, replaceDefaultRules)
+    return (log: Log) => {
+        return stringify(f.convert(log))
+    }
+}
 
 export type Formatter<T extends any = any> = (log: Log) => T
 
@@ -182,7 +195,23 @@ export class BaseHandler implements Handler {
         this.maxLevel = opts.maxLevel || 'info'
         this.minLevel = opts.minLevel || 'crit'
         this.processors = opts.processors || []
-        this.formatter = opts.formatter || jsonFormatter
+        this.formatter = opts.formatter || createJsonFormatter()
+    }
+
+    public getProcessors() {
+        return this.processors
+    }
+
+    public setProcessors(processors: Processor[]) {
+        this.processors = processors
+    }
+
+    public getFormatter() {
+        return this.formatter
+    }
+
+    public setFormatter(formatter: Formatter) {
+        this.formatter = formatter
     }
 
     protected willHandle(log: Log) {
@@ -205,7 +234,7 @@ export class BaseHandler implements Handler {
         return this.write(this.formatter(log), log)
     }
 
-    protected async write(formatted: any, log: Log) {
+    protected write(formatted: any, log: Log): any {
         throw new Error('To implement in handler')
     }
 }
@@ -227,20 +256,53 @@ export class StreamHandler extends BaseHandler {
     }
 }
 
+export function createStreamHandler(opts: StreamHandlerOpts) {
+    return new StreamHandler(opts)
+}
+
 export class ConsoleHandler extends BaseHandler {
     protected async write(formatted: any, log: Log) {
         if (['debug', 'info'].includes(log.level)) {
-            process.stdout.write(formatted)
+            process.stdout.write(formatted + EOL)
         } else {
-            process.stderr.write(formatted)
+            process.stderr.write(formatted + EOL)
         }
     }
 }
 
-export function createJsConvertionProcessor(rules?: JsToJSONCompatibleJSRule[]) {
-    return new JsToJSONCompatibleJS(rules)
+export function createConsoleHandler(opts: BaseHandlerOpts = {}) {
+    return new ConsoleHandler(opts)
 }
 
-export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string) {
-    return new Obfuscator(rules, replacement)
+export interface CallbackHandlerOpts extends BaseHandlerOpts {
+    cb: BaseHandler['write']
+}
+
+export class CallbackHandler extends BaseHandler {
+    protected cb: BaseHandler['write']
+
+    constructor(opts: CallbackHandlerOpts) {
+        super(opts)
+        this.cb = opts.cb
+    }
+
+    protected async write(formatted: any, log: Log) {
+        return this.cb(formatted, log)
+    }
+}
+
+export function createCallbackHandler(opts: CallbackHandlerOpts) {
+    return new CallbackHandler(opts)
+}
+
+export function createJsConvertionProcessor(rules?: JsToJSONCompatibleJSRule[]): Processor {
+    const lib = new JsToJSONCompatibleJS(rules)
+
+    return log => lib.convert(log)
+}
+
+export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string): Processor {
+    const lib = new Obfuscator(rules, replacement)
+
+    return log => lib.obfuscate(log)
 }
