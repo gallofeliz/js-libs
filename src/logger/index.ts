@@ -1,9 +1,8 @@
-import { EventEmitter } from 'events'
-import { mapKeys, cloneDeep } from 'lodash'
+import { cloneDeep, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
-import { Obfuscator, ObfuscatorProcessors } from '@gallofeliz/obfuscator'
-import traverse from 'traverse'
+import { Obfuscator, ObfuscatorRule } from '@gallofeliz/obfuscator'
+import { JsToJSONCompatibleJS, JsToJSONCompatibleJSRule } from './js-json'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
 const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
@@ -12,61 +11,53 @@ export function getMaxLevelsIncludes(maxLogLevel: LogLevel) {
     return levels.slice(0, levels.indexOf(maxLogLevel) + 1)
 }
 
-export function shouldBeLogged(logLevel: LogLevel, maxLogLevel: LogLevel) {
+export function shouldBeLogged(logLevel: LogLevel, maxLogLevel: LogLevel, minLogLevel?: LogLevel) {
     return levels.indexOf(logLevel) <= levels.indexOf(maxLogLevel)
+        && (minLogLevel ? levels.indexOf(logLevel) > levels.indexOf(minLogLevel) : true)
 }
 
-export interface LoggerOpts {
-    level?: LogLevel
-    metadata?: Object
-    transports?: Transport[]
-    logUnhandled?: boolean
-    logWarnings?: boolean
-    obfuscator?: {
-        processors?: ObfuscatorProcessors
-        obfuscateString?: string
-    }
-    secrets?: string[]
+export function createLogger(loggerOpts?: LoggerOpts) {
+    return new Logger(loggerOpts)
 }
 
-export interface Log {
-    level: LogLevel
-    timestamp: Date
-    message: string
-    [k: string]: any
-}
-
-export interface Transport {
-    write(log: Log): Promise<void>
-}
-
-export abstract class BaseTransport implements Transport {
-    protected level: LogLevel
-
-    public constructor(level?: LogLevel) {
-        this.level = level || 'info'
-    }
-
-    public async write(log: Log) {
-        if (!shouldBeLogged(log.level, this.level)) {
-            return
+function ensureNotKeys(object: Object, keys: string[]): Object {
+    return mapKeys(object, (value, key) => {
+        if (!keys.includes(key)) {
+            return key
         }
+        let newKey = key
 
-        return this._write(log)
-    }
-
-    protected abstract _write(log: Log): Promise<void>
+        while (object.hasOwnProperty(newKey)) {
+            newKey = '_' + newKey
+        }
+        return newKey
+    })
 }
 
-export class JsonConsoleTransport extends BaseTransport {
-    public async _write(log: Log) {
-        const strLog = stringify(log) + EOL
-        if (['debug', 'info'].includes(log.level)) {
-            process.stdout.write(strLog)
-        } else {
-            process.stderr.write(strLog)
-        }
-    }
+// v3
+
+export interface Handler {
+    // willHandle(log: Log): boolean
+    handle(log: Log): Promise<void>
+}
+
+export type Processor = (log: Log) => Log
+
+export function logUnhandled(logger: UniversalLogger) {
+    process.on('unhandledRejection', async (reason) => {
+        await logger.crit('Unhandled Rejection', {reason})
+        process.exit(1)
+    })
+    process.on('uncaughtException', async (err, origin) => {
+        await logger.crit('UncaughtException', {err, origin})
+        process.exit(1)
+    })
+}
+
+export function logWarnings(logger: UniversalLogger) {
+    process.on('warning', async (warning) => {
+        await logger.warning('Warning', {warning})
+    })
 }
 
 export interface UniversalLogger {
@@ -77,85 +68,84 @@ export interface UniversalLogger {
     info(message: string, metadata?: Object): Promise<void>
     debug(message: string, metadata?: Object): Promise<void>
     child(metadata?: Object): UniversalLogger
-    log(level: LogLevel, message: string, metadata?: Object): Promise<void>
 }
 
-export function createLogger(loggerOpts: LoggerOpts = {}) {
-    return new Logger(loggerOpts)
+export interface LoggerOpts {
+    metadata?: Object
+    processors?: Processor[]
+    handlers?: Handler[]
+    errorHandler?: (e: Error) => Promise<void>
 }
 
-class JsToJSONCompatibleJS {
-    protected processors = [
-        (value: any) => {
-            if (value instanceof Error) {
-                return {
-                    ...value,
-                    name: value.name,
-                    message: value.message,
-                    stack: value.stack
-                }
-            }
-
-            return value
-        },
-        (value: any) => {
-            if (value instanceof Object && value.toJSON) {
-                return value.toJSON()
-            }
-
-            return value
-        }
-    ]
-
-    public convert(data: any) {
-        data = cloneDeep(data)
-
-        return traverse(data).forEach((value) => {
-            return this.processors.reduce((value, processor) => processor(value), value)
-        })
-    }
+export interface Log {
+    level: LogLevel
+    timestamp: Date
+    message: string
+    [k: string]: any
 }
 
-export class Logger extends EventEmitter implements UniversalLogger {
+export class Logger implements UniversalLogger {
+    protected processors: Processor[]
+    protected handlers: Handler[]
     protected metadata: Object
-    protected level: LogLevel
-    protected transports: Transport[]
-    protected obfuscator: Obfuscator
-    protected jsToJSONCompatibleJS = new JsToJSONCompatibleJS
+    protected errorHandler: (e: Error) => Promise<void>
 
-    /**
-        Add bumble events ? But so use parent transport ?
-    **/
-    public constructor({level, metadata, transports, logUnhandled, logWarnings, obfuscator}: LoggerOpts = {}) {
-        super()
-        this.level = level || 'info'
-        this.metadata = metadata || {}
-        this.transports = transports || [new JsonConsoleTransport]
-        this.obfuscator = new Obfuscator(obfuscator?.processors, obfuscator?.obfuscateString)
+    constructor(opts: LoggerOpts = {}) {
+        this.metadata = opts.metadata || {}
+        this.processors = opts.processors || []
+        this.handlers = opts.handlers || [new ConsoleHandler]
+        this.errorHandler = opts.errorHandler || ((e) => { throw e })
+    }
 
-        if (logUnhandled !== false) {
-            this.logUnhandled()
+    public getMetadata() {
+        return this.metadata
+    }
+
+    public getProcessors() {
+        return this.processors
+    }
+
+    public setProcessors(processors: Processor[]) {
+        this.processors = processors
+    }
+
+    public getHandlers() {
+        return this.handlers
+    }
+
+    public setHandlers(handlers: Handler[]) {
+        this.handlers = handlers
+    }
+
+    public async log(level: LogLevel, message: string, metadata?: Object): Promise<void> {
+        let log: Log = {
+            ...ensureNotKeys(cloneDeep({...this.metadata, ...metadata}), ['level', 'message', 'timestamp']),
+            timestamp: new Date,
+            level,
+            message,
         }
 
-        if (logWarnings !== false) {
-            this.logWarnings()
+        for (const processor of this.processors) {
+            log = processor(log)
+
+            if (!log) {
+                return
+            }
+        }
+
+        try {
+            await Promise.all(this.handlers.map(handler => handler.handle(log))) // cloneDeep to protected others handlers ?
+        } catch (e) {
+            await this.errorHandler(e as Error)
         }
     }
 
-    protected logUnhandled() {
-        process.on('unhandledRejection', async (reason) => {
-            await this.crit('Unhandled Rejection', {reason})
-            process.exit(1)
-        })
-        process.on('uncaughtException', async (err, origin) => {
-            await this.crit('UncaughtException', {err, origin})
-            process.exit(1)
-        })
-    }
-
-    protected logWarnings() {
-        process.on('warning', async (warning) => {
-            await this.warning('Warning', {warning})
+    public child(metadata?: Object): Logger {
+        return new Logger({
+            metadata: cloneDeep({...this.metadata, ...(metadata || {})}),
+            processors: [...this.processors],
+            handlers: [...this.handlers],
+            errorHandler: this.errorHandler
         })
     }
 
@@ -177,47 +167,142 @@ export class Logger extends EventEmitter implements UniversalLogger {
     public async debug(message: string, metadata?: Object) {
         return this.log('debug', message, metadata)
     }
-    public child(metadata?: Object) {
-        return new Logger({
-            level: this.level,
-            metadata: {...this.metadata, ...(metadata || {})},
-            transports: this.transports,
-            logUnhandled: false,
-            logWarnings: false
-        })
-    }
-    public async log(level: LogLevel, message: string, metadata?: Object) {
-        if (!shouldBeLogged(level, this.level)) {
-            return
-        }
+}
 
-        // Processors
-        const log = this.obfuscator.obfuscate(
-            this.jsToJSONCompatibleJS.convert(
-            {
-                ...ensureNotKeys({...this.metadata, ...metadata}, ['level', 'message', 'timestamp']),
-                timestamp: new Date,
-                level,
-                message,
-            }
-        ))
+export interface BaseHandlerOpts {
+    maxLevel?: LogLevel
+    minLevel?: LogLevel
+    processors?: Processor[]
+    formatter?: Formatter
+}
 
-        this.emit('log', log)
-
-        await Promise.all(this.transports.map(transport => transport.write(log)))
+export function createJsonFormatter(rules?: JsToJSONCompatibleJSRule[], replaceDefaultRules?: boolean) {
+    const f = new JsToJSONCompatibleJS(rules, replaceDefaultRules)
+    return (log: Log) => {
+        return stringify(f.convert(log))
     }
 }
 
-function ensureNotKeys(object: Object, keys: string[]): Object {
-    return mapKeys(object, (value, key) => {
-        if (!keys.includes(key)) {
-            return key
-        }
-        let newKey = key
+export type Formatter<T extends any = any> = (log: Log) => T
 
-        while (object.hasOwnProperty(newKey)) {
-            newKey = '_' + newKey
+export class BaseHandler implements Handler {
+    protected maxLevel: LogLevel
+    protected minLevel: LogLevel
+    protected formatter: Formatter
+    protected processors: Processor[]
+
+    constructor(opts: BaseHandlerOpts = {}) {
+        this.maxLevel = opts.maxLevel || 'info'
+        this.minLevel = opts.minLevel || 'crit'
+        this.processors = opts.processors || []
+        this.formatter = opts.formatter || createJsonFormatter()
+    }
+
+    public getProcessors() {
+        return this.processors
+    }
+
+    public setProcessors(processors: Processor[]) {
+        this.processors = processors
+    }
+
+    public getFormatter() {
+        return this.formatter
+    }
+
+    public setFormatter(formatter: Formatter) {
+        this.formatter = formatter
+    }
+
+    protected willHandle(log: Log) {
+        return shouldBeLogged(log.level, this.maxLevel, this.minLevel)
+    }
+
+    public async handle(log:Log) {
+        if (!this.willHandle(log)) {
+            return
         }
-        return newKey
-    })
+
+        for (const processor of this.processors) {
+            log = processor(log)
+
+            if (!log) {
+                return
+            }
+        }
+
+        return this.write(this.formatter(log), log)
+    }
+
+    protected write(formatted: any, log: Log): any {
+        throw new Error('To implement in handler')
+    }
+}
+
+export interface StreamHandlerOpts extends BaseHandlerOpts {
+    stream: NodeJS.WritableStream
+}
+
+export class StreamHandler extends BaseHandler {
+    protected stream: NodeJS.WritableStream
+
+    constructor(opts: StreamHandlerOpts) {
+        super(opts)
+        this.stream = opts.stream
+    }
+
+    protected async write(formatted: any, log: Log) {
+        this.stream.write(formatted.toString() + EOL)
+    }
+}
+
+export function createStreamHandler(opts: StreamHandlerOpts) {
+    return new StreamHandler(opts)
+}
+
+export class ConsoleHandler extends BaseHandler {
+    protected async write(formatted: any, log: Log) {
+        if (['debug', 'info'].includes(log.level)) {
+            process.stdout.write(formatted + EOL)
+        } else {
+            process.stderr.write(formatted + EOL)
+        }
+    }
+}
+
+export function createConsoleHandler(opts: BaseHandlerOpts = {}) {
+    return new ConsoleHandler(opts)
+}
+
+export interface CallbackHandlerOpts extends BaseHandlerOpts {
+    cb: BaseHandler['write']
+}
+
+export class CallbackHandler extends BaseHandler {
+    protected cb: BaseHandler['write']
+
+    constructor(opts: CallbackHandlerOpts) {
+        super(opts)
+        this.cb = opts.cb
+    }
+
+    protected async write(formatted: any, log: Log) {
+        return this.cb(formatted, log)
+    }
+}
+
+export function createCallbackHandler(opts: CallbackHandlerOpts) {
+    return new CallbackHandler(opts)
+}
+
+export function createJsConvertionProcessor(rules?: JsToJSONCompatibleJSRule[]): Processor {
+    const lib = new JsToJSONCompatibleJS(rules)
+
+    return log => lib.convert(log)
+}
+
+export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string): Processor {
+    const lib = new Obfuscator(rules, replacement)
+
+    return log => lib.obfuscate(log)
 }
