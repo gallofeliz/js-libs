@@ -1,5 +1,4 @@
-import { builtinRulesBuilders } from '@gallofeliz/obfuscator'
-import {createCallbackHandler, createLogger, logWarnings, ConsoleHandler, createJsConvertionProcessor, createObfuscationProcessor, createConsoleHandler, createJsonFormatter} from '.'
+import {createCallbackHandler, createLogger, logWarnings, ConsoleHandler, createJsonFormatter, createConsoleHandler} from '.'
 
 const logger = createLogger()
 
@@ -11,7 +10,13 @@ describe('Logger', () => {
   })
 
   it('basic test', () => {
-    logger.info('Basic test', { createdDate: new Date, my: { deep: { data: true }}, error: new Error('Invalid data') })
+    logger.info('Basic test', {
+      createdDate: new Date,
+      my: { deep: { data: true }},
+      error: new Error('Invalid data'),
+      fn() { console.log('hello') },
+      symbol: Symbol.for('A symbol')
+    })
   })
 
   it('child test', () => {
@@ -44,61 +49,20 @@ describe('Logger', () => {
     child1.info('I should handlerProcessorProperty')
     child2.info('I should have handlerProcessorProperty')
 
-  })
-
-  it('Advanced logging', () => {
-    const logger = createLogger({
-      processors: [
-        createJsConvertionProcessor(),
-        createObfuscationProcessor([
-          builtinRulesBuilders.objKeysLooksLikeSecrets(),
-          builtinRulesBuilders.authInUrls()
-        ])
-      ],
-      handlers: [
+    child1.setHandlers([
         createConsoleHandler({
-          formatter: createJsonFormatter([], true)
+            formatter: createJsonFormatter({
+                indentation: 4,
+                customReplacements:[
+                    (k, value) => {
+                      return typeof value === 'symbol' ? value.toString() : value
+                    }
+                ]
+            })
         })
-      ]
-    })
+    ])
 
-    logger.info('Loading config', { config: { users: [{ name: 'root', password: 'verySecret' }], port: 80 } })
-    logger.error('Badaboom', { error: new Error('Invalid Url https://melanie:iwillbehacked@yahoo.fr !') })
+    child1.info('Very secret', { password: 'verySecret', symbol: Symbol.for('A symbol'), fn() { console.log('hello') } })
+
   })
-
-  // it('tests', () => {
-
-
-  //   childOfChild.info('Hello I am child2', {password: 'yes'})
-
-  //   const data: any = {the: 'data', password: 'secrettttt', array: [1, '2', new Date]}
-  //   const error = new Error('Badaboom unable to connect to rtsp://melanie:secret@cam/stream1')
-
-  //   data.thing = new Thing
-
-  //   ;(error as any).date = new Date
-
-  //   data.sub = {
-  //     hello: [{
-  //       world: {
-  //         data
-  //       }
-  //     }],
-  //     deep: {
-  //       object: {
-  //         error
-  //       }
-  //     }
-  //   }
-
-  //   logger.info('The message', data)
-  //   logger.info('Again', {fn() { console.log('fn') }, symb: Symbol('hello')})
-  //   child.notice('Again2', {key: 'value', [Symbol('hello')]: 'this is a symbol key', 3: 4})
-  //   child.info('New message', {message: 'I want to hack the https://admin:admin@mydomain/destroy'})
-
-
-
-  // })
-
-
 })

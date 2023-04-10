@@ -1,8 +1,7 @@
 import { cloneDeep, mapKeys } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
-import { Obfuscator, ObfuscatorRule } from '@gallofeliz/obfuscator'
-import { JsToJSONCompatibleJS, JsToJSONCompatibleJSRule } from './js-json'
+import { ObfuscationRule, obfuscate } from '@gallofeliz/obfuscator'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
 const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
@@ -74,7 +73,12 @@ export interface LoggerOpts {
     metadata?: Object
     processors?: Processor[]
     handlers?: Handler[]
-    errorHandler?: (e: Error) => Promise<void>
+    errorHandler?: (e: Error) => Promise<void>,
+    obfuscation?: {
+        rules?: ObfuscationRule[],
+        replaceDefaultRules?: boolean,
+        replacement?: string
+    }
 }
 
 export interface Log {
@@ -89,12 +93,21 @@ export class Logger implements UniversalLogger {
     protected handlers: Handler[]
     protected metadata: Object
     protected errorHandler: (e: Error) => Promise<void>
+    protected obfuscation: {
+        rules: ObfuscationRule[],
+        replaceDefaultRules?: boolean,
+        replacement?: string
+    }
 
     constructor(opts: LoggerOpts = {}) {
         this.metadata = opts.metadata || {}
         this.processors = opts.processors || []
         this.handlers = opts.handlers || [new ConsoleHandler]
         this.errorHandler = opts.errorHandler || ((e) => { throw e })
+        this.obfuscation = {
+            ...opts.obfuscation,
+            rules: opts.obfuscation?.rules || [],
+        }
     }
 
     public getMetadata() {
@@ -133,6 +146,8 @@ export class Logger implements UniversalLogger {
             }
         }
 
+        log = obfuscate(log, this.obfuscation)
+
         try {
             await Promise.all(this.handlers.map(handler => handler.handle(log))) // cloneDeep to protected others handlers ?
         } catch (e) {
@@ -145,7 +160,11 @@ export class Logger implements UniversalLogger {
             metadata: cloneDeep({...this.metadata, ...(metadata || {})}),
             processors: [...this.processors],
             handlers: [...this.handlers],
-            errorHandler: this.errorHandler
+            errorHandler: this.errorHandler,
+            obfuscation: {
+                ...this.obfuscation,
+                rules: [...this.obfuscation.rules]
+            }
         })
     }
 
@@ -176,10 +195,49 @@ export interface BaseHandlerOpts {
     formatter?: Formatter
 }
 
-export function createJsonFormatter(rules?: JsToJSONCompatibleJSRule[], replaceDefaultRules?: boolean) {
-    const f = new JsToJSONCompatibleJS(rules, replaceDefaultRules)
+interface CreateJsonFormatterOpts {
+    customReplacements?: Array<(key: any, value: any) => any>
+    replaceDefaultReplacements?: boolean
+    indentation?: number
+}
+
+export function createJsonFormatter(opts: CreateJsonFormatterOpts = {}) {
+    const replacer = (key: any, value: any) => {
+        if (opts.customReplacements && opts.customReplacements.length > 0) {
+            value = opts.customReplacements.reduce((value, replacer) => replacer(key, value), value)
+        }
+
+
+        if (!opts.replaceDefaultReplacements) {
+
+            if (value instanceof Object && value.toJSON) {
+                return value
+            }
+
+            if (value instanceof Error) {
+                return {
+                    ...value,
+                    name: value.name,
+                    message: value.message,
+                    stack: value.stack
+                }
+            }
+
+            // if (value instanceof Function) {
+            //     return value.toString()
+            // }
+
+            // if (typeof value === 'symbol') {
+            //     return value.toString()
+            // }
+
+        }
+
+        return value
+    }
+
     return (log: Log) => {
-        return stringify(f.convert(log))
+        return stringify(log, replacer, opts.indentation)
     }
 }
 
@@ -295,14 +353,8 @@ export function createCallbackHandler(opts: CallbackHandlerOpts) {
     return new CallbackHandler(opts)
 }
 
-export function createJsConvertionProcessor(rules?: JsToJSONCompatibleJSRule[]): Processor {
-    const lib = new JsToJSONCompatibleJS(rules)
+// export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string): Processor {
+//     const lib = new Obfuscator(rules, replacement)
 
-    return log => lib.convert(log)
-}
-
-export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string): Processor {
-    const lib = new Obfuscator(rules, replacement)
-
-    return log => lib.obfuscate(log)
-}
+//     return log => lib.obfuscate(log)
+// }

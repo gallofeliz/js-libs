@@ -1,7 +1,7 @@
 # Logger
 
 Simple logger:
-- log -> processors -> handlers (own processors + format + transport)
+- log -> processors -> obfuscation -> handlers (own processors + format + transport)
 - Advanced childs (not only metadata but also own processors and handlers stack)
 - Default simple JSON console logging
 - Secrets Obfuscation ?
