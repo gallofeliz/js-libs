@@ -31,7 +31,7 @@ Tasks Management with persistance (non-distributed):
     - started()
     - stopped()
     - task.add(AddTask)
-    - task.added(uuid)
+    - task.added(uuid, id)
     - task.prioritized(uuid, priority)
     - task.XXX.prioritized(priority)
     - task.aborted(uuid, reason)

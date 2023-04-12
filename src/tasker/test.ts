@@ -28,10 +28,12 @@ describe('Tasker', () => {
         tasker.start()
 
         tasker.addTask({
+            id: 'sum',
             operation: 'sum'
         })
 
         tasker.addTask({
+            id: 'sum archiving 300',
             operation: 'sum',
             archiving: {
                 duration: 300
@@ -39,6 +41,7 @@ describe('Tasker', () => {
         })
 
         tasker.addTask({
+            id :' sum archiving 50',
             operation: 'sum',
             archiving: {
                 duration: 50
@@ -88,6 +91,7 @@ describe('Tasker', () => {
         })
 
         const taskUuid = await tasker.addTask({
+            id: 'sum 5 and 4',
             operation: 'sum',
             data: [5, 4]
         })
@@ -151,6 +155,7 @@ describe('Tasker', () => {
         */
         function readBook(book: string, priority: number) {
             tasker.addTask({
+                id: 'read-book reader1',
                 operation: 'read-book',
                 data: {
                     book: book,
@@ -180,6 +185,7 @@ describe('Tasker', () => {
 
         function writeBook(book: string, priority: number) {
             tasker.addTask({
+                id: 'write-book reader1',
                 operation: 'write-book',
                 data: {
                     book: book,

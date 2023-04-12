@@ -93,6 +93,7 @@ export type Task<Operation extends string = any, Data extends any = any, Result 
 
 export interface Task<Operation extends string = any, Data extends any = any, Result extends any = any> {
     uuid: string
+    id: any
     status: TaskStatus
     operation: Operation
     data?: Data
@@ -123,6 +124,7 @@ interface LogDocument {
 }
 
 export interface AddTaskOpts {
+    id: any
     operation: string
     data?: any
     priority?: TaskPriority
@@ -313,8 +315,8 @@ export class Tasker extends EventEmitter {
             }
         }
 
-        this.logger.info('Adding task', { task: taskUuid })
-        this.emit('task.added', taskUuid)
+        this.logger.info('Adding task', { task: {uuid: taskUuid, id: addTask.id, status: 'new'}, events: { add: 1 } })
+        this.emit('task.added', taskUuid, addTask.id)
 
         this.runNexts()
 
@@ -517,6 +519,7 @@ export class Tasker extends EventEmitter {
 
         const reasonErr = new AbortError(reason)
 
+        this.logger.info('Aborting task', { task: {uuid: task.uuid, id: task.id}, events: { abort: 1 } })
         /**
          * warning risk of concurrent read/write (updating running)
          */
@@ -526,6 +529,7 @@ export class Tasker extends EventEmitter {
                 { _id: task._id },
                 { $set: { status: 'aborted', endedAt: new Date, abortReason: this.errorToJson(reasonErr) }}
             )
+            this.logger.info('Aborted new task', { task: {uuid: task.uuid, id: task.id, status: 'aborted'}, events: { aborted: 1 } })
             this.emit('task.aborted', task.uuid, reasonErr)
             this.emit(`task.${task.uuid}.aborted`, reasonErr)
         } else if (task.status === 'running') {
@@ -608,21 +612,24 @@ export class Tasker extends EventEmitter {
         this.emit(`task.${task.uuid}.run`)
 
         ;(async() => {
-            this.logger.info('Running task', { task })
+            this.logger.info('Running task', { task: {uuid: task.uuid, id: task.id, status: 'running'}, events: { run: 1 } })
 
-            const taskLogger = this.logger.child({ taskUuid: task.uuid })
+            const taskLogger = this.logger.child({ task: {uuid: task.uuid, id: task.id, status: 'running'} })
 
-            const onLog = async (log: object) => {
-                await this.logsCollection.insert(omit(log, 'taskerUuid'))
-                const cleanedLog = omit(log, 'taskerUuid', 'taskUuid')
-                this.internalEmitter.emit('log.' + task.uuid, cleanedLog)
-                this.emit('task.log', task.uuid, cleanedLog)
-                this.emit(`task.${task.uuid}.log`, cleanedLog)
+            const loggerHandler = {
+                handle: async (log: any) =>  {
+                    await this.logsCollection.insert({...omit(log, 'task'), taskUuid: task.uuid})
+                    const cleanedLog = omit(log, 'taskerUuid', 'task')
+                    this.internalEmitter.emit('log.' + task.uuid, cleanedLog)
+                    this.emit('task.log', task.uuid, cleanedLog)
+                    this.emit(`task.${task.uuid}.log`, cleanedLog)
+                }
             }
 
-            taskLogger.on('log', onLog)
+            taskLogger.getHandlers().push(loggerHandler)
 
             const onAbort = (reason?: AbortError) => {
+                //taskLogger.getMetadata().status = 'aborting'
                 abortController.abort(reason)
             }
 
@@ -688,8 +695,8 @@ export class Tasker extends EventEmitter {
                     this.emit(`task.${task.uuid}.ended`, task.status, error)
                 }
             } finally {
-                taskLogger.off('log', onLog)
-                this.logger.info('Ended task', { task: {...task, result: task.result !== undefined ? '(troncated)' : undefined} })
+                taskLogger.getHandlers().splice(taskLogger.getHandlers().indexOf(loggerHandler))
+                this.logger.info('Ended task', { task: {uuid: task.uuid, id: task.id, status: task.status}, events: { ended: 1, [task.status]: 1 } })
                 this.internalEmitter.emit('ended.' + task.uuid)
                 this.runNexts()
             }
