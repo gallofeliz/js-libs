@@ -1,12 +1,17 @@
+import { UniversalLogger } from '@gallofeliz/logger'
 import cronParser, { CronDate } from 'cron-parser'
 import dayjs, {OpUnitType} from 'dayjs'
 import {findKey} from 'lodash'
+import { v4 as uuid } from 'uuid'
 
 export interface ScheduleFnArg {
     scheduleId: any
     triggerDate: Date
     countdown: number
     callsCount: number
+    previousTriggerDate: Date | null
+    nextTriggerDate?: Date
+    //logger: UniversalLogger
 }
 
 export interface AddScheduleOpts {
@@ -16,6 +21,8 @@ export interface AddScheduleOpts {
     startDate?: Date
     endDate?: Date
     limit?: number
+    autoRemove?: boolean
+    allowMultipleRuns?: boolean
 }
 
 export interface Schedule extends AddScheduleOpts {
@@ -24,10 +31,12 @@ export interface Schedule extends AddScheduleOpts {
     nextTriggerDate?: Date
     countdown: number
     callsCount: number
+    previousTriggerDate: Date | null
 }
 
 export interface SchedulerOpts {
     onError?: OnError
+    logger: UniversalLogger
 }
 
 export type OnError = (error: Error, scheduleId: any) => void
@@ -82,9 +91,13 @@ export class Scheduler {
     protected schedules: Record<any, Schedule> = {}
     protected started = false
     protected onError?: OnError
+    protected logger: UniversalLogger
 
-    public constructor({onError}: SchedulerOpts = {}) {
+    public constructor({onError, logger}: SchedulerOpts) {
         this.onError = onError
+        this.logger = logger/*.child({
+            schedulerUuid: uuid()
+        })*/
     }
 
     public isStarted() {
@@ -102,6 +115,7 @@ export class Scheduler {
         }
 
         this.started = true
+        this.logger.info('Starting scheduler')
 
         Object.values(this.schedules).forEach(schedule => {
             if (typeof schedule.schedule === 'number') {
@@ -135,6 +149,12 @@ export class Scheduler {
     }
 
     public stop() {
+        if (!this.started) {
+            return
+        }
+
+        this.logger.info('Stopping scheduler')
+
         Object.values(this.schedules).forEach(schedule => {
             clearTimeout(schedule.nextTimeout)
             delete schedule.nextTimeout
@@ -152,14 +172,29 @@ export class Scheduler {
         const schedule = {
             ...addSchedule,
             countdown: addSchedule.limit ? addSchedule.limit : Infinity,
-            callsCount: 0
+            callsCount: 0,
+            previousTriggerDate: null
         }
 
         this.schedules[addSchedule.id] = schedule
 
+        this.logger.info('Adding schedule', { scheduleId: addSchedule.id })
+
         if (this.started) {
             this.scheduleNext(schedule)
         }
+    }
+
+    public removeSchedule(id: any): void {
+        if (!this.schedules[id]) {
+            throw new Error('Schedule does not exist')
+        }
+
+        this.logger.info('Removing schedule', { scheduleId: id })
+
+        clearTimeout(this.schedules[id].nextTimeout)
+
+        delete this.schedules[id]
     }
 
     protected scheduleNext(schedule: Schedule) {
@@ -174,32 +209,59 @@ export class Scheduler {
         }
 
         if (noMore) {
+            this.logger.info('Schedule no more', { scheduleId: schedule.id })
+
+            if (schedule.autoRemove) {
+                this.removeSchedule(schedule.id)
+            }
             return
         }
 
         schedule.nextTriggerDate = nextDate instanceof Date ? nextDate : nextDate.toDate()
 
+        this.logger.info('Schedule computed scheduled run', { scheduleId: schedule.id, scheduledDate: schedule.nextTriggerDate })
+
         schedule.nextTimeout = setTimeout(
             async () => {
+                const runLogger = this.logger.child({ scheduleId: schedule.id, scheduleRunUuid: uuid() })
                 schedule.countdown--
                 schedule.callsCount++
                 const arg: ScheduleFnArg = {
                     scheduleId: schedule.id,
                     triggerDate: schedule.nextTriggerDate as Date,
                     countdown: schedule.countdown,
-                    callsCount: schedule.callsCount
+                    callsCount: schedule.callsCount,
+                    previousTriggerDate: schedule.previousTriggerDate
+                    //logger: runLogger
                 }
                 delete schedule.nextTimeout
+                schedule.previousTriggerDate = schedule.nextTriggerDate as Date
                 delete schedule.nextTriggerDate
+                runLogger.info('Running schedule', { scheduleRunStatus: 'running' })
+
+                if (schedule.allowMultipleRuns) {
+                    this.scheduleNext(schedule)
+                    arg.nextTriggerDate = schedule.nextTriggerDate
+                }
+
                 try {
                     await schedule.fn(arg)
+                    runLogger.info('Schedule run done', { scheduleRunStatus: 'done' })
                 } catch (e) {
-                    if (!this.onError) {
-                        throw e
+                    if (this.onError) {
+                        runLogger.info('Schedule run failed', { scheduleRunStatus: 'failed' })
+                        try {
+                            this.onError(e as Error, schedule.id)
+                        } catch (error) {
+                            this.logger.error('onError callback emitted error', {error})
+                        }
+                    } else {
+                        runLogger.error('Schedule run failed', { scheduleRunStatus: 'failed' })
                     }
-                    this.onError(e as Error, schedule.id)
                 }
-                this.scheduleNext(schedule)
+                if (!schedule.allowMultipleRuns) {
+                    this.scheduleNext(schedule)
+                }
             },
             nextDate.getTime() - (new Date).getTime()
         )

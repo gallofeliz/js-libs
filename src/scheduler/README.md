@@ -4,14 +4,17 @@ Simple scheduling:
 - [X] Schedule cron and intervals
 - [X] Get next scheduled date
 - [X] Start/Stoppable
-- [X] Inject exact Date to fn() and others properties
+- [X] Inject exact Date to fn() and others properties (previous, etc)
+- [X] Logs
 - [ ] Array schedule ?
 - [ ] Schedule cron + dates + others formats
 - [ ] Excludes ?
 - [ ] Jitter (like https://github.com/influxdata/telegraf/blob/master/docs/CONFIGURATION.md)
 - [ ] Run on startup (once ? Each time ?)
-- [ ] Logs, events
+- [ ] Events
 - [ ] Timezone ?
+- [ ] Shared state ?
+- [ ] Ability to precise logger in addSchedule with a merge metadata to use it with schedulerMetadata?
 
 ```typescript
 import { Scheduler } from '@gallofeliz/scheduler'
