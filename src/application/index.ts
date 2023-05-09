@@ -35,9 +35,9 @@ export type RunHandler<Config> = (services: Services<Config>) => void
 export interface AppDefinition<Config> {
     name?: string
     version?: string
-    config: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: UniversalLogger, watchChanges?: boolean }) | (() => Config)
+    config?: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: UniversalLogger, watchChanges?: boolean }) | (() => Config)
     logger?: LoggerOpts | ((services: Partial<Services<Config>>) => UniversalLogger)
-    services: ServicesDefinition<Config>
+    services?: ServicesDefinition<Config>
     run: RunHandler<Config>
 }
 
@@ -91,7 +91,8 @@ class App<Config> {
     protected async prepare() {
         const appDefinition = this.appDefinition
 
-        const defaultConfigArgs: Partial<ConfigOpts<any, any>> = {
+        const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
+            userProvidedConfigSchema: { type: 'object' },
             defaultFilename: '/etc/' + this.shortName + '/config.yaml',
             envFilename: this.shortName + '_CONFIG_PATH',
             envPrefix: this.shortName
@@ -129,7 +130,7 @@ class App<Config> {
                     ...defaultConfigArgs,
                     ...appDefinition.config,
                     logger: this.logger,
-                    watchChanges: appDefinition.config.watchChanges
+                    watchChanges: appDefinition.config?.watchChanges
                         ? {
                             abortSignal: this.abortController.signal,
                             eventEmitter: watchEventEmitter,
@@ -146,7 +147,7 @@ class App<Config> {
             configWatcher: watchEventEmitter,
             abortController: this.abortController,
             abortSignal: this.abortController.signal
-        }, appDefinition.services)
+        }, appDefinition.services || {})
     }
 
     public async run(abortSignal?: AbortSignal) {
