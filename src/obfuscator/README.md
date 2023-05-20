@@ -12,7 +12,7 @@ Obfuscate sensible data:
 ```typescript
 import {
     obfuscate,
-    builtinRulesBuilders
+    rulesBuilder
 } from "@gallofeliz/obfuscator"
 
 const obfuscated = obfuscate(
@@ -23,12 +23,14 @@ const obfuscated = obfuscate(
         email: 'root@localhost',
         age: 42
     },
-    [
-        builtinRulesBuilders.authInUrls(),
-        builtinRulesBuilders.objKeysLooksLikeSecrets(),
-        builtinRulesBuilders.keyMatchs('email')
-    ],
-    '(obfucated)'
+    {
+        rules: [
+            rulesBuilder.pathMatchs(/age$/),
+            rulesBuilder.urlEncodedMatchsCredentials('response.body'),
+            rulesBuilder.jsonStringifiedMatchsCredentials('response.body2'),
+            rulesBuilder.cookieMatchsCredentials(/headers.Cookie*/)
+        ]
+    }
 )
 
 /*
