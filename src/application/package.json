@@ -1,6 +1,6 @@
 {
   "name": "@gallofeliz/application",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -17,7 +17,7 @@
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
     "@gallofeliz/config": "^0.1.0",
-    "@gallofeliz/logger": "^0.1.0",
+    "@gallofeliz/logger": "^0.1.2",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
