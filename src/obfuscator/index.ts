@@ -163,7 +163,4 @@ export const rulesBuilder = {
             ? data.split(';').map(c => c.replace(/(?<=(phpsessid|session|token)=)\w+/gi, replacement)).join(';')
             : data
     })
-    // secretsInJsonLike: () => rulesBuilder.matchs(/(?<="(password|credentials|token)": ?")(\\"|[^"])+(?=")/gi),
-    // authInHeaders: () => rulesBuilder.matchs(/(?<=authorization: ?\w+ )\w+/gi),
-    // sessionsInCookies: () => rulesBuilder.matchs(/(?<=Cookie:.*)(?<=(phpsessid|session)=)\w+/gi)
 }

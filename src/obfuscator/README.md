@@ -4,6 +4,10 @@ Obfuscate sensible data:
 - direct obfuscate() call
 - instanciate Obfuscator for regular calls
 - built-in obfuscations or yours (based on helpers or free callback obfuscators)
+- [ ] See To improve builder (or Rule object/fn)
+  - builder.ifPathContains('request.body').stringifyJsonByKey(['password']) ...
+  - Rule { conditions: Condition[], obfuscations?: Function } and/or ?
+  - Jsonata or MongoLike Condition { path: { $regex: /request\.body/ } }
 
 ```typescript
 import {
