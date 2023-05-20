@@ -1,4 +1,4 @@
-import { cloneDeep, mapKeys } from 'lodash'
+import { cloneDeep, mapKeys, omit } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
 import { ObfuscationRule, obfuscate } from '@gallofeliz/obfuscator'
@@ -12,7 +12,7 @@ export function getMaxLevelsIncludes(maxLogLevel: LogLevel) {
 
 export function shouldBeLogged(logLevel: LogLevel, maxLogLevel: LogLevel, minLogLevel?: LogLevel) {
     return levels.indexOf(logLevel) <= levels.indexOf(maxLogLevel)
-        && (minLogLevel ? levels.indexOf(logLevel) > levels.indexOf(minLogLevel) : true)
+        && (minLogLevel ? levels.indexOf(logLevel) >= levels.indexOf(minLogLevel) : true)
 }
 
 export function createLogger(loggerOpts?: LoggerOpts) {
@@ -112,6 +112,10 @@ export class Logger implements UniversalLogger {
 
     public getMetadata() {
         return this.metadata
+    }
+
+    public setMetadata(metadata: Object) {
+        this.metadata = metadata
     }
 
     public getProcessors() {
@@ -325,6 +329,49 @@ export class ConsoleHandler extends BaseHandler {
         } else {
             process.stderr.write(formatted + EOL)
         }
+    }
+}
+
+export class MemoryHandler extends BaseHandler {
+    protected writtenLogs: Array<any> = []
+
+    constructor(opts: BaseHandlerOpts) {
+        super({formatter: log => log, ...opts})
+    }
+
+    protected async write(formatted: any, log: Log) {
+        this.writtenLogs.push(formatted)
+    }
+
+    public getWrittenLogs(consume: boolean = false) {
+        const writtenLogs = this.writtenLogs
+
+        if (consume) {
+            this.clearWrittenLogs()
+        }
+
+        return writtenLogs
+    }
+
+    public clearWrittenLogs() {
+        this.writtenLogs = []
+    }
+}
+
+export type LoggerProxyHandlerOpts = Omit<BaseHandlerOpts, 'formatter'> & {
+    logger: UniversalLogger
+}
+
+export class LoggerProxyHandler extends BaseHandler {
+    protected logger: UniversalLogger
+
+    constructor({logger, ...opts}: LoggerProxyHandlerOpts) {
+        super({...opts, formatter: log => log})
+        this.logger = logger
+    }
+
+    protected async write(formatted: any, log: Log) {
+        return this.logger[log.level](log.message, omit(log, ['level', 'message', 'timestamp']))
     }
 }
 
