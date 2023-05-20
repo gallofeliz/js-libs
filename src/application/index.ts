@@ -1,5 +1,5 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { UniversalLogger, LoggerOpts, Logger } from '@gallofeliz/logger'
+import { UniversalLogger, LoggerOpts, Logger, logUnhandled, logWarnings } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 
@@ -124,6 +124,10 @@ class App<Config> {
 
         } else {
             this.logger = (new Logger(appDefinition.logger)).child({ appRunUuid: uuid() })
+
+            logUnhandled(this.logger)
+            logWarnings(this.logger)
+
             this.config = appDefinition.config instanceof Function
                 ? await appDefinition.config()
                 : await loadConfig<any, any>({
