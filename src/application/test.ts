@@ -71,6 +71,8 @@ describe('Application', () => {
                         resolve(undefined)
                     })
 
+                    console.warn('I am calling console warn')
+
                     await new Promise(resolve => st = setTimeout(resolve, 5000))
 
                     abortController.abort()

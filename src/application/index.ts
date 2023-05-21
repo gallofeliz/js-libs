@@ -35,6 +35,7 @@ export type RunHandler<Config> = (services: Services<Config>) => void
 export interface AppDefinition<Config> {
     name?: string
     version?: string
+    allowConsoleUse?: boolean
     config?: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: UniversalLogger, watchChanges?: boolean }) | (() => Config)
     logger?: LoggerOpts | ((services: Partial<Services<Config>>) => UniversalLogger)
     services?: ServicesDefinition<Config>
@@ -141,6 +142,15 @@ class App<Config> {
                         }
                         : undefined
                 })
+        }
+
+        if (appDefinition.allowConsoleUse !== true) {
+            for (const method in console) {
+                // @ts-ignore
+                console[method] = (...args) => {
+                    this.logger!.warning('Used console.' + method + ', please fix it', {args})
+                }
+            }
         }
 
         this.services = createDiContainer({
