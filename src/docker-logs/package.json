@@ -1,0 +1,25 @@
+{
+  "name": "@gallofeliz/docker-logs",
+  "version": "0.1.2",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gallofeliz/js-libs.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gallofeliz/js-libs/issues"
+  },
+  "homepage": "https://github.com/gallofeliz/js-libs#readme",
+  "dependencies": {
+    "dockerode": "^3.3.5",
+    "matcher": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.17"
+  }
+}
