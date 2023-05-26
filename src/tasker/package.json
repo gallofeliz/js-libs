@@ -17,6 +17,8 @@
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
     "@gallofeliz/documents-collection": "^0.1.0",
-    "lodash": "^4.17.21"
+    "jsonata": "^2.0.3",
+    "lodash": "^4.17.21",
+    "p-queue": "^6.6.2"
   }
 }

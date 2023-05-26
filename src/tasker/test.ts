@@ -14,7 +14,75 @@ describe('Tasker', () => {
     //     }
     // })
 
-    it.only('test3', async () => {
+    it.only('test42', async () => {
+        const tasker = new Tasker({
+            persistDir: null,
+            logger: createLogger(),
+            archivingFrequency: 100,
+            runners: {
+                async sum({logger}) {
+                    logger.info('hello')
+                    await new Promise(resolve => setTimeout(resolve, 50))
+                    logger.info('bye')
+                }
+            }
+        })
+
+        tasker.start()
+
+        const runConditionQuery = '$not($hasTask({ "operation": "sum", "status": { "$in": [ "new", "running" ] } }))'
+
+        try {
+            tasker.addTask({
+                id: 'test1',
+                operation: 'sum',
+                addCondition: {
+                    query: runConditionQuery
+                }
+            })
+
+        } catch (e) {}
+
+        try {
+            tasker.addTask({
+                id: 'test2',
+                operation: 'sum',
+                addCondition: {
+                    query: runConditionQuery
+                }
+            })
+        } catch (e) {}
+
+        await new Promise(resolve => setTimeout(resolve, 20))
+
+        try {
+            tasker.addTask({
+                id: 'test3',
+                operation: 'sum',
+                addCondition: {
+                    query: runConditionQuery
+                }
+            })
+        } catch (e) {}
+
+        await new Promise(resolve => setTimeout(resolve, 40))
+
+        try {
+            tasker.addTask({
+                id: 'test4',
+                operation: 'sum',
+                addCondition: {
+                    query: runConditionQuery
+                }
+            })
+        } catch (e) {}
+
+        await new Promise(resolve => setTimeout(resolve, 200))
+
+        tasker.stop()
+    })
+
+    it('test3', async () => {
         const tasker = new Tasker({
             persistDir: null,
             logger: createLogger(),

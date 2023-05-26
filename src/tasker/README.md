@@ -31,11 +31,12 @@ Tasks Management with persistance (non-distributed):
     - started()
     - stopped()
     - task.add(AddTask)
+    - task.add.skipped(id)
     - task.added(uuid, id)
     - task.prioritized(uuid, priority)
     - task.XXX.prioritized(priority)
     - task.aborted(uuid, reason)
-    - task.XXX;aborted(reason)
+    - task.XXX.aborted(reason)
     - task.run(uuid)
     - task.XXX.run()
     - task.log(uuid, log)
@@ -52,7 +53,7 @@ Tasks Management with persistance (non-distributed):
 - [X] Attach task AbortSignal
 - [ ] Remove old ended tasks
 - [ ] Checks runners exist on start on new tasks
-- [ ] Avoid duplicated new/running tasks ?
+- [X] Avoid duplicated new/running tasks ?
 - [ ] Retry on error (with same task or new one ?)
 - [ ] Stop Tasker abort or not new tasks, postpone or not running etc
 - [ ] Typescript well typed with Task<X,X,X> getTask<T extends Task> etc

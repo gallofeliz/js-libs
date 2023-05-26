@@ -3,6 +3,8 @@ import { each, omit, mapValues, cloneDeep, every, groupBy } from 'lodash'
 import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 import EventEmitter, { once } from 'events'
+import jsonata from 'jsonata'
+import Pqueue from 'p-queue'
 
 export interface TaskerOpts {
     persistDir: string | null
@@ -110,6 +112,9 @@ export interface Task<Operation extends string = any, Data extends any = any, Re
     archiving?: {
         duration?: number
     }
+    addCondition?: {
+        query: string
+    }
 }
 
 type TaskDocument = Omit<Task, 'logs' | 'concurrency'> & {
@@ -128,17 +133,21 @@ export interface AddTaskOpts {
     operation: string
     data?: any
     priority?: TaskPriority
-    concurrency?: TaskConcurrency
+    concurrency?: TaskConcurrency // runCondition
     runTimeout?: number
     abortSignal?: AbortSignal
-    /*duplication: {
+    /*duplication: { addCondition
         query: {}
         expected: 'continue' | 'update' | 'skip'
     }*/
     archiving?: {
         duration?: number
     }
+    addCondition?: {
+        query: string
+    }
 }
+
 
 export interface RetrieveTaskOpts {
     withLogs?: boolean
@@ -157,6 +166,7 @@ export class Tasker extends EventEmitter {
     protected runNextsRequested: boolean = false
     protected archivingFrequency: number
     protected archivingInterval?: NodeJS.Timer
+    protected addQueue = new Pqueue({concurrency: 1})
 
     public constructor({persistDir, runners, logger, archivingFrequency}: TaskerOpts) {
         super()
@@ -276,51 +286,80 @@ export class Tasker extends EventEmitter {
         this.runners[operation] = run
     }
 
+    protected async evaluateConditionQuery({query, context}: {query: string, context?: any}): Promise<boolean> {
+        const evaluation = await jsonata(query).evaluate(context, {
+            hasTask: this.hasTask.bind(this),
+            countTasks: this.countTasks.bind(this)
+        })
+
+        if (typeof evaluation !== 'boolean') {
+            this.logger.warning('Invalid query evaluation, expected boolean ; using cast strategy', { evaluation })
+            return !!evaluation
+        }
+
+        return evaluation
+    }
+
     public async addTask(addTask: AddTaskOpts): Promise<string> {
         if (!this.runners[addTask.operation]) {
             this.logger.warning('No runner assigned for operation ' + addTask.operation)
         }
 
-        this.emit('task.add', addTask)
+        return this.addQueue.add(async () => {
+            this.emit('task.add', addTask)
 
-        const taskUuid = uuid()
-
-        await this.tasksCollection.insert({
-            priority: 0,
-            ...omit(addTask, 'concurrency', 'abortSignal'),
-            ...addTask.concurrency && {
-                concurrency: addTask.concurrency.map(condition => {
-                    return {
-                        ...cloneDeep(condition),
-                        query: JSON.stringify(condition.query)
-                    }
+            if(addTask.addCondition) {
+                const shouldAdd: boolean = await this.evaluateConditionQuery({
+                    query: addTask.addCondition.query,
+                    context: addTask
                 })
-            },
-            uuid: taskUuid,
-            status: 'new',
-            createdAt: new Date
-        })
 
-        if (addTask.abortSignal) {
-            if(addTask.abortSignal.aborted) {
-                this.abortTask(taskUuid, 'Task AbortSignal aborted')
-            } else {
-                const abortSignal = addTask.abortSignal
-                const onTaskSignalAbort = () => this.abortTask(taskUuid, 'Task AbortSignal aborted')
-                abortSignal.addEventListener('abort', onTaskSignalAbort)
-
-                this.once(`task.${taskUuid}.aborted`, () => {
-                    abortSignal.removeEventListener('abort', onTaskSignalAbort)
-                })
+                if (!shouldAdd) {
+                    this.logger.info('Skipping task', { addTask: { id: addTask.id }, events: { 'add.skipped': 1 } })
+                    this.emit('task.add.skipped', addTask.id)
+                    throw new Error('Skipped')
+                }
             }
-        }
 
-        this.logger.info('Adding task', { task: {uuid: taskUuid, id: addTask.id, status: 'new'}, events: { add: 1 } })
-        this.emit('task.added', taskUuid, addTask.id)
+            const taskUuid = uuid()
 
-        this.runNexts()
+            await this.tasksCollection.insert({
+                priority: 0,
+                ...omit(addTask, 'concurrency', 'abortSignal'),
+                ...addTask.concurrency && {
+                    concurrency: addTask.concurrency.map(condition => {
+                        return {
+                            ...cloneDeep(condition),
+                            query: JSON.stringify(condition.query)
+                        }
+                    })
+                },
+                uuid: taskUuid,
+                status: 'new',
+                createdAt: new Date
+            })
 
-        return taskUuid
+            if (addTask.abortSignal) {
+                if(addTask.abortSignal.aborted) {
+                    this.abortTask(taskUuid, 'Task AbortSignal aborted')
+                } else {
+                    const abortSignal = addTask.abortSignal
+                    const onTaskSignalAbort = () => this.abortTask(taskUuid, 'Task AbortSignal aborted')
+                    abortSignal.addEventListener('abort', onTaskSignalAbort)
+
+                    this.once(`task.${taskUuid}.aborted`, () => {
+                        abortSignal.removeEventListener('abort', onTaskSignalAbort)
+                    })
+                }
+            }
+
+            this.logger.info('Adding task', { task: {uuid: taskUuid, id: addTask.id, status: 'new'}, events: { add: 1 } })
+            this.emit('task.added', taskUuid, addTask.id)
+
+            this.runNexts()
+
+            return taskUuid
+        })
     }
 
     public async waitForTaskOutputData(uuid: string) : Promise<any> {
@@ -412,6 +451,10 @@ export class Tasker extends EventEmitter {
 
     public async hasTask(query: DocumentCollectionQuery) {
         return await this.tasksCollection.has(query)
+    }
+
+    public async countTasks(query: DocumentCollectionQuery) {
+        return await this.tasksCollection.count(query)
     }
 
     public async findTask(
