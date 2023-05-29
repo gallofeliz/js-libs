@@ -168,6 +168,8 @@ export class Tasker extends EventEmitter {
     protected archivingFrequency: number
     protected archivingInterval?: NodeJS.Timer
     protected addQueue = new Pqueue({concurrency: 1})
+    protected runningCount = 0
+    protected lastQueueCount = 0
 
     public constructor({persistDir, runners, logger, archivingFrequency}: TaskerOpts) {
         super()
@@ -589,9 +591,11 @@ export class Tasker extends EventEmitter {
             {sort:{ priority: -1, createdAt: 1 }}
         )
 
+        let nbQueuedTasks = 0
         const refused: string[] = []
 
         for await (const task of newTasks) {
+            nbQueuedTasks++
             if (!this.runners[task.operation]) {
                 continue
             }
@@ -613,6 +617,16 @@ export class Tasker extends EventEmitter {
 
         this.runNextsLock = false
 
+        if (!nbQueuedTasks && this.lastQueueCount) {
+            this.emit('empty-queue')
+        }
+
+        if (!this.lastQueueCount && nbQueuedTasks) {
+            this.emit('queuing')
+        }
+
+        this.lastQueueCount = nbQueuedTasks
+
         if (this.runNextsRequested) {
             this.runNexts()
         }
@@ -632,6 +646,12 @@ export class Tasker extends EventEmitter {
         this.emit('task.run', task.uuid)
         this.emit(`task.${task.uuid}.run`)
 
+        if (!this.runningCount) {
+            this.emit('running')
+        }
+
+        this.runningCount++
+
         ;(async() => {
             this.logger.info('Running task', { task: {uuid: task.uuid, id: task.id, status: 'running'}, events: { run: 1 } })
 
@@ -639,8 +659,8 @@ export class Tasker extends EventEmitter {
 
             const loggerHandler = {
                 handle: async (log: any) =>  {
-                    await this.logsCollection.insert({...omit(log, 'task'), taskUuid: task.uuid})
                     const cleanedLog = omit(log, 'taskerUuid', 'task')
+                    await this.logsCollection.insert({...cleanedLog, taskUuid: task.uuid})
                     this.internalEmitter.emit('log.' + task.uuid, cleanedLog)
                     this.emit('task.log', task.uuid, cleanedLog)
                     this.emit(`task.${task.uuid}.log`, cleanedLog)
@@ -713,6 +733,12 @@ export class Tasker extends EventEmitter {
                 taskLogger.getHandlers().splice(taskLogger.getHandlers().indexOf(loggerHandler))
                 this.logger.info('Ended task', { task: {uuid: task.uuid, id: task.id, status: task.status}, events: { ended: 1, [task.status]: 1 } })
                 this.internalEmitter.emit('ended.' + task.uuid)
+                this.runningCount--
+
+                if (this.runningCount === 0) {
+                    this.emit('idle')
+                }
+
                 this.runNexts()
             }
         })()

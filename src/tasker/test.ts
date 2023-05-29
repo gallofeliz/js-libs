@@ -1,4 +1,5 @@
 import { createLogger } from '@gallofeliz/logger'
+import { once } from 'events'
 //import { strictEqual } from 'assert'
 //import { unlink } from 'fs/promises'
 import { Tasker } from '.'
@@ -20,40 +21,87 @@ describe('Tasker', () => {
             logger: createLogger(),
             archivingFrequency: 100,
             runners: {
-                async sum({logger}) {
-                    logger.info('hello')
-                    await new Promise(resolve => setTimeout(resolve, 50))
-                    logger.info('bye')
+                'read-book': async ({logger, data, id, priority}) => {
+                    process.stdout.write('\n')
+                    console.log('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> READ', new Date, id, priority)
+                    logger.info('I am reading the book')
+                    process.stdout.write('\n')
+                    await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
+                },
+                'write-book': async ({logger, data, id, priority}) => {
+                    process.stdout.write('\n')
+                    console.log('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> WRITE', new Date, id, priority)
+                    process.stdout.write('\n')
+                    await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
                 }
             }
         })
 
         tasker.start()
 
-        const addConditionQuery = '$not($hasTask({ "operation": addOpts.operation, "status": "queued" }))'
-        const runConditionQuery = '$not($hasTask({ "operation": task.operation, "status": "running" }))'
-
-        for (let i = 0; i < 10; i++) {
-
+        async function addTask(operation: string, book: string, exclusiveLock: boolean) {
             try {
-                tasker.addTask({
-                    id: 'test' + i,
-                    operation: 'sum',
-                    addCondition: {
-                        query: addConditionQuery
+                return await tasker.addTask({
+                    id: {
+                        book,
+                        exclusiveLock
                     },
-                    runCondition: { query: runConditionQuery  }
+                    operation,
+                    addCondition: { query: '$not($hasTask({ "operation": addOpts.operation, "id": addOpts.id, "status": "queued" }))' },
+                    runCondition: { query:
+                        exclusiveLock
+                            ? `
+                                $not($hasTask({ "id.book": task.id.book, "status": "running" }))
+                                and
+                                $not($countTasks({"status": "running"}) > 1)
+                            `
+                            : `
+                                $not($hasTask({ "id.book": task.id.book, "id.exclusive": true, "status": "running" }))
+                                and
+                                /*$not($countTasks({ "id.book": task.id.book, "status": "running" }) > 1)*/
+                                $not($countTasks({"status": "running"}) > 1)
+                                and
+                                $not($hasTask({"id.book": task.id.book, "uuid": { "$in": beforeQueuedTasksUuids }, "id.exclusiveLock": true, "status": "queued" }))
+
+                            `}
                 })
 
-            } catch (e) {}
+            } catch (e) {
+                if ((e as any).code !== 'SKIPPED_ADD_TASK') {
+                    throw e
+                }
+            }
 
-            await new Promise(resolve => setTimeout(resolve, 20))
         }
 
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await addTask('read-book', 'book1', false)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await addTask('read-book', 'book1', false)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await addTask('write-book', 'book1', true)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await addTask('read-book', 'book2', false)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        await addTask('read-book', 'book1', false)
+
+        await addTask('read-book', 'book10', false)
+        await addTask('read-book', 'book11', false)
+        await addTask('read-book', 'book12', false)
+        await addTask('read-book', 'book13', false)
+        await addTask('read-book', 'book14', false)
+        await addTask('read-book', 'book15', false)
+        const taskUuid = await addTask('read-book', 'book16', false)
+
+        await Promise.all([
+            once(tasker, 'idle'),
+            once(tasker, 'empty-queue')
+        ])
+
+        console.log(await tasker.getTask(taskUuid as string, {withLogs: true}))
+
 
         tasker.stop()
-    })
+    }).timeout(60000)
 
     // it('test3', async () => {
     //     const tasker = new Tasker({
@@ -178,15 +226,7 @@ describe('Tasker', () => {
     //         persistDir: '/tmp',
     //         logger: createLogger(),
     //         runners: {
-    //             'read-book': async ({logger, data, priority}) => {
-    //                 console.log('>>>>>>>>>>>>>>>>> READ', priority)
-    //                 logger.info('I will read book')
-    //                 await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
-    //             },
-    //             'write-book': async ({logger, data, priority}) => {
-    //                 console.log('>>>>>>>>>>>>>>>>> WRITE', priority)
-    //                 await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
-    //             }
+
     //         }
     //     })
 

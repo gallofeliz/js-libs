@@ -31,6 +31,10 @@ Tasks Management with persistance (non-distributed):
 - [X] Events
     - started()
     - stopped()
+    - idle() : No running task
+    - running(): Running task(s)
+    - empty-queue(): No more tasks in queue
+    - queuing() : Tasks in queue
     - task.add(AddTask)
     - task.add.skipped(id)
     - task.added(uuid, id)
