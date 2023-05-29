@@ -18,6 +18,7 @@ Tasks Management with persistance (non-distributed):
 - [X] Public methods to search etc tasks
     - getTask(uuid, { withLogs, logsMaxLevel })
     - hasTask(query)
+    - countTasks(query)
     - findTask(query, { sort, withLogs, logsMaxLevel })
     - findTasks(query, { sort, limit, skip, withLogs, logsMaxLevel })
 - [X] Easy wait for result and stream logs for a task
@@ -57,17 +58,16 @@ Tasks Management with persistance (non-distributed):
 - [ ] Retry on error (with same task or new one ?)
 - [ ] Stop Tasker abort or not new tasks, postpone or not running etc
 - [ ] Typescript well typed with Task<X,X,X> getTask<T extends Task> etc
+- [ ] Sequentials core to avoid concurrency/phantoms read/write ?
 Promise coherence in Task API
 postpone running = abort with new ?
 Work with complex objects ? (ex: task cmd stream to http response) => Attach runningmethod these objects but unable to restart task after tasker process shutdown
-Concurrency or runCondition with external asserts ?
 Shared runConccurency/Task template/extends ?
 Refactor runConditions to concurrency with all in query ?
 Add global runConditions ?
 Queue timeout with change priority or abort ?
 runTimeout cron ?
 less verbose logs
--> rename concurrency by runConditions
 -> rename runTimeout by abortConditions and add query or timeout, with opt to include new status or only running
 -> Or all inside concurrency parent key
 Use projections to reduce data ?

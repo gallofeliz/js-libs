@@ -1,5 +1,5 @@
 import { createLogger } from '@gallofeliz/logger'
-import { strictEqual } from 'assert'
+//import { strictEqual } from 'assert'
 //import { unlink } from 'fs/promises'
 import { Tasker } from '.'
 
@@ -30,262 +30,235 @@ describe('Tasker', () => {
 
         tasker.start()
 
-        const runConditionQuery = '$not($hasTask({ "operation": "sum", "status": { "$in": [ "new", "running" ] } }))'
+        const addConditionQuery = '$not($hasTask({ "operation": addOpts.operation, "status": "queued" }))'
+        const runConditionQuery = '$not($hasTask({ "operation": task.operation, "status": "running" }))'
 
-        try {
-            tasker.addTask({
-                id: 'test1',
-                operation: 'sum',
-                addCondition: {
-                    query: runConditionQuery
-                }
-            })
+        for (let i = 0; i < 10; i++) {
 
-        } catch (e) {}
+            try {
+                tasker.addTask({
+                    id: 'test' + i,
+                    operation: 'sum',
+                    addCondition: {
+                        query: addConditionQuery
+                    },
+                    runCondition: { query: runConditionQuery  }
+                })
 
-        try {
-            tasker.addTask({
-                id: 'test2',
-                operation: 'sum',
-                addCondition: {
-                    query: runConditionQuery
-                }
-            })
-        } catch (e) {}
+            } catch (e) {}
 
-        await new Promise(resolve => setTimeout(resolve, 20))
+            await new Promise(resolve => setTimeout(resolve, 20))
+        }
 
-        try {
-            tasker.addTask({
-                id: 'test3',
-                operation: 'sum',
-                addCondition: {
-                    query: runConditionQuery
-                }
-            })
-        } catch (e) {}
-
-        await new Promise(resolve => setTimeout(resolve, 40))
-
-        try {
-            tasker.addTask({
-                id: 'test4',
-                operation: 'sum',
-                addCondition: {
-                    query: runConditionQuery
-                }
-            })
-        } catch (e) {}
-
-        await new Promise(resolve => setTimeout(resolve, 200))
+        await new Promise(resolve => setTimeout(resolve, 300))
 
         tasker.stop()
     })
 
-    it('test3', async () => {
-        const tasker = new Tasker({
-            persistDir: null,
-            logger: createLogger(),
-            archivingFrequency: 100
-        })
+    // it('test3', async () => {
+    //     const tasker = new Tasker({
+    //         persistDir: null,
+    //         logger: createLogger(),
+    //         archivingFrequency: 100
+    //     })
 
-        tasker.assignRunner('sum', async ({logger}) => {
-            logger.info('hello')
-        })
+    //     tasker.assignRunner('sum', async ({logger}) => {
+    //         logger.info('hello')
+    //     })
 
-        tasker.start()
+    //     tasker.start()
 
-        tasker.addTask({
-            id: 'sum',
-            operation: 'sum'
-        })
+    //     tasker.addTask({
+    //         id: 'sum',
+    //         operation: 'sum'
+    //     })
 
-        tasker.addTask({
-            id: 'sum archiving 300',
-            operation: 'sum',
-            archiving: {
-                duration: 300
-            }
-        })
+    //     tasker.addTask({
+    //         id: 'sum archiving 300',
+    //         operation: 'sum',
+    //         archiving: {
+    //             duration: 300
+    //         }
+    //     })
 
-        tasker.addTask({
-            id :' sum archiving 50',
-            operation: 'sum',
-            archiving: {
-                duration: 50
-            }
-        })
+    //     tasker.addTask({
+    //         id :' sum archiving 50',
+    //         operation: 'sum',
+    //         archiving: {
+    //             duration: 50
+    //         }
+    //     })
 
-        await new Promise(resolve => setTimeout(resolve, 200))
+    //     await new Promise(resolve => setTimeout(resolve, 200))
 
-        const tasks = await tasker.findTasks({})
+    //     const tasks = await tasker.findTasks({})
 
-        console.log(tasks.length)
+    //     console.log(tasks.length)
 
-        strictEqual(tasks.length, 2)
+    //     strictEqual(tasks.length, 2)
 
-        tasker.stop()
+    //     tasker.stop()
 
 
-    })
+    // })
 
-    it('test1', async() => {
-        const tasker = new Tasker({
-            persistDir: '/tmp',
-            logger: createLogger()
-        })
+    // it('test1', async() => {
+    //     const tasker = new Tasker({
+    //         persistDir: '/tmp',
+    //         logger: createLogger()
+    //     })
 
-        tasker.assignRunner('sum', async ({data, logger, abortSignal}) => {
+    //     tasker.assignRunner('sum', async ({data, logger, abortSignal}) => {
 
-            let aborted = false
+    //         let aborted = false
 
-            abortSignal.addEventListener('abort', () => {
-                aborted = true
-            })
+    //         abortSignal.addEventListener('abort', () => {
+    //             aborted = true
+    //         })
 
-            await new Promise(resolve => setTimeout(resolve, 100))
+    //         await new Promise(resolve => setTimeout(resolve, 100))
 
-            if (aborted) {
-                throw abortSignal.reason
-            }
+    //         if (aborted) {
+    //             throw abortSignal.reason
+    //         }
 
-            logger.info('Sum', {data})
+    //         logger.info('Sum', {data})
 
-            await new Promise(resolve => setTimeout(resolve, 100))
+    //         await new Promise(resolve => setTimeout(resolve, 100))
 
-            logger.info('Ended')
+    //         logger.info('Ended')
 
-            return data[0] + data[1]
-        })
+    //         return data[0] + data[1]
+    //     })
 
-        const taskUuid = await tasker.addTask({
-            id: 'sum 5 and 4',
-            operation: 'sum',
-            data: [5, 4]
-        })
+    //     const taskUuid = await tasker.addTask({
+    //         id: 'sum 5 and 4',
+    //         operation: 'sum',
+    //         data: [5, 4]
+    //     })
 
-        ;(async () => {
-            for await (const log of await tasker.listenTaskLogs(taskUuid)) {
-                if (log) {
-                    console.log('listenTaskLogs receives', log)
-                }
-            }
-        })()
+    //     ;(async () => {
+    //         for await (const log of await tasker.listenTaskLogs(taskUuid)) {
+    //             if (log) {
+    //                 console.log('listenTaskLogs receives', log)
+    //             }
+    //         }
+    //     })()
 
-        tasker.waitForTaskOutputData(taskUuid).then(result => {
-            console.log('waitForTaskOutputData returns', result)
-        }).catch(error => {
-            console.log('waitForTaskOutputData throws', error)
-        })
+    //     tasker.waitForTaskOutputData(taskUuid).then(result => {
+    //         console.log('waitForTaskOutputData returns', result)
+    //     }).catch(error => {
+    //         console.log('waitForTaskOutputData throws', error)
+    //     })
 
-        tasker.start()
+    //     tasker.start()
 
-        //setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
+    //     //setTimeout(() => tasker.abortTask(taskUuid, 'Pas envie'), 50)
 
-        await new Promise(resolve => setTimeout(resolve, 250))
+    //     await new Promise(resolve => setTimeout(resolve, 250))
 
-        console.log('task', await tasker.getTask(taskUuid))
+    //     console.log('task', await tasker.getTask(taskUuid))
 
-        ;(async () => {
-            for await (const log of await tasker.listenTaskLogs(taskUuid, { fromBeginning: true })) {
-                if (log) {
-                    console.log('listenTaskLogs received from beginning', log)
-                }
-            }
-        })()
+    //     ;(async () => {
+    //         for await (const log of await tasker.listenTaskLogs(taskUuid, { fromBeginning: true })) {
+    //             if (log) {
+    //                 console.log('listenTaskLogs received from beginning', log)
+    //             }
+    //         }
+    //     })()
 
-        await new Promise(resolve => setTimeout(resolve, 250))
+    //     await new Promise(resolve => setTimeout(resolve, 250))
 
-        console.log('has listeners (dirty, should not)', (tasker as any).internalEmitter.eventNames().length !== 0)
+    //     console.log('has listeners (dirty, should not)', (tasker as any).internalEmitter.eventNames().length !== 0)
 
-    }).timeout(5000)
+    // }).timeout(5000)
 
-    it('test2', async() => {
-        const tasker = new Tasker({
-            persistDir: '/tmp',
-            logger: createLogger(),
-            runners: {
-                'read-book': async ({logger, data, priority}) => {
-                    console.log('>>>>>>>>>>>>>>>>> READ', priority)
-                    logger.info('I will read book')
-                    await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
-                },
-                'write-book': async ({logger, data, priority}) => {
-                    console.log('>>>>>>>>>>>>>>>>> WRITE', priority)
-                    await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
-                }
-            }
-        })
+    // it('test2', async() => {
+    //     const tasker = new Tasker({
+    //         persistDir: '/tmp',
+    //         logger: createLogger(),
+    //         runners: {
+    //             'read-book': async ({logger, data, priority}) => {
+    //                 console.log('>>>>>>>>>>>>>>>>> READ', priority)
+    //                 logger.info('I will read book')
+    //                 await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
+    //             },
+    //             'write-book': async ({logger, data, priority}) => {
+    //                 console.log('>>>>>>>>>>>>>>>>> WRITE', priority)
+    //                 await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 100))
+    //             }
+    //         }
+    //     })
 
-        /**
-         * Read Book for same book max 2 in same time inclusive lock
-         * Write Book exclusive lock scoped book
-        */
-        function readBook(book: string, priority: number) {
-            tasker.addTask({
-                id: 'read-book reader1',
-                operation: 'read-book',
-                data: {
-                    book: book,
-                    reader: 'reader1',
-                    lock: 'inclusive'
-                },
-                priority,
-                concurrency: [
-                    {
-                        scope: 'running',
-                        query: { 'data.lock': 'inclusive', 'data.book': book },
-                        limit: 1
-                    },
-                    {
-                        scope: 'running',
-                        query: { 'data.lock': 'exclusive', 'data.book': book },
-                        limit: 0
-                    },
-                    {
-                        scope: 'before-queued',
-                        query: { 'data.book': book, 'data.lock': 'exclusive' },
-                        limit: 0
-                    }
-                ]
-            })
-        }
+    //     /**
+    //      * Read Book for same book max 2 in same time inclusive lock
+    //      * Write Book exclusive lock scoped book
+    //     */
+    //     function readBook(book: string, priority: number) {
+    //         tasker.addTask({
+    //             id: 'read-book reader1',
+    //             operation: 'read-book',
+    //             data: {
+    //                 book: book,
+    //                 reader: 'reader1',
+    //                 lock: 'inclusive'
+    //             },
+    //             priority,
+    //             concurrency: [
+    //                 {
+    //                     scope: 'running',
+    //                     query: { 'data.lock': 'inclusive', 'data.book': book },
+    //                     limit: 1
+    //                 },
+    //                 {
+    //                     scope: 'running',
+    //                     query: { 'data.lock': 'exclusive', 'data.book': book },
+    //                     limit: 0
+    //                 },
+    //                 {
+    //                     scope: 'before-queued',
+    //                     query: { 'data.book': book, 'data.lock': 'exclusive' },
+    //                     limit: 0
+    //                 }
+    //             ]
+    //         })
+    //     }
 
-        function writeBook(book: string, priority: number) {
-            tasker.addTask({
-                id: 'write-book reader1',
-                operation: 'write-book',
-                data: {
-                    book: book,
-                    reader: 'reader1',
-                    lock: 'exclusive'
-                },
-                priority,
-                concurrency: [
-                    {
-                        scope: 'running',
-                        query: { 'data.book': book },
-                        limit: 0
-                    }
-                ]
-            })
-        }
+    //     function writeBook(book: string, priority: number) {
+    //         tasker.addTask({
+    //             id: 'write-book reader1',
+    //             operation: 'write-book',
+    //             data: {
+    //                 book: book,
+    //                 reader: 'reader1',
+    //                 lock: 'exclusive'
+    //             },
+    //             priority,
+    //             concurrency: [
+    //                 {
+    //                     scope: 'running',
+    //                     query: { 'data.book': book },
+    //                     limit: 0
+    //                 }
+    //             ]
+    //         })
+    //     }
 
-        readBook('book1', 100)
-        writeBook('book1', 99)
-        writeBook('book1', 98)
-        readBook('book1', 97)
-        readBook('book1', 96)
-        readBook('book1', 95)
-        writeBook('book1', 94)
+    //     readBook('book1', 100)
+    //     writeBook('book1', 99)
+    //     writeBook('book1', 98)
+    //     readBook('book1', 97)
+    //     readBook('book1', 96)
+    //     readBook('book1', 95)
+    //     writeBook('book1', 94)
 
-        tasker.start()
+    //     tasker.start()
 
-        setTimeout(async () => {
-            console.log('findTasks', await tasker.findTasks({ status: 'running' }, {withLogs: true}))
-        }, 2000)
+    //     setTimeout(async () => {
+    //         console.log('findTasks', await tasker.findTasks({ status: 'running' }, {withLogs: true}))
+    //     }, 2000)
 
-        await new Promise(resolve => setTimeout(resolve, 40000))
+    //     await new Promise(resolve => setTimeout(resolve, 40000))
 
-    }).timeout(60000)
+    // }).timeout(60000)
 })

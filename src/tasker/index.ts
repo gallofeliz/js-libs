@@ -1,5 +1,5 @@
 import { DocumentCollection, NeDbDocumentCollection, DocumentCollectionQuery, DocumentCollectionSort } from '@gallofeliz/documents-collection'
-import { each, omit, mapValues, cloneDeep, every, groupBy } from 'lodash'
+import { each, omit, mapValues, groupBy } from 'lodash'
 import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 import EventEmitter, { once } from 'events'
@@ -21,6 +21,14 @@ export class AbortError extends Error {
     }
 }
 
+export class SkippedAddTask extends Error {
+    name = 'SkippedAddTask'
+    code = 'SKIPPED_ADD_TASK'
+    constructor(message: string = 'Skipped addTask (see addCondition)') {
+        super(message)
+    }
+}
+
 export interface RunningData extends Task {
     logger: UniversalLogger
     abortSignal: AbortSignal
@@ -30,19 +38,7 @@ export type Runner = (data: RunningData) => Promise<void>
 
 export type TaskPriority = number
 
-export type TaskStatus = 'new' | 'running' | 'done' | 'failed' | 'aborted'
-
-export type TaskConcurrency = Array<{
-    scope: 'running' | 'before-queued'
-    query: DocumentCollectionQuery
-    limit: number
-}>
-
-export type TaskDocumentConcurrency = Array<{
-    scope: 'running' | 'before-queued'
-    query: string
-    limit: number
-}>
+export type TaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'aborted'
 
 /*
 
@@ -101,7 +97,6 @@ export interface Task<Operation extends string = any, Data extends any = any, Re
     data?: Data
     priority: TaskPriority
     createdAt: Date
-    concurrency?: TaskConcurrency
     startedAt?: Date
     endedAt?: Date
     logs?: object[]
@@ -115,11 +110,16 @@ export interface Task<Operation extends string = any, Data extends any = any, Re
     addCondition?: {
         query: string
     }
+    runCondition?: {
+        query: string
+    }
+    onTaskerStop?: {
+        abortQueued: boolean
+    }
 }
 
-type TaskDocument = Omit<Task, 'logs' | 'concurrency'> & {
+type TaskDocument = Omit<Task, 'logs'> & {
     _id: string
-    concurrency?: TaskDocumentConcurrency
 }
 
 interface LogDocument {
@@ -133,18 +133,19 @@ export interface AddTaskOpts {
     operation: string
     data?: any
     priority?: TaskPriority
-    concurrency?: TaskConcurrency // runCondition
+    runCondition?: {
+        query: string
+    }
     runTimeout?: number
     abortSignal?: AbortSignal
-    /*duplication: { addCondition
-        query: {}
-        expected: 'continue' | 'update' | 'skip'
-    }*/
     archiving?: {
         duration?: number
     }
     addCondition?: {
         query: string
+    }
+    onTaskerStop?: {
+        abortQueued: boolean
     }
 }
 
@@ -160,7 +161,7 @@ export class Tasker extends EventEmitter {
     protected logsCollection: DocumentCollection<LogDocument>
     protected runners: Record<string, Runner> = {}
     protected logger: Logger
-    protected abortControllers: Record<string, AbortController> = {}
+    //protected abortControllers: Record<string, AbortController> = {}
     protected internalEmitter = new EventEmitter
     protected runNextsLock: boolean = false
     protected runNextsRequested: boolean = false
@@ -246,10 +247,15 @@ export class Tasker extends EventEmitter {
 
         // Emit events ?
         this.tasksCollection.update(
-            { status: { $in: statusToAbort } },
+            {
+                $or: [
+                    { status: { $in: statusToAbort } },
+                    { 'onTaskerStop.abortQueued': true, status: 'queued' }
+                ]
+            },
             { $set: {
                 status: 'aborted',
-                abortReason: this.errorToJson(new AbortError('Unexpected running task on Tasker load')),
+                abortReason: this.errorToJson(new AbortError('Unexpected tasks status on Tasker load (bad shutdown ?)')),
                 endedAt: new Date
             }}
         )
@@ -270,7 +276,12 @@ export class Tasker extends EventEmitter {
         const statusToAbort: TaskStatus[] = /*this.abortNewTasksOnStop ? ['new', 'running'] : */['running']
 
         const tasksToAbort = this.tasksCollection.find(
-            { status: { $in: statusToAbort } },
+            {
+                $or: [
+                    { status: { $in: statusToAbort } },
+                    { 'onTaskerStop.abortQueued': true, status: 'queued' }
+                ]
+            },
             { projection: { uuid: 1 } }
         )
 
@@ -311,13 +322,13 @@ export class Tasker extends EventEmitter {
             if(addTask.addCondition) {
                 const shouldAdd: boolean = await this.evaluateConditionQuery({
                     query: addTask.addCondition.query,
-                    context: addTask
+                    context: {addOpts: addTask}
                 })
 
                 if (!shouldAdd) {
                     this.logger.info('Skipping task', { addTask: { id: addTask.id }, events: { 'add.skipped': 1 } })
                     this.emit('task.add.skipped', addTask.id)
-                    throw new Error('Skipped')
+                    throw new SkippedAddTask
                 }
             }
 
@@ -325,17 +336,9 @@ export class Tasker extends EventEmitter {
 
             await this.tasksCollection.insert({
                 priority: 0,
-                ...omit(addTask, 'concurrency', 'abortSignal'),
-                ...addTask.concurrency && {
-                    concurrency: addTask.concurrency.map(condition => {
-                        return {
-                            ...cloneDeep(condition),
-                            query: JSON.stringify(condition.query)
-                        }
-                    })
-                },
+                ...omit(addTask, 'abortSignal'),
                 uuid: taskUuid,
-                status: 'new',
+                status: 'queued',
                 createdAt: new Date
             })
 
@@ -353,7 +356,7 @@ export class Tasker extends EventEmitter {
                 }
             }
 
-            this.logger.info('Adding task', { task: {uuid: taskUuid, id: addTask.id, status: 'new'}, events: { add: 1 } })
+            this.logger.info('Adding task', { task: {uuid: taskUuid, id: addTask.id, status: 'queued'}, events: { add: 1 } })
             this.emit('task.added', taskUuid, addTask.id)
 
             this.runNexts()
@@ -369,7 +372,7 @@ export class Tasker extends EventEmitter {
             throw new Error('Task not found')
         }
 
-        if (['new', 'running'].includes(task.status)) {
+        if (['queued', 'running'].includes(task.status)) {
             await once(this.internalEmitter, 'ended.' + task.uuid)
             task = await this.tasksCollection.findOne({ uuid }) as TaskDocument
         }
@@ -412,7 +415,7 @@ export class Tasker extends EventEmitter {
             for (const log of alreadyLogs) {
                 yield Promise.resolve(log)
             }
-            if (!['new', 'running'].includes(task.status)) {
+            if (!['queued', 'running'].includes(task.status)) {
                 return
             }
 
@@ -490,12 +493,6 @@ export class Tasker extends EventEmitter {
         return tasks.map(task => {
             return {
                 ...omit(task, '_id'),
-                ...task.concurrency && { concurrency: task.concurrency.map(condition => {
-                    return {
-                        ...cloneDeep(condition),
-                        query: JSON.parse(condition.query)
-                    }
-                })},
                 ...logs && {logs: (logs[task.uuid] || []).map(log => omit(log, 'taskUuid', '_id'))}
             }
         })
@@ -517,20 +514,14 @@ export class Tasker extends EventEmitter {
 
         return {
             ...task,
-            ...task.concurrency && { concurrency: task.concurrency.map(condition => {
-                return {
-                    ...cloneDeep(condition),
-                    query: JSON.parse(condition.query)
-                }
-            })},
             ...logs && {logs: logs.map(log => omit(log, 'taskUuid', '_id'))}
         }
     }
 
     public async prioritizeTask(uuid: string, priority: number) {
         const [updated, taskExists] = await Promise.all([
-            // Update priority if task exists and is new
-            this.tasksCollection.updateOne({ uuid, status: 'new' }, { $set: { priority } }),
+            // Update priority if task exists and is queued
+            this.tasksCollection.updateOne({ uuid, status: 'queued' }, { $set: { priority } }),
             // Assert task exists
             this.tasksCollection.has({ uuid })
         ])
@@ -556,7 +547,7 @@ export class Tasker extends EventEmitter {
             throw new Error('Task not found')
         }
 
-        if (!['new', 'running'].includes(task.status)) {
+        if (!['queued', 'running'].includes(task.status)) {
             return
         }
 
@@ -567,12 +558,12 @@ export class Tasker extends EventEmitter {
          * warning risk of concurrent read/write (updating running)
          */
 
-        if (task.status === 'new') {
+        if (task.status === 'queued') {
             await this.tasksCollection.updateOne(
                 { _id: task._id },
                 { $set: { status: 'aborted', endedAt: new Date, abortReason: this.errorToJson(reasonErr) }}
             )
-            this.logger.info('Aborted new task', { task: {uuid: task.uuid, id: task.id, status: 'aborted'}, events: { aborted: 1 } })
+            this.logger.info('Aborted queued task', { task: {uuid: task.uuid, id: task.id, status: 'aborted'}, events: { aborted: 1 } })
             this.emit('task.aborted', task.uuid, reasonErr)
             this.emit(`task.${task.uuid}.aborted`, reasonErr)
         } else if (task.status === 'running') {
@@ -594,7 +585,7 @@ export class Tasker extends EventEmitter {
         this.runNextsRequested = false
 
         const newTasks = this.tasksCollection.find(
-            { status: 'new' },
+            { status: 'queued' },
             {sort:{ priority: -1, createdAt: 1 }}
         )
 
@@ -605,31 +596,18 @@ export class Tasker extends EventEmitter {
                 continue
             }
 
-            const conditionsResults = await Promise.all((task.concurrency || []).map(async condition => {
-                if (condition.scope === 'running') {
-                    const a = await this.tasksCollection.count({
-                        ...JSON.parse(condition.query as string),
-                        status: 'running'
-                    })
-
-                    return a <= condition.limit
-                } else if (condition.scope === 'before-queued') {
-
-                    const a = await this.tasksCollection.count({
-                        ...JSON.parse(condition.query as string),
-                        _id: { $in: refused }
-                    })
-
-                    return a <= condition.limit
-                } else {
-                    throw new Error('Unhandled')
+            const evaluation: boolean = task.runCondition ? await this.evaluateConditionQuery({
+                query: task.runCondition.query,
+                context: {
+                    task,
+                    beforeQueuedTasksUuids: refused
                 }
-            }))
+            }) : true
 
-            if (every(conditionsResults, Boolean)) {
+            if (evaluation) {
                 await this.runTask(task)
             } else {
-                refused.push(task._id)
+                refused.push(task.uuid)
             }
         }
 
@@ -691,12 +669,6 @@ export class Tasker extends EventEmitter {
             try {
                 const result = await this.runners[task.operation]({
                     ...omit(task, '_id'),
-                    ...task.concurrency && { concurrency: task.concurrency.map(condition => {
-                        return {
-                            ...cloneDeep(condition),
-                            query: JSON.parse(condition.query)
-                        }
-                    })},
                     logger: taskLogger,
                     abortSignal: abortController.signal
                 })
