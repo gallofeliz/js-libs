@@ -73,29 +73,35 @@ export class DockerLogs {
         })
 
         dockerContainers.forEach(async container => {
-            if (this.containers[container.Id]) {
+            if (this.containers[container.Id] && !this.containers[container.Id].streamEndAt) {
                 return
             }
 
             const abortController = new AbortController
+            const streamEndAt = this.containers[container.Id]?.streamEndAt
 
             this.containers[container.Id] = {
                 name: container.Names[0].substring(1),
                 abortController
             }
 
-            this.watchContainer(container.Id, this.containers[container.Id].name, abortController.signal)
+            this.watchContainer(
+                container.Id,
+                this.containers[container.Id].name,
+                abortController.signal,
+                streamEndAt || this.lastRefresh
+            )
         })
 
         this.lastRefresh = new Date
     }
 
-    protected async watchContainer(id: string, name: string, abortSignal: AbortSignal) {
+    protected async watchContainer(id: string, name: string, abortSignal: AbortSignal, since: Date) {
         const outStream = await this.getDockerode().getContainer(id).logs({
             timestamps: true,
             stderr: false,
             stdout: true,
-            since: this.lastRefresh.getTime() / 1000,
+            since: since.getTime() / 1000,
             abortSignal: abortSignal,
             follow: true
         })
@@ -104,7 +110,7 @@ export class DockerLogs {
             timestamps: true,
             stderr: true,
             stdout: false,
-            since: this.lastRefresh.getTime() / 1000,
+            since: since.getTime() / 1000,
             abortSignal: abortSignal,
             follow: true
         })
@@ -177,6 +183,14 @@ export class DockerLogs {
                 this.dispatchLog(log)
             })
         })
+
+        outStream.on('end', () => {
+
+            this.containers[id].abortController.abort()
+            this.containers[id].streamEndAt = new Date;
+
+        })
+
 
         // clean events on stream end ?
         // todo : reconnect if stream close and no abort
