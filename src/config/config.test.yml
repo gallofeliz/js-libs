@@ -1,3 +1,5 @@
 machin:
   truc:
     bidule: true
+deep:
+  config: false

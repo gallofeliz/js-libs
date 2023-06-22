@@ -195,18 +195,28 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
             }
 
             if (opts.watchChanges!.eventEmitter) {
-                opts.watchChanges!.eventEmitter?.emit('change', changeArg)
+                const hasGlobalChangeListener = opts.watchChanges!.eventEmitter!.emit('change', changeArg)
                 patch.forEach(op => {
+                    let pathHasListener = false
                     op.path.split('.').reduce((rootToLeafNodes: string[], node) => {
                         rootToLeafNodes = rootToLeafNodes.concat(node)
-                        opts.watchChanges!.eventEmitter?.emit('change:' + rootToLeafNodes.join('.') as 'change:xxx', {
+                        const nodeHasListener = opts.watchChanges!.eventEmitter!.emit('change:' + rootToLeafNodes.join('.') as 'change:xxx', {
                             config,
                             previousConfig,
                             value: get(config, rootToLeafNodes),
                             previousValue: get(previousConfig, rootToLeafNodes),
                         })
+
+                        if (nodeHasListener) {
+                            pathHasListener = true
+                        }
+
                         return rootToLeafNodes
                     }, [])
+
+                    if (!pathHasListener && !hasGlobalChangeListener) {
+                        handleError(new Error('Unhandled config watch change for ' + op.path), 'watchChanges')
+                    }
 
                 })
             }

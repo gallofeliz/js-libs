@@ -90,7 +90,10 @@ describe('Config', () => {
                         bidule: true
                     }
                 },
-                envShell: 'hello world'
+                envShell: 'hello world',
+                deep: {
+                    config: false
+                }
             }
         )
     })
