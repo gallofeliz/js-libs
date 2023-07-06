@@ -1,17 +1,24 @@
 import Dockerode from 'dockerode'
 import { isMatch } from 'matcher'
+import { UniversalLogger, createLogger } from '@gallofeliz/logger'
 
 interface ContainerState {
     id: string
     name: string
+    compose?: {
+        project: string
+        service: string
+    }
     running: boolean
     runningEventAt?: Date
-    destroyed: boolean
+    //destroyed: boolean
     stdoutAbortController?: AbortController
+    lastStdoutLog?: Date
     stderrAbortController?: AbortController
+    lastStderrLog?: Date
 }
 
-interface DockerLogWatchOpts {
+export interface DockerLogWatchOpts {
     namePattern: string
     stream: 'stdout' | 'stderr' | 'both'
     onLog: (log: DockerLog) => void
@@ -24,21 +31,42 @@ export interface DockerLog {
     message: string
     container: {
         name: string
-        id: string
+        id: string,
+        compose?: {
+            project: string
+            service: string
+        }
+    }
+}
+
+interface DockerEvent {
+    name: string
+    id: string
+    action: string
+    date: Date
+    compose?: {
+        project: string
+        service: string
     }
 }
 
 const trippleNull = Buffer.alloc(3) // like me ahahah
 
-class DockerLogs {
+export class DockerLogs {
     protected dockerode = new Dockerode
     protected containersState: ContainerState[] = []
     protected watches: DockerLogWatchOpts[] = []
     protected started = false
     protected abortController?: AbortController
+    protected logger: UniversalLogger
+
+    public constructor({logger}: {logger: UniversalLogger}) {
+        this.logger = logger
+    }
 
     public async watch(watch: DockerLogWatchOpts) {
         this.watches.push(watch)
+        this.logger.info('Subscriving new watcher', {watch})
 
         if (!this.started) {
             this.start()
@@ -47,6 +75,7 @@ class DockerLogs {
         }
 
         watch.abortSignal?.addEventListener('abort', () => {
+            this.logger.info('Unsubscriving watcher', {watch})
             this.watches.splice(this.watches.indexOf(watch), 1)
             this.containersState.forEach(containerState => this.handleContainerStateChanges(containerState))
 
@@ -62,11 +91,15 @@ class DockerLogs {
             return
         }
 
+        this.logger.info('Starting the machine')
+
         this.abortController = new AbortController
 
         this.abortController.signal.addEventListener('abort', () => {
+            this.logger.info('Stopping the machine');
             [...this.containersState].forEach(containerState => {
-                containerState.destroyed = true
+                //containerState.destroyed = true
+                containerState.running = false
                 this.handleContainerStateChanges(containerState)
             })
         })
@@ -85,13 +118,16 @@ class DockerLogs {
         const eventDate = new Date;
         const containers = await this.listRunningContainers();
 
+        this.logger.info('Received from docker running containers', {containers})
+
         for (const container of containers) {
             const containerState:ContainerState = {
                 id: container.id,
                 name: container.name,
                 running: true,
-                destroyed: false,
-                runningEventAt: eventDate
+                //destroyed: false,
+                runningEventAt: eventDate,
+                compose: container.compose
             }
 
             this.containersState.push(containerState)
@@ -109,48 +145,63 @@ class DockerLogs {
     }
 
     protected handleEvent(event: DockerEvent) {
+        let newRunningState;
         let containerState = this.containersState.find(cS => cS.id === event.id)
 
+        this.logger.info('Received from docker event', {event})
+
+        switch(event.action) {
+            case 'start':
+                newRunningState = true
+                break;
+            case 'die':
+                newRunningState = false
+                break
+            // case 'destroy':
+            //     containerState.running = false
+            //     containerState.destroyed = true
+            //     break
+            default:
+                // No se
+        }
+
+        if (newRunningState === undefined) {
+            return
+        }
+
         if (!containerState) {
+            if (!newRunningState) {
+                return
+            }
+
             containerState = {
                 id: event.id,
                 name: event.name,
                 running: false,
-                runningEventAt: event.date,
-                destroyed: false
+                compose: event.compose
+                //destroyed: false
             }
 
             this.containersState.push(containerState)
         }
 
-        //console.log('debug', event)
-
-        switch(event.action) {
-            case 'start':
-                containerState.running = true
-                break;
-            case 'die':
-                containerState.running = false
-            case 'destroy':
-                containerState.running = false
-                containerState.destroyed = true
-                break
-            default:
-                // No se
-        }
+        containerState.running = newRunningState
+        containerState.runningEventAt = event.date
 
         this.handleContainerStateChanges(containerState)
     }
 
     protected async handleContainerStateChanges(containerState: ContainerState) {
+        this.logger.info('Handling container state change', {containerState})
         let toWatchStdout = false
         let toWatchStdErr = false
-        let toDestroy = false
+        let toDestroy = true
 
-        if (containerState.destroyed) {
+        /*if (containerState.destroyed) {
             toDestroy = true
         } else if (containerState.running === false) {
-        } else {
+        } else*/ if (containerState.running) {
+            toDestroy = false
             // To do put in containerStateChanges the watchers to improve perfs (reduce dispatch footprint)
             toWatchStdout = this.watches
                 .some(watch => ['both', 'stdout'].includes(watch.stream) && isMatch(containerState.name, watch.namePattern))
@@ -186,6 +237,8 @@ class DockerLogs {
     protected async listenContainer(containerState: ContainerState, stream: 'stdout' | 'stderr') {
         const abortController = new AbortController
 
+        this.logger.info('Start to listen container logs', {containerState, stream})
+
         containerState[stream === 'stdout' ? 'stdoutAbortController' : 'stderrAbortController'] = abortController
 
         let sstream
@@ -202,10 +255,20 @@ class DockerLogs {
 
         } catch (e) {
             if (abortController.signal.aborted) {
+                this.logger.info('Aborting listen of container logs', {containerState, stream})
                 return
             }
 
-            throw e
+            this.logger.warning('Unexpected logs stream error', {containerState, stream})
+
+            containerState[stream === 'stdout' ? 'stdoutAbortController' : 'stderrAbortController']?.abort
+            delete containerState[stream === 'stdout' ? 'stdoutAbortController' : 'stderrAbortController']
+
+            if (containerState.running) {
+                this.listenContainer(containerState, stream)
+            }
+
+            return
         }
 
         let outTmpLogs: any[] = []
@@ -228,32 +291,41 @@ class DockerLogs {
                     }
 
                     outTmpLogs = []
-
                 }
 
                 delete log.potentiallyPartial
 
                 log.container = {
                     name: containerState.name,
-                    id: containerState.id
+                    id: containerState.id,
+                    ...containerState.compose && {compose: containerState.compose}
                 }
                 log.stream = stream
+
+                containerState[stream === 'stdout' ? 'lastStdoutLog' : 'lastStderrLog'] = log.date
 
                 this.dispatchLog(log)
             })
         })
 
-
-        sstream.once('end', () => {
-
-            containerState.runningEventAt = new Date
+        sstream.once('close', () => {
+            this.logger.info('Stream of listen container logs closed', {containerState, stream})
+            const lastLog = containerState[stream === 'stdout' ? 'lastStdoutLog' : 'lastStderrLog']
+            containerState.runningEventAt = lastLog ? new Date(lastLog.getTime() + 1) : new Date
             abortController.abort()
             delete containerState[stream === 'stdout' ? 'stdoutAbortController' : 'stderrAbortController']
-            this.handleContainerStateChanges(containerState)
+
+            setTimeout(() => {
+                if (containerState.running && !containerState[stream === 'stdout' ? 'stdoutAbortController' : 'stderrAbortController']) {
+                    this.logger.warning('Unexpected log stream closed', {containerState, stream})
+                    this.listenContainer(containerState, stream)
+                }
+            }, 200)
         })
     }
 
     protected dispatchLog(log: DockerLog) {
+        this.logger.debug('dispatching log', {log})
         this.watches.forEach(watch => {
             if (watch.stream !== 'both' && watch.stream !== log.stream) {
                 return
@@ -323,51 +395,67 @@ class DockerLogs {
         return dockerContainers.map(c => ({
             name: c.Names[0].substring(1),
             id: c.Id,
+            ...c.Labels['com.docker.compose.project']
+                && {
+                    compose: {
+                        project: c.Labels['com.docker.compose.project'],
+                        service: c.Labels['com.docker.compose.service']
+                    }
+                },
             status: c.State
         }))
     }
 
     protected async listenToContainersEvents(cb: (event: DockerEvent) => void) {
+        const abortSignal = this.abortController?.signal
         const stream = await this.dockerode.getEvents({
             filters: {
                 type: ['container']
             },
-            abortSignal: this.abortController?.signal
+            abortSignal: abortSignal
         })
 
-        stream.once('end', () => {
-            throw new Error('Unexpected')
+        stream.once('close', () => {
+            if (!abortSignal?.aborted) {
+                this.logger.warning('Unexpected closed stream for events')
+                this.listenToContainersEvents(cb)
+            } else {
+                this.logger.info('Closed stream for events')
+            }
         })
 
         stream.on('data', (data) => {
             const dEvent = JSON.parse(data.toString())
+
             cb({
                 name: dEvent.Actor.Attributes.name,
                 id: dEvent.id,
                 action: dEvent.Action,
-                date: new Date(dEvent.timeNano / 1000 / 1000)
+                date: new Date(dEvent.timeNano / 1000 / 1000),
+                ...dEvent.Actor.Attributes['com.docker.compose.project']
+                    && {
+                        compose: {
+                            project: dEvent.Actor.Attributes['com.docker.compose.project'],
+                            service: dEvent.Actor.Attributes['com.docker.compose.service']
+                        }
+                    }
             })
         })
     }
 
 }
 
-interface DockerEvent {
-    name: string
-    id: string
-    action: string
-    date: Date
-}
-
 const abortController = new AbortController;
 
-(new DockerLogs).watch({
+const dockerLogs = new DockerLogs({logger: createLogger({
+    handlers: []
+})})
+
+dockerLogs.watch({
     namePattern: '*',
-    stream: 'stderr',
+    stream: 'both',
     onLog(log) {
-        console.log(log)
+        console.log(log.date, '-', log.container.name, '-', log.message)
     },
     abortSignal: abortController.signal
 })
-
-setTimeout(() => abortController.abort(), 10000)
