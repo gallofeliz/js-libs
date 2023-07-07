@@ -2,8 +2,8 @@
 
 Follow docker logs :)
 
-- [x] Follow on name pattern
-- [ ] Use events instead of periodic listContainers(), and for thems, don't use since arg.
+- [x] Follow on name pattern, stdout/stdin/both
+- [x] Realtime
 - [ ] Handle streams disconnections (incl Docker stop etc)
 
 ## How to use

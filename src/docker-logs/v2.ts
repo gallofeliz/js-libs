@@ -50,6 +50,8 @@ interface DockerEvent {
     }
 }
 
+
+
 const trippleNull = Buffer.alloc(3) // like me ahahah
 
 export class DockerLogs {
@@ -59,6 +61,8 @@ export class DockerLogs {
     protected started = false
     protected abortController?: AbortController
     protected logger: UniversalLogger
+    protected containersListDone = false
+    protected tmpEvents: any = []
 
     public constructor({logger}: {logger: UniversalLogger}) {
         this.logger = logger
@@ -104,14 +108,11 @@ export class DockerLogs {
             })
         })
 
-        let containersListDone = false
-        let tmpEvents: any = []
-
         await this.listenToContainersEvents(event => {
-            if (containersListDone) {
+            if (this.containersListDone) {
                 this.handleEvent(event)
             } else {
-                tmpEvents.push(event)
+                this.tmpEvents.push(event)
             }
         })
 
@@ -135,13 +136,13 @@ export class DockerLogs {
             this.handleContainerStateChanges(containerState)
         }
 
-        containersListDone = true
+        this.containersListDone = true
 
-        for (const event of tmpEvents) {
+        for (const event of this.tmpEvents) {
             this.handleEvent(event)
         }
 
-        tmpEvents = []
+        this.tmpEvents = []
     }
 
     protected handleEvent(event: DockerEvent) {
@@ -219,13 +220,17 @@ export class DockerLogs {
         }
 
         if (!toWatchStdout && containerState.stdoutAbortController) {
-            containerState.stdoutAbortController.abort()
-            delete containerState.stdoutAbortController
+            setTimeout(() => {
+                containerState.stdoutAbortController?.abort()
+                delete containerState.stdoutAbortController
+            }, 25)
         }
 
         if (!toWatchStdErr && containerState.stderrAbortController) {
-            containerState.stderrAbortController.abort()
-            delete containerState.stderrAbortController
+            setTimeout(() => {
+                containerState.stderrAbortController?.abort()
+                delete containerState.stderrAbortController
+            }, 25)
         }
 
         if (toDestroy) {
@@ -431,7 +436,7 @@ export class DockerLogs {
                 name: dEvent.Actor.Attributes.name,
                 id: dEvent.id,
                 action: dEvent.Action,
-                date: new Date(dEvent.timeNano / 1000 / 1000),
+                date: new Date(dEvent.timeNano / 1000 / 1000 - 10),
                 ...dEvent.Actor.Attributes['com.docker.compose.project']
                     && {
                         compose: {
@@ -448,7 +453,7 @@ export class DockerLogs {
 const abortController = new AbortController;
 
 const dockerLogs = new DockerLogs({logger: createLogger({
-    handlers: []
+    //handlers: []
 })})
 
 dockerLogs.watch({
@@ -459,3 +464,6 @@ dockerLogs.watch({
     },
     abortSignal: abortController.signal
 })
+
+// Alternative : https://github.com/mcollina/docker-loghose/tree/master
+// Global alternative : https://github.com/gliderlabs/logspout

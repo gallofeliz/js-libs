@@ -1,9 +1,10 @@
 import { UniversalLogger, createLogger } from '@gallofeliz/logger'
 import Dockerode from 'dockerode'
 
-interface Container {
+interface ContainerRunInfo {
     name: string
     id: string
+    runningUpdateAt: Date
     running: boolean
     compose?: {
         project: string
@@ -11,21 +12,14 @@ interface Container {
     }
 }
 
-type ContainerInfos = {
-    container: Container
-    hasBeenRunningHere: boolean
-    stateAt: Date
-}
-
 interface Watcher {
-    cb: (containerRunningState: Container) => void
-    abortSignal: AbortSignal,
-    ignoreNonRunningAtBeginning?: boolean
+    cb: (containerRunningState: ContainerRunInfo) => void
+    abortSignal: AbortSignal
 }
 
-export class DockerContainersWatcher {
+export class DockerContainersRunStateWatcher {
     protected dockerode = new Dockerode
-    protected containersInfos: ContainerInfos[] = []
+    protected containers: ContainerRunInfo[] = []
     protected abortController?: AbortController
     protected logger: UniversalLogger
     protected watchers: Watcher[] = []
@@ -49,8 +43,8 @@ export class DockerContainersWatcher {
             }
         })
 
-        this.containersInfos.forEach(containerInfos => {
-            watcher.cb(containerInfos.container)
+        this.containers.forEach(container => {
+            watcher.cb(container)
         })
     }
 
@@ -64,17 +58,14 @@ export class DockerContainersWatcher {
         delete this.abortController
     }
 
-    protected dispatchChange(containerInfos: ContainerInfos) {
+    protected dispatchChange(container: ContainerRunInfo) {
         this.watchers.forEach(watcher => {
-            this.dispatchChangeForWatcher(containerInfos, watcher)
+            this.dispatchChangeForWatcher(container, watcher)
         })
     }
 
-    protected dispatchChangeForWatcher(containerInfos: ContainerInfos, watcher: Watcher) {
-        if (!containerInfos.hasBeenRunningHere && watcher.ignoreNonRunningAtBeginning) {
-            return
-        }
-        watcher.cb(containerInfos.container)
+    protected dispatchChangeForWatcher(container: ContainerRunInfo, watcher: Watcher) {
+        watcher.cb(container)
     }
 
     protected async start() {
@@ -121,7 +112,9 @@ export class DockerContainersWatcher {
                 return
             }
 
-            const container: Container = {
+            const eventDate = new Date(dEvent.timeNano / 1000 / 1000)
+
+            const container: ContainerRunInfo = {
                 name: dEvent.Actor.Attributes.name,
                 id: dEvent.id,
                 ...dEvent.Actor.Attributes['com.docker.compose.project']
@@ -131,13 +124,11 @@ export class DockerContainersWatcher {
                             service: dEvent.Actor.Attributes['com.docker.compose.service']
                         }
                     },
-                running: dEvent.Action === 'start'
-
+                running: dEvent.Action === 'start',
+                runningUpdateAt: eventDate
             }
 
-            const ci = this.containersInfos.find(ci => ci.container.id === container.id)
-
-            const eventDate = new Date(dEvent.timeNano / 1000 / 1000 - 10)
+            const ci = this.containers.find(ci => ci.id === container.id)
 
             if (!ci) {
 
@@ -145,29 +136,18 @@ export class DockerContainersWatcher {
                     return
                 }
 
-                const newCi: ContainerInfos = {
-                    hasBeenRunningHere: container.running,
-                    stateAt: eventDate,
-                    container
-                }
-
-                this.containersInfos.push(newCi)
-                this.dispatchChange(newCi)
+                this.containers.push(container)
+                this.dispatchChange(container)
                 return
             }
 
-            ci.stateAt = eventDate
-
-            if (ci.container.running !== container.running) {
-                ci.container.running = container.running
-                if (container.running) {
-                    ci.hasBeenRunningHere = true
-                }
+            if (ci.running !== container.running) {
+                ci.running = container.running
                 this.dispatchChange(ci)
             }
 
             if (dEvent.Action === 'destroy') {
-                this.containersInfos.splice(this.containersInfos.indexOf(ci), 1)
+                this.containers.splice(this.containers.indexOf(ci), 1)
             }
         })
     }
@@ -191,7 +171,7 @@ export class DockerContainersWatcher {
             return
         }
 
-        const containers = dockerContainers.map(c => ({
+        const containers: ContainerRunInfo[] = dockerContainers.map(c => ({
             name: c.Names[0].substring(1),
             id: c.Id,
             ...c.Labels['com.docker.compose.project']
@@ -201,19 +181,20 @@ export class DockerContainersWatcher {
                         service: c.Labels['com.docker.compose.service']
                     }
                 },
-            running: c.State === 'running'
+            running: c.State === 'running',
+            runningUpdateAt: fromScratchDate
         }))
 
         // Removing old containers
-        this.containersInfos = this.containersInfos.filter(containerInfo => {
-            if (containerInfo.stateAt > fromScratchDate) {
+        this.containers = this.containers.filter(containerInfo => {
+            if (containerInfo.runningUpdateAt > fromScratchDate) {
                 return true
             }
-            if (containers.find(c => c.id === containerInfo.container.id)) {
+            if (containers.find(c => c.id === containerInfo.id)) {
                 return true
             }
 
-            containerInfo.container.running = false
+            containerInfo.running = false
 
             this.dispatchChange(containerInfo)
 
@@ -222,29 +203,21 @@ export class DockerContainersWatcher {
 
         // Updating containers
         containers.forEach(container => {
-            const ci = this.containersInfos.find(ci => ci.container.id === container.id)
+            const ci = this.containers.find(ci => ci.id === container.id)
 
             if (!ci) {
-                const newCi = {
-                    hasBeenRunningHere: container.running,
-                    stateAt: fromScratchDate,
-                    container
-                }
-                this.containersInfos.push(newCi)
-                this.dispatchChange(newCi)
+                this.containers.push(container)
+                this.dispatchChange(container)
                 return
             }
 
-            if (ci.stateAt > fromScratchDate) {
+            if (ci.runningUpdateAt > fromScratchDate) {
                 return
             }
 
-            ci.stateAt = fromScratchDate
-            if (ci.container.running !== container.running) {
-                ci.container.running = container.running
-                if (container.running) {
-                    ci.hasBeenRunningHere = true
-                }
+            ci.runningUpdateAt = fromScratchDate
+            if (ci.running !== container.running) {
+                ci.running = container.running
                 this.dispatchChange(ci)
             }
         })
@@ -252,16 +225,15 @@ export class DockerContainersWatcher {
     }
 }
 
-const dcw = (new DockerContainersWatcher(createLogger()))
+const dcw = (new DockerContainersRunStateWatcher(createLogger()))
 
 const abort = new AbortController
 
 ;dcw.watch({
     cb: c => {
-        console.log('coucou', c)
+        console.log(c)
     },
     abortSignal: abort.signal,
-    ignoreNonRunningAtBeginning: true
 })
 
-setTimeout(() => abort.abort(), 10000)
+setTimeout(() => abort.abort(), 20000)
