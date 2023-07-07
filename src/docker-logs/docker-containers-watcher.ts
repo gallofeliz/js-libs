@@ -11,19 +11,47 @@ interface Container {
     }
 }
 
-type ContainersInfos = {
+type ContainerInfos = {
     container: Container
+    hasBeenRunningHere: boolean
     stateAt: Date
-}[]
+}
+
+interface Watcher {
+    cb: (containerRunningState: Container) => void
+    abortSignal: AbortSignal,
+    ignoreNonRunningAtBeginning?: boolean
+}
 
 export class DockerContainersWatcher {
     protected dockerode = new Dockerode
-    protected containersInfos: ContainersInfos = []
+    protected containersInfos: ContainerInfos[] = []
     protected abortController?: AbortController
     protected logger: UniversalLogger
+    protected watchers: Watcher[] = []
 
     public constructor(logger: UniversalLogger) {
         this.logger = logger
+    }
+
+    public watch(watcher: Watcher) {
+        if (watcher.abortSignal.aborted) {
+            return
+        }
+
+        this.start()
+        this.watchers.push(watcher)
+
+        watcher.abortSignal.addEventListener('abort', () => {
+            this.watchers.splice(this.watchers.indexOf(watcher), 1)
+            if (this.watchers.length === 0) {
+                this.stop()
+            }
+        })
+
+        this.containersInfos.forEach(containerInfos => {
+            watcher.cb(containerInfos.container)
+        })
     }
 
     protected restart() {
@@ -36,11 +64,20 @@ export class DockerContainersWatcher {
         delete this.abortController
     }
 
-    protected dispatchChange(container: Container) {
-        console.log(container)
+    protected dispatchChange(containerInfos: ContainerInfos) {
+        this.watchers.forEach(watcher => {
+            this.dispatchChangeForWatcher(containerInfos, watcher)
+        })
     }
 
-    public async start() {
+    protected dispatchChangeForWatcher(containerInfos: ContainerInfos, watcher: Watcher) {
+        if (!containerInfos.hasBeenRunningHere && watcher.ignoreNonRunningAtBeginning) {
+            return
+        }
+        watcher.cb(containerInfos.container)
+    }
+
+    protected async start() {
         if (this.abortController) {
             return
         }
@@ -108,11 +145,14 @@ export class DockerContainersWatcher {
                     return
                 }
 
-                this.containersInfos.push({
+                const newCi: ContainerInfos = {
+                    hasBeenRunningHere: container.running,
                     stateAt: eventDate,
                     container
-                })
-                this.dispatchChange(container)
+                }
+
+                this.containersInfos.push(newCi)
+                this.dispatchChange(newCi)
                 return
             }
 
@@ -120,7 +160,14 @@ export class DockerContainersWatcher {
 
             if (ci.container.running !== container.running) {
                 ci.container.running = container.running
-                this.dispatchChange(container)
+                if (container.running) {
+                    ci.hasBeenRunningHere = true
+                }
+                this.dispatchChange(ci)
+            }
+
+            if (dEvent.Action === 'destroy') {
+                this.containersInfos.splice(this.containersInfos.indexOf(ci), 1)
             }
         })
     }
@@ -131,8 +178,6 @@ export class DockerContainersWatcher {
 
         try {
             dockerContainers = await this.dockerode.listContainers({all: true})
-
-            console.log(dockerContainers)
         } catch (e) {
             if (!abortSignal.aborted) {
                 this.logger.warning('Unexpected error on listening containers', {e})
@@ -168,10 +213,9 @@ export class DockerContainersWatcher {
                 return true
             }
 
-            this.dispatchChange({
-                ...containerInfo.container,
-                running: false
-            })
+            containerInfo.container.running = false
+
+            this.dispatchChange(containerInfo)
 
             return false
         })
@@ -181,11 +225,13 @@ export class DockerContainersWatcher {
             const ci = this.containersInfos.find(ci => ci.container.id === container.id)
 
             if (!ci) {
-                this.containersInfos.push({
+                const newCi = {
+                    hasBeenRunningHere: container.running,
                     stateAt: fromScratchDate,
                     container
-                })
-                this.dispatchChange(container)
+                }
+                this.containersInfos.push(newCi)
+                this.dispatchChange(newCi)
                 return
             }
 
@@ -196,12 +242,26 @@ export class DockerContainersWatcher {
             ci.stateAt = fromScratchDate
             if (ci.container.running !== container.running) {
                 ci.container.running = container.running
-                this.dispatchChange(container)
+                if (container.running) {
+                    ci.hasBeenRunningHere = true
+                }
+                this.dispatchChange(ci)
             }
         })
 
     }
 }
 
+const dcw = (new DockerContainersWatcher(createLogger()))
 
-(new DockerContainersWatcher(createLogger())).start()
+const abort = new AbortController
+
+;dcw.watch({
+    cb: c => {
+        console.log('coucou', c)
+    },
+    abortSignal: abort.signal,
+    ignoreNonRunningAtBeginning: true
+})
+
+setTimeout(() => abort.abort(), 10000)
