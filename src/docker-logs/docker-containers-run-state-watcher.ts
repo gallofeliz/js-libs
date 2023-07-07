@@ -1,7 +1,7 @@
-import { UniversalLogger, createLogger } from '@gallofeliz/logger'
+import { UniversalLogger } from '@gallofeliz/logger'
 import Dockerode from 'dockerode'
 
-interface ContainerRunInfo {
+export interface ContainerRunInfo {
     name: string
     id: string
     runningUpdateAt: Date
@@ -143,6 +143,7 @@ export class DockerContainersRunStateWatcher {
 
             if (ci.running !== container.running) {
                 ci.running = container.running
+                ci.runningUpdateAt = container.runningUpdateAt
                 this.dispatchChange(ci)
             }
 
@@ -218,22 +219,10 @@ export class DockerContainersRunStateWatcher {
             ci.runningUpdateAt = fromScratchDate
             if (ci.running !== container.running) {
                 ci.running = container.running
+                ci.runningUpdateAt = container.runningUpdateAt
                 this.dispatchChange(ci)
             }
         })
 
     }
 }
-
-const dcw = (new DockerContainersRunStateWatcher(createLogger()))
-
-const abort = new AbortController
-
-;dcw.watch({
-    cb: c => {
-        console.log(c)
-    },
-    abortSignal: abort.signal,
-})
-
-setTimeout(() => abort.abort(), 20000)

@@ -1,4 +1,4 @@
-import { UniversalLogger, createLogger } from "@gallofeliz/logger";
+import { UniversalLogger } from "@gallofeliz/logger";
 import Dockerode from "dockerode";
 
 export type Stream = 'stdout' | 'stderr'
@@ -32,21 +32,23 @@ export class DockerContainerLogsListener {
         this.cb = cb
     }
 
-    public listen(since: Date, abortSignal: AbortSignal) {
+    public listen(since: Date, abortSignal?: AbortSignal) {
         if (this.abortController) {
             throw new Error('Already listening')
         }
 
-        if (abortSignal.aborted) {
+        if (abortSignal?.aborted) {
             return
         }
 
-        abortSignal.addEventListener('abort', () => {
-            this.abortController?.abort()
-            delete this.abortController
-        })
+        abortSignal?.addEventListener('abort', () => this.stop())
 
         this.connectAndListen(since)
+    }
+
+    public stop() {
+        this.abortController?.abort()
+        delete this.abortController
     }
 
     protected dispatchLog(log: Log) {
@@ -181,21 +183,3 @@ export class DockerContainerLogsListener {
         return logs
     }
 }
-
-
-const dc = new DockerContainerLogsListener({
-    containerId: '62db87ff428742586b516b7c63c20f29c2cdf09e1c7e9164beb24445bf9d0118',
-    stream: 'stdout',
-    logger: createLogger(),
-    cb(log) {
-        console.log(log)
-    }
-})
-
-const abortController = new AbortController
-
-dc.listen(new Date, abortController.signal)
-
-setTimeout(() => {
-    abortController.abort()
-}, 15000)
