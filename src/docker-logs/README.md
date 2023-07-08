@@ -1,24 +1,59 @@
-# Docker logs
+# Docker logs (realtime watcher)
 
-Follow docker logs :)
+Follow docker logs based on criteria :)
 
-- [x] Follow on name pattern, stdout/stdin/both
+- [x] Follow on name pattern (using component matcher), stdout/stdin/both (and why not others criteria like compose project/service, labels etc)
 - [x] Realtime
-- [ ] Handle streams disconnections (incl Docker stop etc)
+- [x] Docker disconnects tolerance
+- [x] Very fast containers (unless others tested components, but this is thanks to a small hack)
+
+## Motivations
+
+The main goal of the tool is to read in realtime the logs of my containers and makes some metrics (errors, operations) and see them in grafana with alerts.
+
+THIS IS NOT a tool to collect logs. I tested some tools like logspout, interesting because it can be used to collect logs AND to consume them, but the projects seems to be not maintened. Using a tool as container to collect logs or configuring the logging driver (thanks to dual-logging, you also can read log with docker daemon) is more appropriated.
 
 ## How to use
 
 ```typescript
-const dockerLogs = new DockerLogs
+import { DockerLogs } from '@gallofeliz/docker-logs'
+import { createLogger } from '@gallofeliz/logger';
+
+const abortController = new AbortController;
+
+const dockerLogs = new DockerLogs({logger: createLogger({handlers: []})})
 
 dockerLogs.watch({
-    namePattern: '*pattern*',
-    abortSignal,
+    namePattern: ['*', '!*special*'],
+    stream: 'both',
     onLog(log) {
-        console.log(`
-            I received a log of ${log.container.id}, the stream is ${log.stream},
-            the date is ${log.date}, the message is ${log.message}
-        `)
-    })
+        const name = log.container.compose
+            ? log.container.compose.project + '/' + log.container.compose.service
+            : log.container.name
+        console.log(log.stream.toUpperCase(), log.date, '-', name, '-', log.message)
+    },
+    abortSignal: abortController.signal
 })
+
+dockerLogs.watch({
+    namePattern: '*special*',
+    stream: 'stderr',
+    onLog(log) {
+        console.log('SPECIAL STDERR', log.date, '-', log.container.name, '-', log.message)
+    },
+    abortSignal: abortController.signal
+})
+
+setTimeout(() => { abortController.abort() }, 30000)
 ```
+
+will produce with my tests (a docker compose with a a micro script that says start, then work then crashes with badadoom to test last log on crash (bug with Docker in some versions)) :
+```
+STDERR 2023-07-07T23:49:05.916Z - docker-logs/test - Error: Badaboom
+STDOUT 2023-07-07T23:49:06.542Z - docker-logs/test - start
+SPECIAL STDERR 2023-07-07T23:49:14.062Z - very-special-container - ERRORRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+STDOUT 2023-07-07T23:49:16.555Z - docker-logs/test - work
+STDERR 2023-07-07T23:49:26.568Z - docker-logs/test - Error: Badaboom
+STDOUT 2023-07-07T23:49:27.331Z - docker-logs/test - start
+```
+

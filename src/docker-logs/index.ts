@@ -1,204 +1,97 @@
-import Dockerode from 'dockerode'
-import { isMatch } from 'matcher'
+import matcher from 'matcher'
+import { UniversalLogger } from '@gallofeliz/logger'
+import { ContainerRunInfo, DockerContainersRunStateWatcher } from './docker-containers-run-state-watcher'
+import { DockerContainerLogsListener, Log, Stream } from './docker-container-logs-listener'
 
-//docker events for containers events + events on logs
-
-export interface DockerLog {
-    stream: 'stdout' | 'stderr'
-    date: Date
-    message: string
-    container: {
-        name: string
-        id: string
+interface ContainerState extends ContainerRunInfo {
+    listeners: {
+        stdout?: DockerContainerLogsListener
+        stderr?: DockerContainerLogsListener
     }
 }
 
 export interface DockerLogWatchOpts {
-    namePattern: string
+    namePattern: string | string[]
+    stream: 'stdout' | 'stderr' | 'both'
     onLog: (log: DockerLog) => void
-    abortSignal?: AbortSignal
+    abortSignal: AbortSignal
 }
 
-const trippleNull = Buffer.alloc(3) // like me ahahah
+export interface DockerLog {
+    stream: 'stdout' | 'stderr'
+    date: string
+    message: string
+    container: {
+        name: string
+        id: string,
+        compose?: {
+            project: string
+            service: string
+        }
+    }
+}
 
 export class DockerLogs {
-    protected dockerode?: Dockerode
-    protected watches: any[] = []
-    protected refreshInterval?: NodeJS.Timer
-    protected containers: Record<string, any> = {}
-    protected lastRefresh = new Date
+    protected containersState: ContainerState[] = []
+    protected watchers: DockerLogWatchOpts[] = []
+    protected started = false
+    protected abortController?: AbortController
+    protected logger: UniversalLogger
+    protected runStateMatcher: DockerContainersRunStateWatcher
 
-    protected getDockerode() {
-        if (!this.dockerode) {
-            this.dockerode = new Dockerode()
-        }
-        return this.dockerode
+    public constructor({logger}: {logger: UniversalLogger}) {
+        this.logger = logger
+        this.runStateMatcher = new DockerContainersRunStateWatcher(logger)
     }
 
-    protected async getContainersList(namePatterns: string[]) {
-        const allContainers = await this.getDockerode().listContainers({
-            filters: {
-                status: ['running']
+    public async watch(watch: DockerLogWatchOpts) {
+        if (watch.abortSignal.aborted) {
+            return
+        }
+
+        this.watchers.push(watch)
+        this.logger.info('Subscriving new watcher', {watch})
+
+        if (!this.started) {
+            this.start()
+        } else {
+            this.computeListeners()
+        }
+
+        watch.abortSignal?.addEventListener('abort', () => {
+            this.logger.info('Unsubscriving watcher', {watch})
+            this.watchers.splice(this.watchers.indexOf(watch), 1)
+            this.computeListeners()
+
+            if (this.watchers.length === 0) {
+                this.stop()
             }
         })
-
-        return allContainers
-            .filter(container => namePatterns.some(namePattern => isMatch(container.Names[0].substring(1), namePattern)))
     }
 
-    protected start() {
-        // We can listen events
-        this.lastRefresh = new Date
-        this.refreshInterval = setInterval(() => this.refresh(), 1000 * 30)
-        this.refresh()
-    }
-
-    protected async refresh() {
-        if (this.watches.length === 0) {
-            clearInterval(this.refreshInterval)
-            this.refreshInterval = undefined
+    protected onContainerLog(log: Log, container: ContainerState, stream: Stream) {
+        const dockerLog: DockerLog = {
+            container,
+            stream,
+            date: log.date,
+            message: log.message
         }
 
-        const dockerContainers = this.watches.length === 0
-            ? []
-            : await this.getContainersList(this.watches.map(w => w.namePattern))
+        this.dispatchLog(dockerLog)
+    }
 
-        Object.keys(this.containers).filter(containerId => {
-            if (dockerContainers.some(c => c.Id === containerId)) {
+    protected isMatch(container: {name: string}, watch: DockerLogWatchOpts) {
+        return matcher(container.name, watch.namePattern).length === 1
+    }
+
+    protected dispatchLog(log: DockerLog) {
+        this.logger.debug('dispatching log', {log})
+        this.watchers.forEach(watch => {
+            if (watch.stream !== 'both' && watch.stream !== log.stream) {
                 return
             }
 
-            this.containers[containerId].abortController.abort()
-            delete this.containers[containerId]
-        })
-
-        dockerContainers.forEach(async container => {
-            if (this.containers[container.Id] && !this.containers[container.Id].streamEndAt) {
-                return
-            }
-
-            const abortController = new AbortController
-            const streamEndAt = this.containers[container.Id]?.streamEndAt
-
-            this.containers[container.Id] = {
-                name: container.Names[0].substring(1),
-                abortController
-            }
-
-            this.watchContainer(
-                container.Id,
-                this.containers[container.Id].name,
-                abortController.signal,
-                streamEndAt || this.lastRefresh
-            )
-        })
-
-        this.lastRefresh = new Date
-    }
-
-    protected async watchContainer(id: string, name: string, abortSignal: AbortSignal, since: Date) {
-        const outStream = await this.getDockerode().getContainer(id).logs({
-            timestamps: true,
-            stderr: false,
-            stdout: true,
-            since: since.getTime() / 1000,
-            abortSignal: abortSignal,
-            follow: true
-        })
-
-        const errStream = await this.getDockerode().getContainer(id).logs({
-            timestamps: true,
-            stderr: true,
-            stdout: false,
-            since: since.getTime() / 1000,
-            abortSignal: abortSignal,
-            follow: true
-        })
-
-        let outTmpLogs: any[] = []
-        let errTmpLogs: any[] = []
-
-        outStream.on('data', data => {
-            const logs = this.parseLogsData(data)
-
-            logs.forEach(log => {
-
-                if (log.potentiallyPartial) {
-                    outTmpLogs.push(log)
-                    return
-                } else if (outTmpLogs.length > 0) {
-
-                    outTmpLogs.push(log)
-
-                    log = {
-                        date: outTmpLogs[0].date,
-                        message: outTmpLogs.reduce((merged, log) => merged + log.message, '')
-                    }
-
-                    outTmpLogs = []
-
-                }
-
-                delete log.potentiallyPartial
-
-                log.container = {
-                    name,
-                    id
-                }
-                log.stream = 'stdout'
-
-                this.dispatchLog(log)
-            })
-        })
-
-        errStream.on('data', data => {
-            const logs = this.parseLogsData(data)
-
-            logs.forEach(log => {
-
-                if (log.potentiallyPartial) {
-                    errTmpLogs.push(log)
-                    return
-                } else if (errTmpLogs.length > 0) {
-
-                    errTmpLogs.push(log)
-
-                    log = {
-                        date: errTmpLogs[0].date,
-                        message: errTmpLogs.reduce((merged, log) => merged + log.message, '')
-                    }
-
-                    errTmpLogs = []
-
-                }
-
-                delete log.potentiallyPartial
-
-                log.container = {
-                    name,
-                    id
-                }
-                log.stream = 'stderr'
-
-                this.dispatchLog(log)
-            })
-        })
-
-        outStream.on('end', () => {
-
-            this.containers[id].abortController.abort()
-            this.containers[id].streamEndAt = new Date;
-
-        })
-
-
-        // clean events on stream end ?
-        // todo : reconnect if stream close and no abort
-    }
-
-    protected dispatchLog(log: any) {
-        this.watches.forEach(watch => {
-            if (!isMatch(log.container.name, watch.namePattern)) {
+            if (!this.isMatch(log.container, watch)) {
                 return
             }
 
@@ -206,73 +99,115 @@ export class DockerLogs {
         })
     }
 
-    protected parseLogsData(rawLogs: Buffer): any[] {
+    protected computeListeners() {
 
-        if (!rawLogs.subarray(1, 4).equals(trippleNull)) {
-            const [t, ...v] = rawLogs.toString().trimEnd().split(' ')
+        this.containersState.forEach(containerState => {
 
-            const message = v.join(' ')
+            let toWatchStdout = false
+            let toWatchStdErr = false
 
-            return [{
-                date: new Date(t),
-                message,
-                potentiallyPartial: message.length === 16384
-            }]
+            if (containerState.running) {
+                toWatchStdout = this.watchers
+                    .some(watch => ['both', 'stdout'].includes(watch.stream) && this.isMatch(containerState, watch))
 
-        }
-
-        if (rawLogs.length === 0) {
-            return []
-        }
-
-        let logs = []
-        let i = 0
-
-        while(true) {
-            const stream = rawLogs[i] === 1 ? 'stdout' : 'stderr'
-            i++
-            i = i + 3 // unused
-            const size = rawLogs.readInt32BE(i)
-
-            i = i + 4
-
-            const msgWithTimestamp = rawLogs.subarray(i, i + size).toString().trimEnd()
-            const [t, ...v] = msgWithTimestamp.split(' ')
-
-            logs.push({
-                date: new Date(t),
-                stream,
-                message:v.join(' '),
-                potentiallyPartial: size === 16415
-            })
-            i = i + size
-
-            if (i >= rawLogs.length) {
-                break;
+                toWatchStdErr = this.watchers
+                    .some(watch => ['both', 'stderr'].includes(watch.stream) && this.isMatch(containerState, watch))
             }
 
-        }
+            if (toWatchStdout && !containerState.listeners.stdout) {
+                containerState.listeners.stdout = new DockerContainerLogsListener({
+                    logger: this.logger,
+                    containerId: containerState.id,
+                    stream: 'stdout',
+                    cb: (log) => this.onContainerLog(log, containerState, 'stdout')
+                })
+                containerState.listeners.stdout.listen(new Date(containerState.runningUpdateAt.getTime() - 10))
+            }
 
-        return logs
-    }
+            if (toWatchStdErr && !containerState.listeners.stderr) {
+                containerState.listeners.stderr = new DockerContainerLogsListener({
+                    logger: this.logger,
+                    containerId: containerState.id,
+                    stream: 'stderr',
+                    cb: (log) => this.onContainerLog(log, containerState, 'stderr')
+                })
+                containerState.listeners.stderr.listen(new Date(containerState.runningUpdateAt.getTime() - 10))
+            }
 
-    public async watch({namePattern, onLog, abortSignal}: DockerLogWatchOpts) {
-        const watch = {
-            namePattern,
-            onLog
-        }
+            if (!toWatchStdout && containerState.listeners.stdout) {
+                const listener = containerState.listeners.stdout!
+                delete containerState.listeners.stdout
 
-        this.watches.push(watch)
+                setTimeout(() => {
+                    listener.stop()
+                }, 25)
+            }
 
-        if (!this.refreshInterval) {
-            this.start()
-        }/* else {
-            this.refresh()
-        }*/
+            if (!toWatchStdErr && containerState.listeners.stderr) {
+                const listener = containerState.listeners.stderr!
+                delete containerState.listeners.stderr
 
-        abortSignal?.addEventListener('abort', () => {
-            this.watches.splice(this.watches.indexOf(watch), 1)
-            //this.refresh()
+                setTimeout(() => {
+                    listener.stop()
+                }, 25)
+            }
+
         })
+
+        this.containersState = this.containersState.filter(cs => cs.running)
     }
+
+    protected onContainerRunChange(containerRunInfo: ContainerRunInfo) {
+        let containerState = this.containersState.find(cs => cs.id === containerRunInfo.id)
+
+        if (!containerState) {
+            if (!containerRunInfo.running) {
+                return
+            }
+            this.containersState.push({
+                ...containerRunInfo,
+                listeners: {}
+            })
+        } else {
+            containerState.running = containerRunInfo.running
+            containerState.runningUpdateAt = containerRunInfo.runningUpdateAt
+        }
+
+        this.computeListeners()
+    }
+
+    protected stop() {
+        this.abortController?.abort()
+    }
+
+    protected async start() {
+
+        if (this.started) {
+            return
+        }
+
+        this.started = true
+
+        this.logger.info('Starting the machine')
+
+        this.abortController = new AbortController
+
+        this.runStateMatcher.watch({
+            abortSignal: this.abortController.signal,
+            cb: (containerRunningState) => this.onContainerRunChange(containerRunningState)
+        })
+
+        this.abortController.signal.addEventListener('abort', () => {
+            this.logger.info('Stopping the machine');
+            [...this.containersState].forEach(containerState => {
+                //containerState.destroyed = true
+                containerState.running = false
+                this.computeListeners()
+            })
+            this.started = false
+        })
+
+    }
+
+
 }

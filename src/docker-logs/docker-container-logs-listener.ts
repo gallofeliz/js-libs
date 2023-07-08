@@ -11,7 +11,7 @@ export interface Opts {
 }
 
 export interface Log {
-    date: Date
+    date: string
     message: string
 }
 
@@ -167,7 +167,7 @@ export class DockerContainerLogsListener {
             const [t, ...v] = msgWithTimestamp.split(' ')
 
             logs.push({
-                date: new Date(t),
+                date: t,
                 stream,
                 message:v.join(' '),
                 potentiallyPartial: size === 16415
