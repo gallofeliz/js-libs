@@ -83,7 +83,7 @@ export class DockerContainerLogsListener {
             this.logger.warning('Unexpected logs stream error', {e})
 
             this.abortController.abort()
-            this.connectAndListen(new Date(lastLogAt.getTime() + 1))
+            this.connectAndListen(new Date(new Date(lastLogAt).getTime() + 1))
 
             return
         }
@@ -127,7 +127,7 @@ export class DockerContainerLogsListener {
                 }
 
                 this.abortController!.abort()
-                this.connectAndListen(new Date(lastLogAt.getTime() + 1))
+                this.connectAndListen(new Date(new Date(lastLogAt).getTime() + 1))
 
             }, 200)
         })
@@ -141,7 +141,7 @@ export class DockerContainerLogsListener {
             const message = v.join(' ')
 
             return [{
-                date: new Date(t),
+                date: t,
                 message,
                 potentiallyPartial: message.length === 16384
             }]
