@@ -23,11 +23,13 @@ THIS IS NOT a tool to collect logs. I tested some tools like logspout, interesti
 
 ```typescript
 import { DockerLogs } from '@gallofeliz/docker-logs'
-import { createLogger } from '@gallofeliz/logger';
+import { createLogger } from '@gallofeliz/logger'
 
-const abortController = new AbortController;
+const abortController = new AbortController
 
-const dockerLogs = new DockerLogs({logger: createLogger({handlers: []})})
+const dockerLogs = new DockerLogs({
+    logger: createLogger({handlers: []})
+})
 
 dockerLogs.watch({
     namePattern: ['*', '!*special*'],

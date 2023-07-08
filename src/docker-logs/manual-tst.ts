@@ -30,7 +30,12 @@ dockerLogs.watch({
     namePattern: ['*'],
     stream: 'both',
     onLog(log) {
-        const superName = (log.container.name + ' '.repeat(30)).substring(0, 30)
+
+        const name = log.container.compose
+            ? log.container.compose.project + '/' + log.container.compose.service
+            : log.container.name
+
+        const superName = (name + ' '.repeat(30)).substring(0, 30)
 
         if (!colors[log.container.name]) {
             colors[log.container.name] = chalk.rgb(rdClr(), rdClr(), rdClr())
