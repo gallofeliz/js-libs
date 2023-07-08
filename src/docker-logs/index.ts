@@ -24,6 +24,10 @@ export interface DockerLog {
     container: {
         name: string
         id: string,
+        image: {
+            name: string
+            tag: string
+        },
         compose?: {
             project: string
             service: string
@@ -71,7 +75,12 @@ export class DockerLogs {
 
     protected onContainerLog(log: Log, container: ContainerState, stream: Stream) {
         const dockerLog: DockerLog = {
-            container,
+            container: {
+                name: container.name,
+                id: container.id,
+                image: container.image,
+                compose: container.compose
+            },
             stream,
             date: log.date,
             message: log.message
@@ -86,6 +95,7 @@ export class DockerLogs {
 
     protected dispatchLog(log: DockerLog) {
         this.logger.debug('dispatching log', {log})
+
         this.watchers.forEach(watch => {
             if (watch.stream !== 'both' && watch.stream !== log.stream) {
                 return

@@ -11,6 +11,7 @@ Follow docker logs based on criteria :)
 - [ ] Unordered logs in some cases (very fast loggin in stdout and stderr). Example : docker run node:16-alpine sh -c 'echo OK; echo ERROR >&2; exit 1' will show in random order the messages, also in the console. Adding -t option resolves, but impact the container. Probably no fix, even with attach api.
 - [ ] Using run -t outputs only in stdout. The order is respected. Note that in the console also it is to STDOUT. Probably no fix.
 - [ ] Change inside code Date to Docker dates to improve the precision and avoid strange some codes
+- [ ] Multiline support
 
 ## Motivations
 

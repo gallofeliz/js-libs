@@ -4,6 +4,10 @@ import Dockerode from 'dockerode'
 export interface ContainerRunInfo {
     name: string
     id: string
+    image: {
+        name: string
+        tag: string
+    }
     runningUpdateAt: Date
     running: boolean
     compose?: {
@@ -117,6 +121,10 @@ export class DockerContainersRunStateWatcher {
             const container: ContainerRunInfo = {
                 name: dEvent.Actor.Attributes.name,
                 id: dEvent.id,
+                image: {
+                    name: dEvent.Actor.Attributes.image.split(':')[0],
+                    tag: dEvent.Actor.Attributes.image.split(':').slice(1).join(':')
+                },
                 ...dEvent.Actor.Attributes['com.docker.compose.project']
                     && {
                         compose: {
@@ -175,6 +183,10 @@ export class DockerContainersRunStateWatcher {
         const containers: ContainerRunInfo[] = dockerContainers.map(c => ({
             name: c.Names[0].substring(1),
             id: c.Id,
+            image: {
+                name: c.Image.split(':')[0],
+                tag: c.Image.split(':').slice(1).join(':')
+            },
             ...c.Labels['com.docker.compose.project']
                 && {
                     compose: {
