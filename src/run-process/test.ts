@@ -15,6 +15,39 @@ describe('Run Process', () => {
         }), 'hello')
     })
 
+    it('Strict mode default', async () => {
+        try {
+            await runProcess({
+                logger,
+                command: 'cat abcd; true'
+            })
+            fail('Unexpected success')
+        } catch (e) {
+            strictEqual((e as Error).message, 'Process error : cat: abcd: No such file or directory')
+        }
+    })
+
+    it('Strict mode default (bash)', async () => {
+        try {
+            await runProcess({
+                logger,
+                shell: 'bash',
+                command: 'cat abcd | wc'
+            })
+            fail('Unexpected success')
+        } catch (e) {
+            strictEqual((e as Error).message, 'Process error : cat: abcd: No such file or directory')
+        }
+    })
+
+    it('Strict mode off', async () => {
+        await runProcess({
+            logger,
+            strictShell: false,
+            command: 'cat abcd; true'
+        })
+    })
+
     it('Call command with Array args', async () => {
         strictEqual(await runProcess({
             logger,
@@ -127,8 +160,8 @@ describe('Run Process', () => {
             })
             fail('Unexpected success')
         } catch (e) {
+            assert.strictEqual(e, abortController.signal.reason)
             assert.strictEqual((e as Error).name, 'AbortError')
-            assert.strictEqual((e as any).code, 'ABORT_ERR')
         }
     })
 

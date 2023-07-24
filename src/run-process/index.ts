@@ -12,6 +12,9 @@ export interface ProcessConfig {
     logger: UniversalLogger
     command: string | string[]
     shell?: string | string[]
+    strictShell?: boolean
+    //shellRcProfile?: boolean
+    //autoshell
     outputStream?: NodeJS.WritableStream
     outputType?: 'text' | 'multilineText' | 'json' | 'multilineJson'
     outputTransformation?: string
@@ -23,6 +26,9 @@ export interface ProcessConfig {
     inputType?: 'raw' | 'json'
     retries?: number
     resultSchema?: SchemaObject
+    uid?: number
+    gid?: number
+
 }
 
 export async function runProcess<Result extends any>({abortSignal, ...config}: ProcessConfig & { abortSignal?: AbortSignal }): Promise<Result> {
@@ -88,11 +94,26 @@ export class Process<Result extends any> extends EventEmitter {
             )
             // In the this case, we can use 'shell' option of spawn
             :  [/*process.env.SHELL || process.env.ComSpec || */'sh', /* process.env.ComSpec && /d /s /c */'-c']
+
+        if (!Array.isArray(this.config.shell)) {
+            if (this.config.strictShell !== false) {
+                shell.push('-e', '-u')
+
+                if (shell[0] === 'bash') {
+                    shell.push('-o', 'pipefail')
+                }
+            }
+            if (/*!this.config.shellRcProfile && */shell[0] === 'bash') {
+                shell.splice(1, 0, '--norc', '--noprofile')
+            }
+            /* if autoShell, use $SHELL env to select shell */
+        }
+
         const cmd = Array.isArray(this.config.command) ? this.config.command : shell.concat(this.config.command)
         spawnCmd = cmd[0]
         spawnArgs = cmd.slice(1)
 
-        const passEnvKeys = ['PATH', 'USER', 'HOME']
+        const passEnvKeys = ['PATH', 'USER', 'HOME', 'SHELL']
         const env = {...pick(processEnv, passEnvKeys), ...this.config.env || {}}
 
         this.logger.info('Starting process', {
@@ -110,7 +131,9 @@ export class Process<Result extends any> extends EventEmitter {
                 env,
                 ...this.config.cwd && { cwd: this.config.cwd },
                 signal: abortSignal,
-                timeout: this.config.timeout
+                timeout: this.config.timeout,
+                uid: this.config.uid,
+                gid: this.config.gid
             }
         )
         this.process = process
