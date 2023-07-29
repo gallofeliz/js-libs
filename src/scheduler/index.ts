@@ -17,7 +17,10 @@ export interface ScheduleFnArg {
 export interface AddScheduleOpts {
     id: any
     fn: (arg: ScheduleFnArg) => void | Promise<void>
-    schedule: string | number // string[] with ! prefix for exclusion ?
+    schedule: string | number | Date[] // string[] with ! prefix for exclusion ?
+    runOnStart?: boolean // Should in previous schedule array ; diferenciate first start than resumes ?
+    roundInterval?: boolean
+    jitter?: number
     startDate?: Date
     endDate?: Date
     limit?: number
@@ -46,23 +49,61 @@ interface ScheduleProvider<T> {
     prev: () => IteratorResult<T, T>
 }
 
+class DatesProvider implements ScheduleProvider<Date> {
+    protected dates: Date[]
+    protected currentI = -1
+    constructor({dates, startDate, endDate}: {dates: Date[], startDate?: Date, endDate?: Date}) {
+        const currentDate = startDate || new Date
+        this.dates = dates.filter(date => date >= currentDate && (!endDate || date <= endDate)).sort()
+    }
+
+    next() {
+        if (this.currentI >= 0 && !this.dates[this.currentI]) {
+            return {done: true, value: null as unknown as Date}
+        }
+        this.currentI++
+
+        if (!this.dates[this.currentI]) {
+            return {done: true, value: null as unknown as Date}
+        }
+
+        return {done: false, value: this.dates[this.currentI]}
+    }
+
+    prev() {
+        if (this.currentI < 0) {
+            return {done: true, value: null as unknown as Date}
+        }
+
+        this.currentI--
+
+        if (!this.dates[this.currentI]) {
+            return {done: true, value: null as unknown as Date}
+        }
+
+        return {done: false, value: this.dates[this.currentI]}
+    }
+}
+
 class IntervalProvider implements ScheduleProvider<Date> {
     protected currentDate: Date
     protected interval: number
     protected endDate?: Date
 
-    constructor({ interval, startDate, endDate }: { interval: number, startDate?: Date, endDate?: Date }) {
+    constructor({ interval, startDate, endDate, roundInterval }: { interval: number, startDate?: Date, endDate?: Date, roundInterval?: boolean }) {
         this.currentDate = startDate || new Date
 
-        const startOf:OpUnitType|undefined = findKey({
-            'day': 1000*60*60*24,
-            'hour': 1000*60*60,
-            'minute': 1000*60,
-            'second': 1000
-        }, (v) => interval >= v) as OpUnitType|undefined
+        if (roundInterval) {
+            const startOf:OpUnitType|undefined = findKey({
+                'day': 1000*60*60*24,
+                'hour': 1000*60*60,
+                'minute': 1000*60,
+                'second': 1000
+            }, (v) => interval >= v) as OpUnitType|undefined
 
-        if (startOf) {
-            this.currentDate = dayjs(this.currentDate).startOf(startOf).toDate()
+            if (startOf) {
+                this.currentDate = dayjs(this.currentDate).startOf(startOf).toDate()
+            }
         }
 
         if (startDate && startDate.getTime() === this.currentDate.getTime()) {
@@ -122,6 +163,13 @@ export class Scheduler {
                 schedule.scheduleObjs = new IntervalProvider({
                     interval: schedule.schedule,
                     startDate: schedule.startDate,
+                    endDate: schedule.endDate,
+                    roundInterval: schedule.roundInterval ?? true
+                })
+            } else if (Array.isArray(schedule.schedule)) {
+                schedule.scheduleObjs = new DatesProvider({
+                    dates: schedule.schedule,
+                    startDate: schedule.startDate,
                     endDate: schedule.endDate
                 })
             } else {
@@ -134,7 +182,7 @@ export class Scheduler {
                 })
             }
 
-            this.scheduleNext(schedule)
+            this.scheduleNext(schedule, true)
         })
     }
 
@@ -197,12 +245,15 @@ export class Scheduler {
         delete this.schedules[id]
     }
 
-    protected scheduleNext(schedule: Schedule) {
+    protected scheduleNext(schedule: Schedule, isStart: boolean = false) {
         if (schedule.nextTimeout || !this.started || !schedule.scheduleObjs) {
             throw new Error('Unexpected')
         }
 
-        let { value: nextDate, done: noMore } = schedule.scheduleObjs.next()
+        let { value: nextDate, done: noMore } =
+            isStart && schedule.runOnStart
+            ? { value: new Date, done: false }
+            : schedule.scheduleObjs.next()
 
         if (schedule.countdown === 0) {
             noMore = true
@@ -218,6 +269,12 @@ export class Scheduler {
         }
 
         schedule.nextTriggerDate = nextDate instanceof Date ? nextDate : nextDate.toDate()
+
+        const timeoutMs = Math.max(
+            (schedule.jitter ? Math.round(Math.random() * schedule.jitter * 2 - schedule.jitter) : 0)
+            + nextDate.getTime() - (new Date).getTime(),
+            0
+        )
 
         this.logger.info('Schedule computed scheduled run', { scheduleId: schedule.id, scheduledDate: schedule.nextTriggerDate })
 
@@ -256,14 +313,15 @@ export class Scheduler {
                             this.logger.error('onError callback emitted error', {error})
                         }
                     } else {
-                        runLogger.error('Schedule run failed', { scheduleRunStatus: 'failed' })
+                        runLogger.error('Schedule run failed', { scheduleRunStatus: 'failed', error: e })
+                        // TODO throw error to avoid false working code
                     }
                 }
                 if (!schedule.allowMultipleRuns) {
                     this.scheduleNext(schedule)
                 }
             },
-            nextDate.getTime() - (new Date).getTime()
+            timeoutMs
         )
     }
 }

@@ -1,20 +1,22 @@
 # Scheduler
 
 Simple scheduling:
-- [X] Schedule cron and intervals
+- [X] Schedule cron, intervals and dates
 - [X] Get next scheduled date
 - [X] Start/Stoppable
 - [X] Inject exact Date to fn() and others properties (previous, etc)
 - [X] Logs
 - [ ] Array schedule ?
-- [ ] Schedule cron + dates + others formats
+- [ ] Schedule others formats for intervals ?
 - [ ] Excludes ?
-- [ ] Jitter (like https://github.com/influxdata/telegraf/blob/master/docs/CONFIGURATION.md)
-- [ ] Run on startup (once ? Each time ?)
-- [ ] Events
+- [ ] Recover stops (for example with stored state, each midnight, will run at start only if previous has been run > 24h)
+- [X] Jitter (like https://github.com/influxdata/telegraf/blob/master/docs/CONFIGURATION.md)
+- [X] Run on startup (once ? Each time ?)
 - [ ] Timezone ?
 - [ ] Shared state ?
 - [ ] Ability to precise logger in addSchedule with a merge metadata to use it with schedulerMetadata?
+- [ ] Separate Schedule and Scheduler (one/multi)
+- [ ] Add Events (including on error), remove logs or in debug and optional
 
 ```typescript
 import { Scheduler } from '@gallofeliz/scheduler'
