@@ -3,6 +3,7 @@
 Simple scheduling:
 - [X] Schedule cron, intervals and dates
 - [X] Get next scheduled date
+- [X] Allow or not running parallel runs
 - [X] Start/Stoppable
 - [X] Inject exact Date to fn() and others properties (previous, etc)
 - [X] Logs
@@ -17,6 +18,8 @@ Simple scheduling:
 - [ ] Ability to precise logger in addSchedule with a merge metadata to use it with schedulerMetadata?
 - [ ] Separate Schedule and Scheduler (one/multi)
 - [ ] Add Events (including on error), remove logs or in debug and optional
+
+This is not a tasker. To handle complex job management, see @gallofeliz/tasker
 
 ```typescript
 import { Scheduler } from '@gallofeliz/scheduler'

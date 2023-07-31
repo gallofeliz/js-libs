@@ -11,6 +11,7 @@ export interface ScheduleFnArg {
     callsCount: number
     previousTriggerDate: Date | null
     nextTriggerDate?: Date
+    abortSignal?: AbortSignal
     //logger: UniversalLogger
 }
 
@@ -133,6 +134,7 @@ export class Scheduler {
     protected started = false
     protected onError?: OnError
     protected logger: UniversalLogger
+    protected abortSignal?: AbortSignal
 
     public constructor({onError, logger}: SchedulerOpts) {
         this.onError = onError
@@ -156,6 +158,7 @@ export class Scheduler {
         }
 
         this.started = true
+        this.abortSignal = abortSignal
         this.logger.info('Starting scheduler')
 
         Object.values(this.schedules).forEach(schedule => {
@@ -210,6 +213,7 @@ export class Scheduler {
             delete schedule.scheduleObjs
         })
         this.started = false
+        delete this.abortSignal
     }
 
     public async addSchedule(addSchedule: AddScheduleOpts): Promise<void> {
@@ -288,7 +292,8 @@ export class Scheduler {
                     triggerDate: schedule.nextTriggerDate as Date,
                     countdown: schedule.countdown,
                     callsCount: schedule.callsCount,
-                    previousTriggerDate: schedule.previousTriggerDate
+                    previousTriggerDate: schedule.previousTriggerDate,
+                    abortSignal: this.abortSignal
                     //logger: runLogger
                 }
                 delete schedule.nextTimeout
