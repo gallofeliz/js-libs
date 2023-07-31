@@ -141,13 +141,16 @@ export class NowOnlyIterator implements DatesIterator {
     }
 }
 
-export class AggregateIterator implements DatesIterator {
+export class AggregateIterator implements Iterator<Date> {
     protected iterators: DatesIterator[]
 
     constructor({iterators}: {iterators: DatesIterator[]}) {
         this.iterators = iterators
     }
 
+    /*
+    * Alternative to avoid prev() is to keep vals and call only next() on consumed iterators
+    */
     next() {
         const vals = this.iterators.map(i => i.next())
 
@@ -162,7 +165,7 @@ export class AggregateIterator implements DatesIterator {
         const smallestVal = sortBy(vals.filter(v => !v.done), 'value')[0]
 
         if (!smallestVal) {
-            return {done: true} as DatesIteratorResult
+            return {done: true} as IteratorResult<Date>
         }
 
         vals.forEach((val, index) => {
@@ -172,12 +175,6 @@ export class AggregateIterator implements DatesIterator {
             this.iterators[index].prev()
         })
 
-        return {done: false, value: smallestVal.value} as DatesIteratorResult
-    }
-
-    // @ts-ignore
-    prev() {
-        throw new Error('todo')
+        return {done: false, value: smallestVal.value}
     }
 }
-
