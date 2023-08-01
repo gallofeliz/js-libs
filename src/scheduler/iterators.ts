@@ -43,11 +43,13 @@ export class IntervalDatesIterator implements DatesIterator {
     protected currentDate: Date
     protected interval: ObjInterval
     protected endDate?: Date
+    protected countDown: number
 
     constructor(
-        { interval, startDate, endDate, roundInterval }:
-        { interval: Interval, startDate?: Date, endDate?: Date, roundInterval?: boolean }
+        { interval, startDate, endDate, roundInterval, limit }:
+        { interval: Interval, startDate?: Date, endDate?: Date, roundInterval?: boolean, limit?: number }
     ) {
+        this.countDown = limit || Infinity
         this.currentDate = startDate || new Date
 
         if (typeof interval === 'string') {
@@ -78,35 +80,44 @@ export class IntervalDatesIterator implements DatesIterator {
         this.endDate = endDate
     }
     next() {
+        if (this.countDown === 0) {
+            return {done: true} as IteratorResult<Date>
+        }
+
         const next = apply(this.currentDate.getTime(), this.interval)
         if (this.endDate && next > this.endDate) {
             return {done:true} as IteratorResult<Date>
         }
         this.currentDate = next
+        this.countDown--
         return {done:false, value: next}
     }
 }
 
 export class CronDatesIterator implements DatesIterator {
     protected cron
+    protected countDown: number
 
     constructor(
-        {cron, startDate, endDate}:
-        {cron: string, startDate?: Date, endDate?: Date}
+        {cron, startDate, endDate, limit}:
+        {cron: string, startDate?: Date, endDate?: Date, limit?: number}
     ) {
         this.cron = cronParser.parseExpression(cron, {
             iterator: true,
             currentDate: startDate,
             endDate: endDate
         })
+
+        this.countDown = limit || Infinity
     }
 
     next() {
-        if (!this.cron.hasNext()) {
+        if (this.countDown === 0 || !this.cron.hasNext()) {
             return {done: true} as IteratorResult<Date>
         }
 
         const v = this.cron.next()
+        this.countDown--
         return {done: false, value: v.value.toDate()}
     }
 }
@@ -131,12 +142,17 @@ export class NowOnlyIterator implements DatesIterator {
 export class AggregateIterator implements Iterator<Date> {
     protected iterators: DatesIterator[]
     protected state: IteratorResult<Date>[] = []
+    protected countDown: number
 
-    constructor({iterators}: {iterators: DatesIterator[]}) {
+    constructor({iterators, limit}: {iterators: DatesIterator[], limit?: number}) {
         this.iterators = iterators
+        this.countDown = limit || Infinity
     }
 
     next() {
+        if (this.countDown === 0) {
+            return {done: true} as IteratorResult<Date>
+        }
         if (this.state.length === 0) {
             this.state = this.iterators.map(it => it.next())
         }
@@ -164,6 +180,8 @@ export class AggregateIterator implements Iterator<Date> {
 
             this.state[index] = this.iterators[index].next()
         })
+
+        this.countDown--
 
         return {done: false, value: date}
     }
