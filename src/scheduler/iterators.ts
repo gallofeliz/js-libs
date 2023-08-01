@@ -1,5 +1,6 @@
 import { sortBy, findKey } from 'lodash'
 import dayjs, {OpUnitType} from 'dayjs'
+import { parse, toMilliseconds, apply, negate } from 'duration-fns'
 import cronParser from 'cron-parser'
 
 export type DatesIteratorResult = IteratorResult<Date> //{ done: false, value: Date } | { done: true }
@@ -44,16 +45,37 @@ export class NativeDatesIterator implements DatesIterator {
     }
 }
 
+export interface ObjInterval {
+    years?: number
+    months?: number
+    weeks?: number
+    days?: number
+    hours?: number
+    minutes?: number
+    seconds?: number
+    milliseconds?: number
+}
+
+export type Interval = ObjInterval | string | number
+
 export class IntervalDatesIterator implements DatesIterator {
     protected currentDate: Date
-    protected interval: number
+    protected interval: ObjInterval
     protected endDate?: Date
 
     constructor(
         { interval, startDate, endDate, roundInterval }:
-        { interval: number, startDate?: Date, endDate?: Date, roundInterval?: boolean }
+        { interval: Interval, startDate?: Date, endDate?: Date, roundInterval?: boolean }
     ) {
         this.currentDate = startDate || new Date
+
+        if (typeof interval === 'string') {
+            this.interval = parse(interval)
+        } else if (typeof interval === 'number') {
+            this.interval = { milliseconds: interval }
+        } else {
+            this.interval = interval
+        }
 
         if (roundInterval) {
             const startOf:OpUnitType|undefined = findKey({
@@ -61,7 +83,7 @@ export class IntervalDatesIterator implements DatesIterator {
                 'hour': 1000*60*60,
                 'minute': 1000*60,
                 'second': 1000
-            }, (v) => interval >= v) as OpUnitType|undefined
+            }, (v) => toMilliseconds(this.interval) >= v) as OpUnitType|undefined
 
             if (startOf) {
                 this.currentDate = dayjs(this.currentDate).startOf(startOf).toDate()
@@ -69,14 +91,13 @@ export class IntervalDatesIterator implements DatesIterator {
         }
 
         if (startDate && startDate.getTime() === this.currentDate.getTime()) {
-            this.currentDate = new Date(this.currentDate.getTime() - interval)
+            this.currentDate = apply(this.currentDate.getTime(), negate(this.interval))
         }
 
-        this.interval = interval
         this.endDate = endDate
     }
     next() {
-        const next = new Date(this.currentDate.getTime() + this.interval)
+        const next = apply(this.currentDate.getTime(), this.interval)
         if (this.endDate && next > this.endDate) {
             return {done:true, value: next}
         }
@@ -84,7 +105,7 @@ export class IntervalDatesIterator implements DatesIterator {
         return {done:false, value: next}
     }
     prev() {
-        const prev = new Date(this.currentDate.getTime() - this.interval)
+        const prev = apply(this.currentDate.getTime(), negate(this.interval))
         this.currentDate = prev
         return {done:false, value: prev}
     }
