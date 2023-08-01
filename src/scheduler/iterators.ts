@@ -3,12 +3,7 @@ import dayjs, {OpUnitType} from 'dayjs'
 import { parse, toMilliseconds, apply, negate } from 'duration-fns'
 import cronParser from 'cron-parser'
 
-export type DatesIteratorResult = IteratorResult<Date> //{ done: false, value: Date } | { done: true }
-
-export interface DatesIterator {
-    next: () => DatesIteratorResult
-    prev: () => DatesIteratorResult
-}
+export type DatesIterator = Iterator<Date>
 
 export class NativeDatesIterator implements DatesIterator {
     protected dates: Date[]
@@ -19,26 +14,12 @@ export class NativeDatesIterator implements DatesIterator {
 
     next() {
         if (this.currentI >= 0 && !this.dates[this.currentI]) {
-            return {done: true} as DatesIteratorResult
+            return {done: true} as IteratorResult<Date>
         }
         this.currentI++
 
         if (!this.dates[this.currentI]) {
-            return {done: true} as DatesIteratorResult
-        }
-
-        return {done: false, value: this.dates[this.currentI]}
-    }
-
-    prev() {
-        if (this.currentI < 0) {
-            return {done: true} as DatesIteratorResult
-        }
-
-        this.currentI--
-
-        if (!this.dates[this.currentI]) {
-            return {done: true} as DatesIteratorResult
+            return {done: true} as IteratorResult<Date>
         }
 
         return {done: false, value: this.dates[this.currentI]}
@@ -99,15 +80,10 @@ export class IntervalDatesIterator implements DatesIterator {
     next() {
         const next = apply(this.currentDate.getTime(), this.interval)
         if (this.endDate && next > this.endDate) {
-            return {done:true, value: next}
+            return {done:true} as IteratorResult<Date>
         }
         this.currentDate = next
         return {done:false, value: next}
-    }
-    prev() {
-        const prev = apply(this.currentDate.getTime(), negate(this.interval))
-        this.currentDate = prev
-        return {done:false, value: prev}
     }
 }
 
@@ -127,22 +103,12 @@ export class CronDatesIterator implements DatesIterator {
 
     next() {
         if (!this.cron.hasNext()) {
-            return {done: true}  as DatesIteratorResult
+            return {done: true} as IteratorResult<Date>
         }
 
         const v = this.cron.next()
         return {done: false, value: v.value.toDate()}
     }
-
-    prev() {
-        if (!this.cron.hasPrev) {
-            return {done: true} as DatesIteratorResult
-        }
-
-        const v = this.cron.prev()
-        return {done: false, value: v.value.toDate()}
-    }
-
 }
 
 export class NowOnlyIterator implements DatesIterator {
@@ -154,7 +120,7 @@ export class NowOnlyIterator implements DatesIterator {
             return {done: false, value: new Date}
         }
 
-        return {done: true} as DatesIteratorResult
+        return {done: true} as IteratorResult<Date>
     }
 
     prev() {
@@ -164,18 +130,18 @@ export class NowOnlyIterator implements DatesIterator {
 
 export class AggregateIterator implements Iterator<Date> {
     protected iterators: DatesIterator[]
+    protected state: IteratorResult<Date>[] = []
 
     constructor({iterators}: {iterators: DatesIterator[]}) {
         this.iterators = iterators
     }
 
-    /*
-    * Alternative to avoid prev() is to keep vals and call only next() on consumed iterators
-    */
     next() {
-        const vals = this.iterators.map(i => i.next())
+        if (this.state.length === 0) {
+            this.state = this.iterators.map(it => it.next())
+        }
 
-        vals.forEach((val, index) => {
+        this.state.forEach((val, index) => {
             if (!val.done) {
                 if (!(val.value instanceof Date) || isNaN(val.value.getTime())) {
                     throw new Error('Invalid Date from iterator n°' + index)
@@ -183,19 +149,22 @@ export class AggregateIterator implements Iterator<Date> {
             }
         })
 
-        const smallestVal = sortBy(vals.filter(v => !v.done), 'value')[0]
+        const smallestVal = sortBy(this.state.filter(v => !v.done), 'value')[0]
 
         if (!smallestVal) {
             return {done: true} as IteratorResult<Date>
         }
 
-        vals.forEach((val, index) => {
-            if (val.done || val.value.getTime() === smallestVal.value.getTime()) {
+        const date = smallestVal.value
+
+        this.state.forEach((val, index) => {
+            if (val.done || val.value.getTime() > date.getTime()) {
                 return
             }
-            this.iterators[index].prev()
+
+            this.state[index] = this.iterators[index].next()
         })
 
-        return {done: false, value: smallestVal.value}
+        return {done: false, value: date}
     }
 }
