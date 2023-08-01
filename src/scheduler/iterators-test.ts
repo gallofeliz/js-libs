@@ -1,4 +1,4 @@
-import { AggregateIterator, CronDatesIterator, IntervalDatesIterator, NativeDatesIterator, NowOnlyIterator } from "./iterators";
+import { AggregateIterator, CronDatesIterator, IntervalDatesIterator, NativeDatesIterator } from "./iterators";
 
 function a() {
     const it = new IntervalDatesIterator({
@@ -8,10 +8,11 @@ function a() {
         endDate: new Date('2024-09-30T00:00:00+02:00'),
     })
     let iteration = it.next()
+    let changeCountdown = 5
 
     while(!iteration.done) {
         console.log(iteration)
-        iteration = it.next()
+        iteration = it.next(changeCountdown-- === 0 ? new Date('2024-06-15T00:00:00+02:00') : undefined)
     }
 }
 
@@ -47,17 +48,17 @@ function b() {
                 cron: '0 17 */7 * *',
                 startDate: new Date('2023-09-01T00:00:00+02:00'),
                 endDate: new Date('2023-09-30T00:00:00+02:00')
-            }),
-            new NowOnlyIterator
+            })
         ],
-        limit: 38
+        limit: 30
     })
 
     let iteration = it.next()
+    let changeCountdown = 5
 
     while(!iteration.done) {
         console.log(iteration)
-        iteration = it.next()
+        iteration = it.next(changeCountdown-- === 0 ? new Date('2023-09-10T07:00:00+02:00') : undefined)
     }
 }
 
