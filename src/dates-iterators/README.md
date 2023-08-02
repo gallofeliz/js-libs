@@ -53,6 +53,14 @@ new AggregateIterator({
     limit: 10 // Optional
 })
 
+// You also can iterate with for or convert to Array, but take care to Infinity generations (each minute for example without limit nor endDate)
+
+for (const date of new XxIterator(...)) {
+    console.log(date)
+}
+
+// Bad idea without limit or endDate (except for NativeDatesIterator) or for big iterations (memory)
+console.log(...new XxIterator(...))
 ```
 
 The AggregateIterator allows you to iterate over dates mixing various logics, for example you want each day more specifics days. No limitations with the mix ...

@@ -8,8 +8,13 @@ export type DatesIterator = Iterator<Date, unknown, Date | undefined>
 export class NativeDatesIterator implements DatesIterator {
     protected dates: Date[]
     protected currentI = -1
+
     constructor({dates}: {dates: Date[]}) {
         this.dates = sortBy(dates)
+    }
+
+    [Symbol.iterator]() {
+        return this
     }
 
     next(date?: Date) {
@@ -97,6 +102,10 @@ export class IntervalDatesIterator implements DatesIterator {
         return currentDate
     }
 
+    [Symbol.iterator]() {
+        return this
+    }
+
     next(date?: Date) {
         if (this.countDown === 0) {
             return {done: true} as IteratorResult<Date>
@@ -142,6 +151,10 @@ export class CronDatesIterator implements DatesIterator {
         })
     }
 
+    [Symbol.iterator]() {
+        return this
+    }
+
     next(date?: Date) {
         if (this.countDown === 0) {
             return {done: true} as IteratorResult<Date>
@@ -170,6 +183,10 @@ export class AggregateIterator implements DatesIterator {
     constructor({iterators, limit}: {iterators: DatesIterator[], limit?: number}) {
         this.iterators = iterators
         this.countDown = limit || Infinity
+    }
+
+    [Symbol.iterator]() {
+        return this
     }
 
     next(date?: Date) {
