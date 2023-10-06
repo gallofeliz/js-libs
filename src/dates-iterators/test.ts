@@ -112,5 +112,49 @@ describe('Dates Iterators', () => {
 
             )
         })
+
+        it('test with exclusions', () => {
+            const sD = new Date('2023-01-01T00:00:00.000Z')
+
+            const it = new AggregateIterator({
+                iterators: [
+                    new IntervalDatesIterator({interval: 'PT1H', startDate: sD, roundInterval: true})
+                ],
+                excludeIterators: [
+                    new CronDatesIterator({cron: '0 4,8 * * *', startDate: sD}),
+                    new NativeDatesIterator({dates: [new Date('2023-01-01T11:00:00.000Z')]})
+                ],
+                limit: 10
+            })
+
+            const iterations = []
+            let iteration = it.next()
+            iterations.push(iteration)
+
+            let changeCountdown = 3
+
+            while(!iteration.done) {
+                iteration = it.next(changeCountdown-- === 0 ? new Date('2023-01-01T07:00:00.000Z') : undefined)
+                iterations.push(iteration)
+            }
+
+            console.log(iterations)
+            assertDatesWithIterations(
+                iterations,
+                    [
+                        new Date('2023-01-01T00:00:00.000Z'),
+                        new Date('2023-01-01T01:00:00.000Z'),
+                        new Date('2023-01-01T02:00:00.000Z'),
+                        new Date('2023-01-01T04:00:00.000Z'),
+                        new Date('2023-01-01T08:00:00.000Z'),
+                        new Date('2023-01-01T09:00:00.000Z'),
+                        new Date('2023-01-01T10:00:00.000Z'),
+                        new Date('2023-01-01T12:00:00.000Z'),
+                        new Date('2023-01-01T13:00:00.000Z'),
+                        new Date('2023-01-01T14:00:00.000Z')
+                    ]
+
+            )
+        })
     })
 })

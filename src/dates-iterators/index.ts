@@ -3,6 +3,14 @@ import dayjs, {OpUnitType} from 'dayjs'
 import { parse, toMilliseconds, apply, negate } from 'duration-fns'
 import cronParser from 'cron-parser'
 
+// export interface CreateIteratorOpts {
+
+// }
+// // Build complex iterator from simple config
+// export function createIterator(opts: CreateIteratorOpts): DatesIterator {
+//     throw new Error('Not implemented')
+// }
+
 export type DatesIterator = Iterator<Date, unknown, Date | undefined>
 
 export class NativeDatesIterator implements DatesIterator {
@@ -175,7 +183,7 @@ export class CronDatesIterator implements DatesIterator {
     }
 }
 
-export class AggregateIterator implements DatesIterator {
+export class SimpleAggregateIterator implements DatesIterator {
     protected iterators: DatesIterator[]
     protected state: IteratorResult<Date>[] = []
     protected countDown: number
@@ -237,3 +245,58 @@ export class AggregateIterator implements DatesIterator {
         return {done: false, value: smallestDate}
     }
 }
+
+export class ExcludableAggregateIterator implements DatesIterator {
+    protected aggregateIterators: SimpleAggregateIterator
+    protected excludeAggregateIterators: SimpleAggregateIterator
+    protected countDown: number
+    protected currentExcludeValue?: IteratorResult<Date>
+
+    constructor(
+        {iterators, limit, excludeIterators}:
+        {iterators: DatesIterator[], excludeIterators?: DatesIterator[], limit?: number}
+    ) {
+        this.aggregateIterators = new SimpleAggregateIterator({iterators: iterators})
+        this.excludeAggregateIterators = new SimpleAggregateIterator({iterators: excludeIterators || []})
+        this.countDown = limit || Infinity
+    }
+
+    [Symbol.iterator]() {
+        return this
+    }
+
+    next(date?: Date): IteratorResult<Date> {
+        if (this.countDown === 0) {
+            return {done: true} as IteratorResult<Date>
+        }
+
+        const value = this.aggregateIterators.next(date)
+
+        if (value.done) {
+            return value
+        }
+
+        if (!this.currentExcludeValue) {
+            this.currentExcludeValue = this.excludeAggregateIterators.next(date)
+        } else if (date) {
+            if (!this.currentExcludeValue.done && this.currentExcludeValue.value < date) {
+                this.currentExcludeValue = this.excludeAggregateIterators.next(date)
+            }
+        }
+
+        while (!this.currentExcludeValue!.done && this.currentExcludeValue!.value < value.value) {
+            this.currentExcludeValue = this.excludeAggregateIterators.next()
+        }
+
+        if (!this.currentExcludeValue!.done && this.currentExcludeValue!.value.getTime() === value.value.getTime()) {
+            return this.next()
+        }
+
+        this.countDown--
+
+        return value
+    }
+}
+
+
+export const AggregateIterator = ExcludableAggregateIterator

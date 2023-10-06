@@ -46,8 +46,12 @@ new CronDatesIterator({
 
 new AggregateIterator({
     iterators: [
-        new CronDatesIterator(...),
+        new CronDatesIterator(...), // Example: each day
         new NativeDatesIterator(...),
+        ...
+    ],
+    excludeIterators: [
+        new NativeDatesIterator(...), // Example: except dates of Christmas
         ...
     ],
     limit: 10 // Optional
