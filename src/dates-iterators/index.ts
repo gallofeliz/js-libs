@@ -13,6 +13,28 @@ import cronParser from 'cron-parser'
 
 export type DatesIterator = Iterator<Date, unknown, Date | undefined>
 
+export class NowIterator implements DatesIterator {
+    protected countDown: number
+
+    constructor({limit}: {limit: number}) {
+        this.countDown = limit || Infinity
+    }
+
+    [Symbol.iterator]() {
+        return this
+    }
+
+    next() {
+        if (this.countDown === 0) {
+            return {done: true} as IteratorResult<Date>
+        }
+
+        this.countDown--
+
+        return {done: false, value: new Date}
+    }
+}
+
 export class NativeDatesIterator implements DatesIterator {
     protected dates: Date[]
     protected currentI = -1

@@ -1,5 +1,6 @@
 import assert from 'assert'
-import { AggregateIterator, CronDatesIterator, IntervalDatesIterator, NativeDatesIterator } from '.'
+import { AggregateIterator, CronDatesIterator, IntervalDatesIterator, NativeDatesIterator, NowIterator } from '.'
+import { setTimeout as wait } from 'timers/promises'
 
 function assertDatesWithIterations(iterations: IteratorResult<Date>[], dates: Date[]) {
     assert.strictEqual(iterations.length, dates.length + 1)
@@ -12,6 +13,31 @@ function assertDatesWithIterations(iterations: IteratorResult<Date>[], dates: Da
 }
 
 describe('Dates Iterators', () => {
+    describe('NowIterator', () => {
+        it('Simple test', async () => {
+            const it = new NowIterator({limit: 3})
+
+            const iterations = []
+            let iteration = it.next()
+            iterations.push(iteration)
+
+            while(!iteration.done) {
+                await wait(50)
+                iteration = it.next()
+
+                if (!iteration.done) {
+                    assert(((new Date).getTime() - iteration.value.getTime()) < 5)
+                }
+
+                iterations.push(iteration)
+            }
+
+            assert.strictEqual(iterations.length, 4)
+
+            console.log(iterations)
+        })
+    })
+
     describe('IntervalDatesIterator', () => {
         it('simple test', () => {
             const it = new IntervalDatesIterator({

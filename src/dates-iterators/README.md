@@ -44,6 +44,10 @@ new CronDatesIterator({
     limit: 10 // Optional
 })
 
+new NowIterator({
+    limit: 1
+}) // Will on iterate emit new Date
+
 new AggregateIterator({
     iterators: [
         new CronDatesIterator(...), // Example: each day
