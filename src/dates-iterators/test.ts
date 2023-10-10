@@ -1,6 +1,6 @@
 import assert from 'assert'
-import { AggregateIterator, CronDatesIterator, IntervalDatesIterator, NativeDatesIterator, NowIterator } from '.'
-import { setTimeout as wait } from 'timers/promises'
+import { AggregateIterator, CronDatesIterator, IntervalDatesIterator, NativeDatesIterator, createIterator } from '.'
+//import { setTimeout as wait } from 'timers/promises'
 
 function assertDatesWithIterations(iterations: IteratorResult<Date>[], dates: Date[]) {
     assert.strictEqual(iterations.length, dates.length + 1)
@@ -13,30 +13,59 @@ function assertDatesWithIterations(iterations: IteratorResult<Date>[], dates: Da
 }
 
 describe('Dates Iterators', () => {
-    describe('NowIterator', () => {
-        it('Simple test', async () => {
-            const it = new NowIterator({limit: 3})
+    describe('createIterator', () => {
+        it('test', () => {
+            const test = createIterator({
+                times: ['0 4,8 * * *', 'P1D', new Date, 'P44D'],
+                startDate: new Date,
+                limit: 15,
+                excludedTimes: [new Date('2023-11-05')]
+            })
 
-            const iterations = []
-            let iteration = it.next()
-            iterations.push(iteration)
+            const test3 = createIterator({
+                times: [new Date],
+                limit: 15
+            })
 
-            while(!iteration.done) {
-                await wait(50)
-                iteration = it.next()
+            console.log(test)
 
-                if (!iteration.done) {
-                    assert(((new Date).getTime() - iteration.value.getTime()) < 5)
-                }
+            console.log(test3)
+            const test2 = createIterator({
+                times: ['0 4,8 * * *'],
+                startDate: new Date,
+                limit: 10,
+                endDate: new Date,
+                roundInterval: true
+            })
 
-                iterations.push(iteration)
-            }
-
-            assert.strictEqual(iterations.length, 4)
-
-            console.log(iterations)
+            console.log(test2)
         })
     })
+
+    // describe('NowIterator', () => {
+    //     it('Simple test', async () => {
+    //         const it = new NowIterator({limit: 3})
+
+    //         const iterations = []
+    //         let iteration = it.next()
+    //         iterations.push(iteration)
+
+    //         while(!iteration.done) {
+    //             await wait(50)
+    //             iteration = it.next()
+
+    //             if (!iteration.done) {
+    //                 assert(((new Date).getTime() - iteration.value.getTime()) < 5)
+    //             }
+
+    //             iterations.push(iteration)
+    //         }
+
+    //         assert.strictEqual(iterations.length, 4)
+
+    //         console.log(iterations)
+    //     })
+    // })
 
     describe('IntervalDatesIterator', () => {
         it('simple test', () => {

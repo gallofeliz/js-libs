@@ -44,10 +44,6 @@ new CronDatesIterator({
     limit: 10 // Optional
 })
 
-new NowIterator({
-    limit: 1
-}) // Will on iterate emit new Date
-
 new AggregateIterator({
     iterators: [
         new CronDatesIterator(...), // Example: each day
@@ -69,6 +65,22 @@ for (const date of new XxIterator(...)) {
 
 // Bad idea without limit or endDate (except for NativeDatesIterator) or for big iterations (memory)
 console.log(...new XxIterator(...))
+
+// Factory : create from complex (or not) configurations without need of create yourself iterators
+createIterator({
+    times: ['0 4,8 * * *', 'P1D', new Date, 'P1M'],
+    startDate: new Date('2023-11-05T00:00:00+01:00'),
+    limit: 10000,
+    excludedTimes: [new Date('2023-11-05T00:00:00+01:00')],
+    roundInterval: true,
+    endDate: new Date('2049-12-31')
+})
 ```
 
 The AggregateIterator allows you to iterate over dates mixing various logics, for example you want each day more specifics days. No limitations with the mix ...
+
+## Improvement ideas
+
+- Exclude periods ?
+- Aggregate consider double with arbitrary precision ?
+- Dynamic startDates / Dates to be able to have start date depending on the first next() call (NowIterator can be cool, but others have static startDate, so no coherent)

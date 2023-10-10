@@ -1,39 +1,109 @@
-import { sortBy, findKey, findLastIndex } from 'lodash'
+import { sortBy, findKey, findLastIndex, groupBy, map, flatten } from 'lodash'
 import dayjs, {OpUnitType} from 'dayjs'
 import { parse, toMilliseconds, apply, negate } from 'duration-fns'
 import cronParser from 'cron-parser'
 
-// export interface CreateIteratorOpts {
+interface CreateNativeDatesIteratorOpts {
+    times: Array<Date>
+}
 
-// }
-// // Build complex iterator from simple config
-// export function createIterator(opts: CreateIteratorOpts): DatesIterator {
-//     throw new Error('Not implemented')
-// }
+interface CreateMoreThanNativeDatesIteratorOpts {
+    times: Array<Date | Interval | string>
+    startDate: Date
+    endDate?: Date
+    limit?: number
+    roundInterval?: boolean
+    excludedTimes?: Array<Date | Interval | string>
+}
+
+export type CreateIteratorOpts = CreateNativeDatesIteratorOpts | CreateMoreThanNativeDatesIteratorOpts
+
+function groupByIteratorTypesForCreate(list: any[]): Record<'nativeDate' | 'interval' | 'cron', any[]> {
+    return groupBy(list, (value) => {
+        if (value instanceof Date) {
+            return 'nativeDate'
+        }
+        if (
+            (typeof value === 'object' && value !== null)
+            || (typeof value === 'number')
+            || (typeof value === 'string' && value.substring(0, 1) === 'P')
+        ) {
+            return 'interval'
+        }
+        return 'cron'
+    }) as Record<'nativeDate' | 'interval' | 'cron', any[]>
+}
+
+function groupIteratorTypesToIterators(opts: CreateIteratorOpts & {group: Record<'nativeDate' | 'interval' | 'cron', any[]>}
+): DatesIterator[] {
+    return flatten(map(opts.group, (times, iteratorType) => {
+        switch(iteratorType) {
+            case 'nativeDate':
+                return new NativeDatesIterator({dates: times})
+            case 'interval':
+                return (times as any).map((time: any) => new IntervalDatesIterator({...opts as CreateMoreThanNativeDatesIteratorOpts, interval: time as any}))
+            case 'cron':
+                return (times as any).map((time: any) => new CronDatesIterator({...opts as CreateMoreThanNativeDatesIteratorOpts, cron: time as any}))
+            default:
+                throw new Error('Invalid type')
+        }
+    }))
+}
+
+// Build complex iterator from simple config
+export function createIterator(opts: CreateIteratorOpts): DatesIterator {
+    const timesGroups = groupByIteratorTypesForCreate(opts.times)
+    const excludeTimesGroups = (opts as CreateMoreThanNativeDatesIteratorOpts).excludedTimes
+        ? groupByIteratorTypesForCreate((opts as CreateMoreThanNativeDatesIteratorOpts).excludedTimes as any)
+        : null
+    const needAggregateIterator = Object.keys(timesGroups).length > 1 || excludeTimesGroups
+
+    // TODO ? Filter native dates depending of endDate ?
+
+    const timesIterators = groupIteratorTypesToIterators({
+        ...opts,
+        group: timesGroups,
+        limit: needAggregateIterator ? undefined : (opts as CreateMoreThanNativeDatesIteratorOpts).limit
+    })
+
+    const excludeTimesIterators = excludeTimesGroups ? groupIteratorTypesToIterators({
+        ...opts,
+        group: excludeTimesGroups,
+        limit: undefined
+    }) : []
+
+    return needAggregateIterator
+        ? new AggregateIterator({
+            iterators: timesIterators,
+            excludeIterators: excludeTimesIterators,
+            limit: (opts as CreateMoreThanNativeDatesIteratorOpts).limit
+        })
+        : timesIterators[0]
+}
 
 export type DatesIterator = Iterator<Date, unknown, Date | undefined>
 
-export class NowIterator implements DatesIterator {
-    protected countDown: number
+// export class NowIterator implements DatesIterator {
+//     protected countDown: number
 
-    constructor({limit}: {limit: number}) {
-        this.countDown = limit || Infinity
-    }
+//     constructor({limit}: {limit: number}) {
+//         this.countDown = limit || Infinity
+//     }
 
-    [Symbol.iterator]() {
-        return this
-    }
+//     [Symbol.iterator]() {
+//         return this
+//     }
 
-    next() {
-        if (this.countDown === 0) {
-            return {done: true} as IteratorResult<Date>
-        }
+//     next() {
+//         if (this.countDown === 0) {
+//             return {done: true} as IteratorResult<Date>
+//         }
 
-        this.countDown--
+//         this.countDown--
 
-        return {done: false, value: new Date}
-    }
-}
+//         return {done: false, value: new Date}
+//     }
+// }
 
 export class NativeDatesIterator implements DatesIterator {
     protected dates: Date[]
