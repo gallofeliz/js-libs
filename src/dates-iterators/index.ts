@@ -1,7 +1,11 @@
-import { sortBy, findKey, findLastIndex, groupBy, map, flatten } from 'lodash'
+import { sortBy, findKey, findLastIndex, groupBy, map, flatten, reduce } from 'lodash'
 import dayjs, {OpUnitType} from 'dayjs'
 import { parse, toMilliseconds, apply, negate } from 'duration-fns'
 import cronParser from 'cron-parser'
+
+export type DatesIterator = Iterator<Date, unknown, Date | undefined> & {
+    [Symbol.iterator](): IterableIterator<Date>
+}
 
 interface CreateNativeDatesIteratorOpts {
     times: Array<Date>
@@ -56,7 +60,18 @@ export function createIterator(opts: CreateIteratorOpts): DatesIterator {
     const excludeTimesGroups = (opts as CreateMoreThanNativeDatesIteratorOpts).excludedTimes
         ? groupByIteratorTypesForCreate((opts as CreateMoreThanNativeDatesIteratorOpts).excludedTimes as any)
         : null
-    const needAggregateIterator = Object.keys(timesGroups).length > 1 || excludeTimesGroups
+    const needAggregateIterator = Object.keys(timesGroups).length > 1 || excludeTimesGroups || reduce(timesGroups, (needAggregateIterator: boolean, times, iteratorType) => {
+        if(needAggregateIterator) {
+            return needAggregateIterator
+        }
+        if (iteratorType === 'nativeDate') {
+            return false
+        }
+        if (times.length > 1) {
+            return true
+        }
+        return false
+    }, false)
 
     // TODO ? Filter native dates depending of endDate ?
 
@@ -80,8 +95,6 @@ export function createIterator(opts: CreateIteratorOpts): DatesIterator {
         })
         : timesIterators[0]
 }
-
-export type DatesIterator = Iterator<Date, unknown, Date | undefined>
 
 // export class NowIterator implements DatesIterator {
 //     protected countDown: number

@@ -12,33 +12,116 @@ function assertDatesWithIterations(iterations: IteratorResult<Date>[], dates: Da
     })
 }
 
+function assertSameDates(dates1: Date[], dates2: Date[]) {
+    assert.strictEqual(dates1.length, dates2.length)
+
+    dates2.forEach((expectedDate, index) => {
+        assert.strictEqual(dates1[index].getTime(), expectedDate.getTime(), [dates1[index].toJSON(), expectedDate.toJSON()].join(' vs '))
+    })
+}
+
 describe('Dates Iterators', () => {
     describe('createIterator', () => {
-        it('test', () => {
-            const test = createIterator({
-                times: ['0 4,8 * * *', 'P1D', new Date, 'P44D'],
-                startDate: new Date,
-                limit: 15,
-                excludedTimes: [new Date('2023-11-05')]
+        it('simple native iterator', () => {
+            const iterator = createIterator({
+                times: [new Date('2023-06-01T12:00:00+02:00'), new Date('2023-06-01T13:00:00+02:00')]
             })
 
-            const test3 = createIterator({
-                times: [new Date],
-                limit: 15
+            assert(iterator instanceof NativeDatesIterator)
+
+            const dates = [...iterator]
+
+            console.log(dates)
+
+            assertSameDates(
+                dates,
+                    [
+                        new Date('2023-06-01T12:00:00+02:00'),
+                        new Date('2023-06-01T13:00:00+02:00')
+                    ]
+
+            )
+        })
+
+        it('simple cron iterator', () => {
+            const iterator = createIterator({
+                times: ['0 6 * * *'],
+                startDate: new Date('2023-05-31T23:50:00+02:00'),
+                limit: 2,
             })
 
-            console.log(test)
+            assert(iterator instanceof CronDatesIterator)
 
-            console.log(test3)
-            const test2 = createIterator({
-                times: ['0 4,8 * * *'],
-                startDate: new Date,
-                limit: 10,
-                endDate: new Date,
+            const dates = [...iterator]
+
+            console.log(dates)
+
+            assertSameDates(
+                dates,
+                    [
+                        new Date('2023-06-01T06:00:00+02:00'),
+                        new Date('2023-06-02T06:00:00+02:00')
+                    ]
+
+            )
+        })
+
+        it('cron aggregate iterator', () => {
+            const iterator = createIterator({
+                times: ['0 6 * * *', '0 18 * * *'],
+                startDate: new Date('2023-05-31T23:50:00+02:00'),
+                endDate: new Date('2023-06-02T18:00:00+02:00')
+            })
+
+            assert(iterator instanceof AggregateIterator)
+
+            const dates = [...iterator]
+
+            console.log(dates)
+
+            assertSameDates(
+                dates,
+                    [
+                        new Date('2023-06-01T06:00:00+02:00'),
+                        new Date('2023-06-01T18:00:00+02:00'),
+                        new Date('2023-06-02T06:00:00+02:00'),
+                        new Date('2023-06-02T18:00:00+02:00')
+                    ]
+            )
+        })
+
+        it('complex aggregate iterator', () => {
+
+            const iterator = createIterator({
+                times: ['0 6 * * *', 'P1D', new Date('2023-06-01T12:00:00+02:00'), '0 18 * * *'],
+                startDate: new Date('2023-05-31T23:50:00+02:00'),
+                limit: 12,
+                excludedTimes: [new Date('2023-06-02T06:00:00+02:00')],
                 roundInterval: true
             })
 
-            console.log(test2)
+            const dates = [...iterator]
+
+            console.log(dates)
+
+            assertSameDates(
+                dates,
+                    [
+                        new Date('2023-06-01T00:00:00+02:00'),
+                        new Date('2023-06-01T06:00:00+02:00'),
+                        new Date('2023-06-01T12:00:00+02:00'),
+                        new Date('2023-06-01T18:00:00+02:00'),
+                        new Date('2023-06-02T00:00:00+02:00'),
+                        new Date('2023-06-02T18:00:00+02:00'),
+                        new Date('2023-06-03T00:00:00+02:00'),
+                        new Date('2023-06-03T06:00:00+02:00'),
+                        new Date('2023-06-03T18:00:00+02:00'),
+                        new Date('2023-06-04T00:00:00+02:00'),
+                        new Date('2023-06-04T06:00:00+02:00'),
+                        new Date('2023-06-04T18:00:00+02:00')
+                    ]
+
+            )
         })
     })
 
