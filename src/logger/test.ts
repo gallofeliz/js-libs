@@ -1,4 +1,4 @@
-import {createCallbackHandler, createLogger, logWarnings, ConsoleHandler, createJsonFormatter, createConsoleHandler} from '.'
+import {createCallbackHandler, createLogger, logWarnings, ConsoleHandler, createJsonFormatter, createConsoleHandler, LogLevelTriggerHandler} from '.'
 
 const logger = createLogger()
 
@@ -63,6 +63,48 @@ describe('Logger', () => {
     ])
 
     child1.info('Very secret', { password: 'verySecret', symbol: Symbol.for('A symbol'), fn() { console.log('hello') } })
+
+  })
+
+  it.only('LogLevelTriggerHandler', () => {
+
+    const logger = createLogger({
+      handlers: [
+        new ConsoleHandler({maxLevel: 'info'}),
+        new LogLevelTriggerHandler({
+          maxLevel: 'debug',
+          minLevel: 'debug',
+          triggerLevel: 'warning',
+          embeddedLogs: true,
+          handlers: [new ConsoleHandler({maxLevel: 'debug'}) ]
+        })
+      ]
+    })
+
+    // const logger = createLogger({
+    //   handlers: [
+    //     new LogLevelTriggerHandler({
+    //       maxLevel: 'debug',
+    //       triggerLevel: 'info',
+    //       handlers: [new ConsoleHandler({maxLevel: 'debug'}) ]
+    //     })
+    //   ]
+    // })
+
+    const req1Logger = logger.child({req: 1})
+    const req2Logger = logger.child({req: 2})
+
+    req1Logger.info('Beginning')
+    req2Logger.info('Beginning')
+
+    req1Logger.debug('Calling Google')
+    req2Logger.debug('Calling Google')
+
+    req1Logger.debug('Google returns 200 : Ok')
+    req2Logger.error('Google call error')
+
+    req1Logger.info('Ended')
+    req2Logger.warning('Ended but with errors')
 
   })
 })

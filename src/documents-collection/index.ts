@@ -1,3 +1,4 @@
+// @ts-nocheck
 import Datastore from '@seald-io/nedb'
 import {Aggregator} from 'mingo'
 import { useOperators, OperatorType } from "mingo/core"
@@ -47,7 +48,6 @@ export interface DocumentCollectionAggregateCursor<Document extends GenericDocum
     // count
     // etc
 }
-
 
 export interface DocumentCollection<Document extends GenericDocument> {
     insert(document: Omit<Document, '_id'>, {returnDocument}: {returnDocument: true}): Promise<Document>

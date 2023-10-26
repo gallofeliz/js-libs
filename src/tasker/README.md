@@ -82,3 +82,6 @@ Lock task to update it updateTask()
 Abort on task dont support reboot résume
 
 Remove tasks after time / remove logs after time depends on level
+- [ ] Move concurrency to runners
+- [ ] Change fn runners to complex runners than handle concurrency, and make eligibility to take tasks. Remove "action", all in id and data
+- [ ] Simplify duplicate with simple comparaison of id ?

@@ -175,6 +175,8 @@ const server = new HttpServer({
 
                 const isAuthorizedToTalkiWrite = auth.isAuthorized(user, 'talki-write')
 
+                console.log(user)
+
                 send('hello ' + user!.username + ', you want talki n°' + params.id + ' ; you are autorized to talki-write : ' + isAuthorizedToTalkiWrite.toString())
 
             }

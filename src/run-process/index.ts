@@ -8,7 +8,7 @@ import { pick } from 'lodash'
 import { validate, SchemaObject } from '@gallofeliz/validate'
 import { v4 as uuid } from 'uuid'
 
-export interface ProcessConfig {
+export type ProcessConfig = {
     logger: UniversalLogger
     command: string | string[]
     shell?: string | string[]
@@ -28,7 +28,6 @@ export interface ProcessConfig {
     resultSchema?: SchemaObject
     uid?: number
     gid?: number
-
 }
 
 export async function runProcess<Result extends any>({abortSignal, ...config}: ProcessConfig & { abortSignal?: AbortSignal }): Promise<Result> {

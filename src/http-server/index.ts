@@ -114,7 +114,9 @@ export class HttpServer {
 
     constructor(config: HttpServerConfig) {
         this.config = config
-        this.logger = config.logger
+        this.logger = config.logger.child({
+            httpServerUuid: uuid()
+        })
 
         this.auth = new Auth({
             users: this.config.auth?.users,
@@ -180,7 +182,10 @@ export class HttpServer {
             return
         }
 
-        this.server = this.app.listen(this.config.port || 80, this.config.host || '0.0.0.0')
+        const port = this.config.port || 80
+        const host = this.config.host || '0.0.0.0'
+
+        this.server = this.app.listen(port, host)
 
         this.server.on('connection', (conn) => {
             const key = conn.remoteAddress + ':' + conn.remotePort
@@ -201,7 +206,7 @@ export class HttpServer {
             this.stop()
         })
 
-        this.logger.info('Ready')
+        this.logger.info('Ready on ' + host + ':' + port)
     }
 
     public async stop() {

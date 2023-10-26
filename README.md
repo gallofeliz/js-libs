@@ -19,3 +19,8 @@
 - Accept AbortSignal in run/start method (and in hight level function)
 - No more default export, always named
 - Objects configs instead of arguments (ex runProcess({...}) instead of runProcess('x', [], true, false))
+
+- Logs component name / reporter with uuid ?
+  - reporter is who report (type, name, uuid)
+  - target/component/subject is about who the log is (tasker is report that sometimes report about one task)
+- Logs stats like (taskStats { success: 1, ended: 1 })
