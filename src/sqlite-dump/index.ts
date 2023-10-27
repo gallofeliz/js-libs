@@ -26,6 +26,30 @@ export interface SqliteDumpOpts {
     abortSignal?: AbortSignal
 }
 
+export interface SqliteBackupOpts {
+    filename: string
+    outputFilename: string
+    logger: Logger
+    abortSignal?: AbortSignal
+}
+
+export async function sqliteBackup(opts: SqliteBackupOpts) {
+   const command = [
+        'sqlite3',
+        '--readonly',
+        opts.filename,
+        '.backup ' + opts.outputFilename
+    ]
+
+    await mkdir(dirname(opts.outputFilename), {recursive: true})
+
+    await runProcess({
+        command,
+        logger: opts.logger,
+        abortSignal: opts.abortSignal
+    })
+}
+
 export async function sqliteDump(opts: SqliteDumpOpts) {
     const command = [
         'sqlite3',

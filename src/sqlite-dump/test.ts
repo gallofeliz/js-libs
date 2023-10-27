@@ -1,5 +1,5 @@
 import { createLogger } from '@gallofeliz/logger'
-import { sqliteDump } from '.'
+import { sqliteBackup, sqliteDump } from '.'
 
 describe('mysqlDump', () => {
     it('file test', async () => {
@@ -43,6 +43,14 @@ describe('mysqlDump', () => {
                 type: 'stream',
                 stream: process.stdout
             }
+        })
+    })
+
+    it('backup test', async () => {
+        await sqliteBackup({
+            logger: createLogger(),
+            filename: __dirname + '/test.db',
+            outputFilename: '/tmp/bla/blo/backup.db'
         })
     })
 })

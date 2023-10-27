@@ -2,7 +2,7 @@
 
 ```typescript
 import { createLogger } from '@gallofeliz/logger'
-import { sqliteDump } from '@gallofeliz/sqlite-dump'
+import { sqliteDump, sqliteBackup } from '@gallofeliz/sqlite-dump'
 
 await sqliteDump({
     filename: 'my.db',
@@ -11,5 +11,11 @@ await sqliteDump({
         type: 'file',
         filepath: '/tmp/bla/blo/test.db'
     }
+})
+
+await sqliteBackup({
+    logger: createLogger(),
+    filename: 'my.db',
+    outputFilename: '/tmp/bla/blo/backup.db'
 })
 ```
