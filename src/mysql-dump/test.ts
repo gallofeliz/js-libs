@@ -2,7 +2,7 @@ import { createLogger } from '@gallofeliz/logger'
 import { mysqlDump } from '.'
 
 describe('mysqlDump', () => {
-    it('test', async () => {
+    it('simple test', async () => {
         await mysqlDump({
             host: 'mysql.localtest.me',
             user: 'dbuser',
