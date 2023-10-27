@@ -1,5 +1,5 @@
 {
-  "name": "mysql-dump",
+  "name": "@gallofeliz/mysql-dump",
   "version": "0.0.2",
   "description": "",
   "scripts": {
