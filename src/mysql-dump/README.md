@@ -1,6 +1,6 @@
 # mysql-dump
 
-```
+```typescript
 import { createLogger } from '@gallofeliz/logger'
 import { mysqlDump } from '@gallofeliz/mysql-dump'
 
