@@ -5,7 +5,7 @@ This is not a tasker. To handle complex job management, see @gallofeliz/tasker
 "when" uses @gallofeliz/dates-iterators
 
 ```typescript
-# Simple Schedule
+// Simple Schedule
 
 schedule({
     fn(infos) {
@@ -17,7 +17,7 @@ schedule({
     }
 })
 
-# Scheduler
+// Scheduler
 
 const scheduler = new Scheduler({
     onError(error, id) {
