@@ -1,45 +1,37 @@
 # Scheduler
 
-Simple scheduling:
-- [X] Schedule cron, intervals and dates
-- [X] Get next scheduled date
-- [X] Allow or not running parallel runs
-- [X] Start/Stoppable
-- [X] Inject exact Date to fn() and others properties (previous, etc)
-- [X] Logs
-- [ ] Array schedule ?
-- [ ] Schedule others formats for intervals ?
-- [ ] Excludes ?
-- [ ] Recover stops (for example with stored state, each midnight, will run at start only if previous has been run > 24h)
-- [X] Jitter (like https://github.com/influxdata/telegraf/blob/master/docs/CONFIGURATION.md)
-- [X] Run on startup (once ? Each time ?)
-- [ ] Timezone ?
-- [ ] Shared state ?
-- [ ] Ability to precise logger in addSchedule with a merge metadata to use it with schedulerMetadata?
-- [ ] Separate Schedule and Scheduler (one/multi)
-- [ ] Add Events (including on error), remove logs or in debug and optional
-
 This is not a tasker. To handle complex job management, see @gallofeliz/tasker
 
+"when" uses @gallofeliz/dates-iterators
+
 ```typescript
-import { Scheduler } from '@gallofeliz/scheduler'
+# Simple Schedule
+
+schedule({
+    fn(infos) {
+        console.log('Do job')
+    },
+    when: {
+        times: ['PT2S'],
+        limit: 5
+    }
+})
+
+# Scheduler
 
 const scheduler = new Scheduler({
-    onError(error, scheduleId) { logger.error('Big error on ' + scheduleId, {error}) }
+    onError(error, id) {
+        console.log('error on', id, error)
+    }
 })
 
-const triggers: Date[] = []
-
-scheduler.addSchedule({
-    id: 'mySchedule',
+scheduler.schedule({
+    id: 'test1',
     fn() {
-        triggers.push(new Date)
+        console.log('Do job 1')
     },
-    schedule: '*/2 * * * * *', // Or 2000
-    limit: 42
+    when: ['PT1S']
 })
 
-scheduler.start() // handle AbortSignal and stop() method
-
-console.log('Schedule next', scheduler.getNextTriggerDate('mySchedule'))
+scheduler.start(abortSignal)
 ```

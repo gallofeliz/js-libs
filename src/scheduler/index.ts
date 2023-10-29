@@ -1,3 +1,314 @@
+import { CreateIteratorOpts, DatesIterator, createIterator, CreateMoreThanNativeDatesIteratorTime } from '@gallofeliz/dates-iterators'
+import EventEmitter from 'events'
+
+export interface ScheduleOpts {
+    fn: (infos: ScheduleFnInfos) => void | Promise<void>
+    // abortSignal
+    when: CreateIteratorOpts | Array<CreateMoreThanNativeDatesIteratorTime>
+    allowMultipleRuns?: boolean
+    abortFnCallsOnAbort?: boolean
+    onError?: (error: Error) => void
+}
+
+export interface ScheduleFnInfos {
+    triggerDate: Date
+    abortSignal?: AbortSignal
+    //countdown: number
+    //callsCount: number
+    //previousTriggerDate: Date | null
+    //nextTriggerDate?: Date
+}
+
+export class Schedule extends EventEmitter {
+    protected fn: ScheduleOpts['fn']
+    protected allowMultiple: boolean
+    protected datesIterator: DatesIterator
+    protected fnRunning: boolean = false
+    protected abortController?: AbortController
+    protected abortFnCallsOnAbort?: boolean
+    protected started: boolean = false
+    protected nextRun?: {timeout: NodeJS.Timeout, date: Date}
+
+    public constructor(opts: ScheduleOpts) {
+        super()
+        this.datesIterator = createIterator(
+            Array.isArray(opts.when)
+                ? {times: opts.when}
+                : opts.when
+        )
+        this.fn = opts.fn
+        this.abortFnCallsOnAbort = opts.abortFnCallsOnAbort
+        this.allowMultiple = opts.allowMultipleRuns ?? false
+        if (opts.onError) {
+            this.on('error', (error) => opts.onError!(error))
+        }
+    }
+
+    public isStarted() {
+        return this.started
+    }
+
+    public getNextTriggerDate(): Date | null {
+        return this.nextRun?.date || null
+    }
+
+    public start(abortSignal?: AbortSignal) {
+        if (this.started) {
+            if (abortSignal) {
+                throw new Error('Already started')
+            }
+            return
+        }
+
+        if (abortSignal?.aborted) {
+            return
+        }
+
+        this.emit('start')
+        this.started = true
+
+        const abortController = this.abortController = new AbortController
+
+        abortSignal?.addEventListener('abort', () => abortController.abort(abortSignal.reason))
+
+        abortController.signal.addEventListener('abort', () => this.abort())
+
+        this.next(true)
+    }
+
+    public stop() {
+        this.abortController?.abort()
+    }
+
+    protected abort() {
+        this.emit('stop')
+        clearTimeout(this.nextRun?.timeout)
+        this.started = false
+        delete this.nextRun
+    }
+
+    protected next(jump: boolean) {
+        const next = this.datesIterator.next(jump ? new Date : undefined)
+
+        if (next.done) {
+            delete this.nextRun
+            this.emit('over')
+            return
+        }
+
+        const nextDate = next.value
+        this.emit('scheduled', nextDate)
+
+        this.nextRun = {
+            timeout: setTimeout(
+                () => this.runFn({triggerDate: nextDate}),
+                nextDate.getTime() - (new Date).getTime()
+            ),
+            date: nextDate
+        }
+    }
+
+    protected async runFn({triggerDate}: {triggerDate: Date}) {
+        if (this.fnRunning && !this.allowMultiple) {
+            return
+        }
+
+        this.next(false)
+
+        try {
+            this.emit('fn.start')
+            await this.fn({
+                triggerDate,
+                abortSignal: this.abortFnCallsOnAbort ? this.abortController?.signal : undefined
+            })
+            this.emit('fn.done')
+        } catch (e) {
+            this.emit('fn.error', e)
+            this.emit('error', e)
+        }
+    }
+}
+
+type ScheduleId = string
+
+type ScheduleFnOptsSimple = ScheduleOpts & {abortSignal?: AbortSignal}
+type ScheduleFnOptsMulti = Omit<SchedulerOpts, 'schedules'> & {schedules: SchedulerOpts['schedules']} & {abortSignal?: AbortSignal}
+
+function isMulti(opts: ScheduleFnOptsSimple | ScheduleFnOptsMulti): opts is ScheduleFnOptsMulti {
+    return (opts as ScheduleFnOptsMulti).schedules !== undefined
+}
+
+export function schedule(opts: ScheduleFnOptsSimple): Schedule
+export function schedule(opts: ScheduleFnOptsMulti): Scheduler
+
+export function schedule(opts: ScheduleFnOptsSimple | ScheduleFnOptsMulti) {
+    if (isMulti(opts)) {
+        const scheduler = new Scheduler(opts)
+
+        scheduler.start(opts.abortSignal)
+
+        return scheduler
+    }
+
+    const schedule = new Schedule(opts)
+
+    schedule.start(opts.abortSignal)
+
+    return schedule
+}
+
+interface SchedulerOpts {
+    schedules?: Record<ScheduleId, ScheduleOpts>
+    onError?: (error: Error, id: ScheduleId) => void
+}
+
+export class Scheduler extends EventEmitter {
+    protected schedules: Record<ScheduleId, Schedule> = {}
+    protected started: boolean = false
+    protected abortController?: AbortController
+
+    public constructor(opts: SchedulerOpts = {}) {
+        super()
+        Object.keys(opts.schedules || {})
+            .forEach(schedId => this.schedule({id: schedId, ...opts.schedules![schedId]}))
+
+        if (opts.onError) {
+            this.on('schedule.error', ({error, id}) => opts.onError!(error, id))
+        }
+    }
+
+    public schedule({id, ...opts}: ScheduleOpts & { id: ScheduleId }) {
+        if(this.has(id)) {
+            throw new Error('Schedule already exists')
+        }
+
+        this.schedules[id] = new Schedule(opts)
+        this.emit('schedule', {id})
+
+        this.attachEvents(id)
+
+        if (this.started) {
+            this.schedules[id].start(this.abortController!.signal)
+        }
+    }
+
+    protected attachEvents(id: ScheduleId) {
+        const sched = this.get(id)
+
+        sched.on('start', () => {
+            this.emit('schedule.start', {id})
+            this.emit('schedule['+id+'].start')
+        })
+
+        sched.on('stop', () => {
+            this.emit('schedule.stop', {id})
+            this.emit('schedule['+id+'].stop')
+        })
+
+        sched.on('error', (error) => {
+            this.emit('schedule.error', {id, error})
+            this.emit('schedule['+id+'].error')
+        })
+
+        sched.on('over', () => {
+            this.emit('schedule.over', {id})
+            this.emit('schedule['+id+'].over')
+        })
+
+        sched.on('fn.start', () => {
+            this.emit('schedule.fn.start', {id})
+            this.emit('schedule['+id+'].fn.start')
+        })
+
+        sched.on('fn.done', () => {
+            this.emit('schedule.fn.done', {id})
+            this.emit('schedule['+id+'].fn.done')
+        })
+
+        sched.on('fn.error', (error) => {
+            this.emit('schedule.fn.error', {id, error})
+            this.emit('schedule['+id+'].fn.error')
+        })
+
+        // todo remove events ? #see https://nodejs.org/api/events.html#eventsonemitter-eventname-options
+        // AbortSignal to remove event listener (cool !)
+    }
+
+    protected has(id: ScheduleId) {
+        return this.schedules[id] !== undefined
+    }
+
+    protected get(id: ScheduleId) {
+        const sched = this.schedules[id]
+
+        if (!sched) {
+            throw new Error('Schedule not found')
+        }
+
+        return sched
+    }
+
+    public list() {
+        return Object.keys(this.schedules)
+    }
+
+    public unschedule(id: ScheduleId) {
+        this.get(id).stop()
+        this.emit('unschedule', {id})
+        delete this.schedules[id]
+    }
+
+    public getNextTriggerDate(id: ScheduleId): Date | null {
+        return this.get(id).getNextTriggerDate()
+    }
+
+    public isStarted() {
+        return this.started
+    }
+
+    public start(abortSignal?: AbortSignal) {
+        if (this.started) {
+            if (abortSignal) {
+                throw new Error('Already started')
+            }
+            return
+        }
+
+        if (abortSignal?.aborted) {
+            return
+        }
+
+        const abortController = new AbortController
+        this.started = true
+        this.emit('start')
+        this.abortController = abortController
+
+        abortSignal?.addEventListener('abort', () => {
+            abortController.abort(abortSignal.reason)
+        })
+
+        abortController.signal.addEventListener('abort', () => {
+            this.emit('stop')
+            this.started = false
+        })
+
+        Object.values(this.schedules).forEach(sched => sched.start(abortController.signal))
+    }
+
+    public stop() {
+        this.abortController?.abort()
+    }
+}
+
+
+
+
+
+
+
+
+
+/*
 import { UniversalLogger } from '@gallofeliz/logger'
 import cronParser, { CronDate } from 'cron-parser'
 import dayjs, {OpUnitType} from 'dayjs'
@@ -140,7 +451,7 @@ export class Scheduler {
         this.onError = onError
         this.logger = logger/*.child({
             schedulerUuid: uuid()
-        })*/
+        })*-/
     }
 
     public isStarted() {
@@ -330,3 +641,4 @@ export class Scheduler {
         )
     }
 }
+*/
