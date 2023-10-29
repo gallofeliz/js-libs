@@ -11,9 +11,11 @@ interface CreateNativeDatesIteratorOpts {
     times: Array<Date>
 }
 
-interface CreateMoreThanNativeDatesIteratorOpts {
-    times: Array<Date | Interval | string>
-    startDate: Date
+export type CreateMoreThanNativeDatesIteratorTime = Date | Interval | string
+
+export interface CreateMoreThanNativeDatesIteratorOpts {
+    times: Array<CreateMoreThanNativeDatesIteratorTime>
+    startDate?: Date
     endDate?: Date
     limit?: number
     roundInterval?: boolean
@@ -172,7 +174,7 @@ export class IntervalDatesIterator implements DatesIterator {
 
     constructor(
         { interval, startDate, endDate, roundInterval, limit }:
-        { interval: Interval, startDate: Date, endDate?: Date, roundInterval?: boolean, limit?: number }
+        { interval: Interval, startDate?: Date, endDate?: Date, roundInterval?: boolean, limit?: number }
     ) {
         this.countDown = limit || Infinity
         this.roundInterval = roundInterval ?? false
@@ -185,7 +187,7 @@ export class IntervalDatesIterator implements DatesIterator {
             this.interval = interval
         }
 
-        this.currentDate = this.computeCurrentDate(startDate)
+        this.currentDate = this.computeCurrentDate(startDate || new Date)
 
         this.endDate = endDate
     }
@@ -247,11 +249,11 @@ export class CronDatesIterator implements DatesIterator {
 
     constructor(
         {cron, startDate, endDate, limit}:
-        {cron: string, startDate: Date, endDate?: Date, limit?: number}
+        {cron: string, startDate?: Date, endDate?: Date, limit?: number}
     ) {
         this.endDate = endDate
         this.expression = cron
-        this.cron = this.computeCron(startDate)
+        this.cron = this.computeCron(startDate || new Date)
         this.countDown = limit || Infinity
     }
 
