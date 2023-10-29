@@ -1,6 +1,6 @@
 import { Logger } from '@gallofeliz/logger'
 import { runProcess, ProcessConfig } from '@gallofeliz/run-process'
-import { reduce, flatten, map, omitBy, isNil, pick } from 'lodash'
+import { reduce, flatten, map, omitBy, isNil, pick, uniq } from 'lodash'
 
 /** @type integer */
 type integer = number
@@ -10,7 +10,7 @@ type ResticListTags = string[]
 
 export interface ResticSnapshot {
     time: string
-    hostname: string
+    host: string
     tags: ResticListTags //ResticRecordTags
     id: string
     objects?: object[]
@@ -32,7 +32,7 @@ export interface ResticOpts {
     abortSignal?: AbortSignal
     repository: ResticRepository
     networkLimit?: ResticNetworkLimit
-    hostname?: string
+    host?: string
     tags?: ResticListTags //ResticRecordTags
 }
 
@@ -59,6 +59,10 @@ export class Restic {
     protected mergeOptsWithDefaults(opts: Partial<ResticOpts>): ResticOpts {
         const merged: Partial<ResticOpts> = {...this.defaultOpts, ...opts}
 
+        if (this.defaultOpts.tags && opts.tags) {
+            merged.tags = uniq([...this.defaultOpts.tags, ...opts.tags])
+        }
+
         if (!merged.logger) {
             throw new Error('Missing logger')
         }
@@ -70,16 +74,28 @@ export class Restic {
         return merged as Partial<ResticOpts> & Pick<ResticOpts, 'logger' | 'repository'>
     }
 
-    public async initRepository(opts: Partial<ResticOpts> = {}) {
+    public async init(opts: Partial<ResticOpts> = {}) {
         await this.runRestic({
             cmd: 'init',
             ...opts,
-            hostname: undefined
+            host: undefined,
+            tags: undefined
         })
     }
 
-    public async listSnapshots(opts: Partial<ResticOpts> = {}): Promise<ResticSnapshot[]> {
-        await this.unlockRepository(opts)
+    public async find(opts: Partial<ResticOpts> & { pattern: string | string[] }) {
+        await this.unlock(opts)
+
+        return await this.runRestic({
+            cmd: 'find',
+            outputType: 'json',
+            args: ['--long', ...Array.isArray(opts.pattern) ? opts.pattern : [opts.pattern]],
+            ...opts
+        })
+    }
+
+    public async snapshots(opts: Partial<ResticOpts> = {}): Promise<ResticSnapshot[]> {
+        await this.unlock(opts)
 
         const snapshots: ResticSnapshot[] = await this.runRestic({
             cmd: 'snapshots',
@@ -94,8 +110,8 @@ export class Restic {
         return snapshots
     }
 
-    public async forgetAndPrune(opts: Partial<ResticOpts> & { policy: ResticForgetPolicy }) {
-        await this.unlockRepository(opts)
+    public async forget(opts: Partial<ResticOpts> & { policy: ResticForgetPolicy }) {
+        await this.unlock(opts)
 
         const retentionPolicyMapping: Record<string, string> = {
             'nbOfHourly': 'hourly',
@@ -121,8 +137,19 @@ export class Restic {
         })
     }
 
+    public async prune(opts: Partial<ResticOpts> = {}) {
+        await this.unlock(opts)
+
+        await this.runRestic({
+            cmd: 'prune',
+            ...opts,
+            host: undefined,
+            tags: undefined
+        })
+    }
+
     public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[] }) {
-        await this.unlockRepository(opts)
+        await this.unlock(opts)
 
         await this.runRestic({
             cmd: 'backup',
@@ -134,19 +161,19 @@ export class Restic {
         })
     }
 
-    public async downloadSnapshot(opts: Partial<ResticOpts> & { format: 'zip' | 'tar', snapshotId: string, path?: string, stream: NodeJS.WritableStream }) {
-        await this.unlockRepository(opts)
+    public async dump(opts: Partial<ResticOpts> & { format?: 'zip' | 'tar', snapshotId: string, path?: string, stream: NodeJS.WritableStream }) {
+        await this.unlock(opts)
 
         await this.runRestic({
             cmd: 'dump',
-            args: ['--archive', opts.format, opts.snapshotId, opts.path || '/'],
+            args: ['--archive', opts.format || 'tar', opts.snapshotId, opts.path || '/'],
             outputStream: opts.stream,
             ...opts
         })
     }
 
-    public async getSnapshot(opts: Partial<ResticOpts> & { snapshotId: string }): Promise<ResticSnapshot> {
-        await this.unlockRepository(opts)
+    public async ls(opts: Partial<ResticOpts> & { snapshotId: string }): Promise<ResticSnapshot> {
+        await this.unlock(opts)
 
         const [infos, ...objects]: [ResticSnapshot, object[]] = await this.runRestic({
             cmd: 'ls',
@@ -162,20 +189,23 @@ export class Restic {
         }
     }
 
-    public async checkRepository(opts: Partial<ResticOpts> = {}) {
-        await this.unlockRepository(opts)
+    public async check(opts: Partial<ResticOpts> = {}) {
+        await this.unlock(opts)
 
         await this.runRestic({
             cmd: 'check',
-            ...opts
+            ...opts,
+            host: undefined,
+            tags: undefined
         })
     }
 
-    protected async unlockRepository(opts: Partial<ResticOpts> = {}) {
+    public async unlock(opts: Partial<ResticOpts> = {}) {
         await this.runRestic({
             cmd: 'unlock',
             ...pick(opts, ['repository', 'logger', 'abortSignal', 'networkLimit']),
-            hostname: undefined
+            host: undefined,
+            tags: undefined
         })
     }
 
@@ -184,7 +214,7 @@ export class Restic {
         Partial<ResticOpts> & {cmd: string, args?: string[], outputStream?: NodeJS.WritableStream, outputType?: ProcessConfig['outputType']}
     ): Promise<T> {
 
-        const {repository, logger, hostname, abortSignal, tags, networkLimit} = this.mergeOptsWithDefaults(opts)
+        const {repository, logger, host, abortSignal, tags, networkLimit} = this.mergeOptsWithDefaults(opts)
 
         const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
 
@@ -192,8 +222,8 @@ export class Restic {
             cmdArgs.push('--json')
         }
 
-        if (hostname) {
-            cmdArgs.push('--host', hostname)
+        if (host) {
+            cmdArgs.push('--host', host)
         }
 
         if (tags) {
@@ -220,7 +250,7 @@ export class Restic {
         }
 
         return await runProcess({
-            env: {...env, RESTIC_CACHE_DIR: '/var/cache/restic'},
+            env: {...env/*, RESTIC_CACHE_DIR: '/var/cache/restic'*/},
             logger,
             command: ['restic', ...cmdArgs],
             abortSignal,
