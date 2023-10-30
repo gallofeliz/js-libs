@@ -157,4 +157,13 @@ describe('restic', () => {
         )
     }).timeout(5000)
 
+    it('diff', async () => {
+        console.log(
+            await fsRestic.diff({
+                snaphostIdA: snapshots[0].id,
+                snaphostIdB: snapshots[1].id
+            })
+        )
+    }).timeout(5000)
+
 })

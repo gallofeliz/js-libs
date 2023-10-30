@@ -1,7 +1,8 @@
 import { Logger } from '@gallofeliz/logger'
 import { runProcess, ProcessConfig } from '@gallofeliz/run-process'
-import { reduce, /*flatten, map, omitBy, isNil, */pick, uniq } from 'lodash'
+import { reduce, pick, uniq, omit } from 'lodash'
 import dayjs from 'dayjs'
+import camelcaseKeys from 'camelcase-keys';
 
 /** @type integer */
 type integer = number
@@ -101,17 +102,11 @@ export class Restic {
     public async snapshots(opts: Partial<ResticOpts> = {}): Promise<ResticSnapshot[]> {
         await this.unlock(opts)
 
-        const snapshots: ResticSnapshot[] = await this.runRestic({
+        return await this.runRestic({
             cmd: 'snapshots',
             outputType: 'json',
             ...opts
         })
-
-        // snapshots.forEach((snapshot) => {
-        //     snapshot.tags = this.tagsArrayToRecord(snapshot.tags as any as ResticListTags) // todo fix
-        // })
-
-        return snapshots
     }
 
     public async forget(
@@ -243,8 +238,28 @@ export class Restic {
         throw new Error('to do')
     }
 
-    public async diff() {
-        throw new Error('to do')
+    public async diff(opts: Partial<ResticOpts> & { snaphostIdA: string, snaphostIdB: string, path?: string }) {
+        await this.unlock(opts)
+
+        const data: Array<any> = await this.runRestic({
+            cmd: 'diff',
+            ...opts,
+            host: undefined,
+            tags: undefined,
+            outputType: 'multilineJson',
+            args: [
+                opts.snaphostIdA + (opts.path ? ':' + opts.path: ''),
+                opts.snaphostIdB + (opts.path ? ':' + opts.path: '')
+            ]
+        })
+
+        const stats = data.slice(-1)[0]
+        const changes = data.slice(0, -1)
+
+        return {
+            ...omit(stats, 'messageType'),
+            changes: changes.map(c => omit(c, 'messageType'))
+        }
     }
 
     protected async runRestic<T>(
@@ -294,7 +309,7 @@ export class Restic {
             ...this.getProviderEnvs(repository)
         }
 
-        return await runProcess({
+        const data = await runProcess({
             env,
             logger,
             command: ['restic', ...cmdArgs],
@@ -303,6 +318,10 @@ export class Restic {
             killSignal: 'SIGINT',
             outputStream
         })
+
+        return outputType === 'json' || outputType === 'multilineJson'
+            ? camelcaseKeys(data as any, {deep: true})
+            : data
     }
 
     public explainLocation(location: string) {

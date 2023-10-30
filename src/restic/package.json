@@ -2,10 +2,16 @@
   "name": "@gallofeliz/restic",
   "version": "0.1.0",
   "description": "",
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@gallofeliz/logger": "^0.1.3",
+    "@gallofeliz/run-process": "^0.1.3",
+    "camelcase-keys": "^7.0.2",
+    "dayjs": "^1.11.10",
+    "lodash": "^4.17.21"
+  }
 }
