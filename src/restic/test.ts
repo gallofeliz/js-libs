@@ -29,6 +29,16 @@ describe('restic', () => {
         })
     }).timeout(5000)
 
+    it('backup dryRun', async () => {
+        console.log(
+            await fsRestic.backup({
+            paths: [__dirname],
+            dryRun: true,
+            tags: ['specific-tag-all-dir']
+        })
+        )
+    }).timeout(5000)
+
     it('backup 1', async () => {
         await fsRestic.backup({
             paths: [__dirname],
@@ -145,6 +155,10 @@ describe('restic', () => {
         console.log(
             snapshots = await fsRestic.snapshots()
         )
+    }).timeout(5000)
+
+    it('forget dryRun', async() => {
+        console.log(await fsRestic.forget({keepMonthly: 12, prune: true, dryRun: true}))
     }).timeout(5000)
 
     it('forget', async() => {

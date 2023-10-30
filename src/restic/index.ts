@@ -132,8 +132,9 @@ export class Restic {
     ) {
         await this.unlock(opts)
 
-        await this.runRestic({
+        const data: string = await this.runRestic({
             cmd: 'forget',
+            outputType: opts.dryRun ? 'text' : undefined,
             args: [
                 ...opts.prune ? ['--prune'] : [],
                 ...opts.dryRun ? ['--dry-run']: [],
@@ -157,6 +158,8 @@ export class Restic {
             ],
             ...opts
         })
+
+        return opts.dryRun ? data : undefined
     }
 
     public async prune(opts: Partial<ResticOpts> = {}) {
@@ -170,20 +173,29 @@ export class Restic {
         })
     }
 
-    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[], iexcludes?: string[], time?: Date }) {
+    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[], iexcludes?: string[], time?: Date, dryRun?: boolean }) {
         await this.unlock(opts)
 
-        await this.runRestic({
+        const data: Array<any> = await this.runRestic({
             cmd: 'backup',
             args: [
+                //'-q',
                 '--no-scan',
+                ...opts.dryRun ? ['--dry-run'] : [],
                 ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : [],
                 ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : [],
                 ...opts.time ? ['--time=' + dayjs(opts.time).format('YYYY-MM-DD HH:mm:ss')]: [],
                 ...opts.paths
             ],
-            ...opts
+            ...opts,
+            outputType: opts.dryRun ? 'multilineJson' : undefined
         })
+
+        if (!opts.dryRun) {
+            return
+        }
+
+        return omit(data.find(o => o.messageType === 'summary'), 'messageType')
     }
 
     public async dump(opts: Partial<ResticOpts> & { format?: 'zip' | 'tar', snapshotId: string, path?: string, stream: NodeJS.WritableStream }) {
@@ -234,7 +246,9 @@ export class Restic {
         })
     }
 
-    public async rewrite() {
+    public async rewrite(
+        opts: Partial<ResticOpts> & { forget?: boolean, snapshotIds?: string[], exclude?: string[], iexclude?: string[], dryRun?: boolean }
+    ) {
         throw new Error('to do')
     }
 
