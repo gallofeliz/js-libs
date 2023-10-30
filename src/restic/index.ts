@@ -34,6 +34,9 @@ export interface ResticOpts {
     networkLimit?: ResticNetworkLimit
     host?: string
     tags?: ResticListTags //ResticRecordTags
+    cacheDir?: string
+    packSize?: number
+    backendConnections?: integer
 }
 
 export interface ResticForgetPolicy {
@@ -148,14 +151,16 @@ export class Restic {
         })
     }
 
-    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[] }) {
+    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[], iexcludes?: string[] }) {
         await this.unlock(opts)
 
         await this.runRestic({
             cmd: 'backup',
             args: [
+                '--no-scan',
                 ...opts.paths,
-                ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : []
+                ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : [],
+                ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : []
             ],
             ...opts
         })
@@ -209,12 +214,16 @@ export class Restic {
         })
     }
 
+    public async rewrite() {
+        throw new Error('to do')
+    }
+
     protected async runRestic<T>(
         {cmd, args, outputType, outputStream, ...opts}:
         Partial<ResticOpts> & {cmd: string, args?: string[], outputStream?: NodeJS.WritableStream, outputType?: ProcessConfig['outputType']}
     ): Promise<T> {
 
-        const {repository, logger, host, abortSignal, tags, networkLimit} = this.mergeOptsWithDefaults(opts)
+        const {repository, logger, host, abortSignal, tags, networkLimit, backendConnections, cacheDir, packSize} = this.mergeOptsWithDefaults(opts)
 
         const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
 
@@ -224,6 +233,10 @@ export class Restic {
 
         if (host) {
             cmdArgs.push('--host', host)
+        }
+
+        if (backendConnections) {
+            cmdArgs.push('-o '+this.explainLocation(repository.location).provider+'.connections=' + backendConnections)
         }
 
         if (tags) {
@@ -246,11 +259,13 @@ export class Restic {
         const env = {
             RESTIC_REPOSITORY: repository.location,
             RESTIC_PASSWORD: repository.password,
+            ...cacheDir && {RESTIC_CACHE_DIR: cacheDir},
+            ...packSize && {RESTIC_PACK_SIZE: (packSize / 1024 / 1024).toString()},
             ...this.getProviderEnvs(repository)
         }
 
         return await runProcess({
-            env: {...env/*, RESTIC_CACHE_DIR: '/var/cache/restic'*/},
+            env,
             logger,
             command: ['restic', ...cmdArgs],
             abortSignal,
@@ -265,30 +280,32 @@ export class Restic {
             location = 'fs::' + location
         }
 
-        const [service, container, path] = location.split(':')
+        const [service/*, container, path*/] = location.split(':')
 
         const provider = (() => {
             switch(service) {
+                case 'rest':
+                    return 'restic_rest'
+                case 'b2':
                 case 'fs':
-                    return 'fs'
-                case 'swift':
-                    return 'os'
+                case 'sftp':
+                case 'azure':
+                case 'rclone':
+                    return service
                 case 's3':
                     return 'aws'
-                case 'b2':
-                    return 'b2'
-                case 'azure':
-                    return 'azure'
                 case 'gs':
                     return 'google'
-                case 'rclone':
-                    return 'rclone'
+                case 'swift':
+                    return 'os'
                 default:
                     throw new Error('Unknown provider')
             }
         })()
 
-        return {provider, container, path}
+        return {
+            provider/*, container, path*/
+        }
     }
 
     protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
