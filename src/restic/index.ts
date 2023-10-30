@@ -1,6 +1,7 @@
 import { Logger } from '@gallofeliz/logger'
 import { runProcess, ProcessConfig } from '@gallofeliz/run-process'
-import { reduce, flatten, map, omitBy, isNil, pick, uniq } from 'lodash'
+import { reduce, /*flatten, map, omitBy, isNil, */pick, uniq } from 'lodash'
+import dayjs from 'dayjs'
 
 /** @type integer */
 type integer = number
@@ -113,29 +114,52 @@ export class Restic {
         return snapshots
     }
 
-    public async forget(opts: Partial<ResticOpts> & { policy: ResticForgetPolicy }) {
-        await this.unlock(opts)
-
-        const retentionPolicyMapping: Record<string, string> = {
-            'nbOfHourly': 'hourly',
-            'nbOfdaily': 'daily',
-            'nbOfWeekly': 'weekly',
-            'nbOfMonthly': 'monthly',
-            'nbOfYearly': 'yearly',
-            'minTime': 'within'
-        }
-
-        const retentionPolicyArgs: string[] = flatten(map(omitBy(opts.policy, isNil), (retentionValue, retentionKey) => {
-            if (!retentionPolicyMapping[retentionKey]) {
-                throw new Error('Unknown policy rule ' + retentionKey)
+    public async forget(
+        opts: Partial<ResticOpts>
+            & { prune?: boolean, dryRun?: boolean }
+            & {
+                snapshotIds?: string[]
+                keepLast?: integer
+                keepHourly?: integer
+                keepDaily?: integer
+                keepWeekly?: integer
+                keepMonthly?: integer
+                keepYearly?: integer
+                keepTag?: string[]
+                keepWithin?: string
+                keepWithinHourly?: string
+                keepWithinDaily?: string
+                keepWithinWeekly?: string
+                keepWithinMonthly?: string
+                keepWithinYearly?: string
+                groupBy?: string
             }
-
-            return ['--keep-' + retentionPolicyMapping[retentionKey], retentionValue.toString()]
-        })) as string[]
+    ) {
+        await this.unlock(opts)
 
         await this.runRestic({
             cmd: 'forget',
-            args: ['--prune', ...retentionPolicyArgs],
+            args: [
+                ...opts.prune ? ['--prune'] : [],
+                ...opts.dryRun ? ['--dry-run']: [],
+
+                ...opts.keepLast !== undefined ? ['--keep-last=' + opts.keepLast] : [],
+                ...opts.keepHourly !== undefined ? ['--keep-hourly=' + opts.keepHourly] : [],
+                ...opts.keepDaily !== undefined ? ['--keep-daily=' + opts.keepDaily] : [],
+                ...opts.keepWeekly !== undefined ? ['--keep-weekly=' + opts.keepWeekly] : [],
+                ...opts.keepMonthly !== undefined ? ['--keep-monthly=' + opts.keepMonthly] : [],
+                ...opts.keepYearly !== undefined ? ['--keep-yearly=' + opts.keepYearly] : [],
+                ...opts.keepTag ? opts.keepTag.map(tag => '--keep-tag' + tag) : [],
+                ...opts.keepWithin ? ['--keep-within=' + opts.keepWithin] : [],
+                ...opts.keepWithinHourly ? ['--keep-within-hourly=' + opts.keepWithinHourly] : [],
+                ...opts.keepWithinDaily ? ['--keep-within-daily=' + opts.keepWithinDaily] : [],
+                ...opts.keepWithinWeekly ? ['--keep-within-weekly=' + opts.keepWithinWeekly] : [],
+                ...opts.keepWithinMonthly ? ['--keep-within-monthly=' + opts.keepWithinMonthly] : [],
+                ...opts.keepWithinYearly ? ['--keep-within-yearly=' + opts.keepWithinYearly] : [],
+                ...opts.groupBy !== undefined ? ['--group-by=' + opts.groupBy] : [],
+
+                ...opts.snapshotIds ? opts.snapshotIds : []
+            ],
             ...opts
         })
     }
@@ -151,16 +175,17 @@ export class Restic {
         })
     }
 
-    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[], iexcludes?: string[] }) {
+    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[], iexcludes?: string[], time?: Date }) {
         await this.unlock(opts)
 
         await this.runRestic({
             cmd: 'backup',
             args: [
                 '--no-scan',
-                ...opts.paths,
                 ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : [],
-                ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : []
+                ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : [],
+                ...opts.time ? ['--time=' + dayjs(opts.time).format('YYYY-MM-DD HH:mm:ss')]: [],
+                ...opts.paths
             ],
             ...opts
         })
@@ -218,6 +243,10 @@ export class Restic {
         throw new Error('to do')
     }
 
+    public async diff() {
+        throw new Error('to do')
+    }
+
     protected async runRestic<T>(
         {cmd, args, outputType, outputStream, ...opts}:
         Partial<ResticOpts> & {cmd: string, args?: string[], outputStream?: NodeJS.WritableStream, outputType?: ProcessConfig['outputType']}
@@ -225,6 +254,7 @@ export class Restic {
 
         const {repository, logger, host, abortSignal, tags, networkLimit, backendConnections, cacheDir, packSize} = this.mergeOptsWithDefaults(opts)
 
+        // perfs : cleanup cache can be run periodically even of each time
         const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
 
         if (outputType === 'json' || outputType === 'multilineJson') {

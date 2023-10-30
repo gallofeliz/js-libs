@@ -29,11 +29,26 @@ describe('restic', () => {
         })
     }).timeout(5000)
 
-    it('backup', async () => {
+    it('backup 1', async () => {
         await fsRestic.backup({
             paths: [__dirname],
             excludes: [__dirname + '/node_modules'],
-            tags: ['specific-tag']
+            tags: ['specific-tag-all-dir']
+        })
+    }).timeout(5000)
+
+    it('backup 2', async () => {
+        await fsRestic.backup({
+            paths: [__dirname + '/test.ts'],
+            tags: ['specific-tag-one-file']
+        })
+    }).timeout(5000)
+
+    it('backup 3', async () => {
+        await fsRestic.backup({
+            paths: [__dirname],
+            iexcludes: ['node_modules'],
+            tags: ['specific-tag-all-dir']
         })
     }).timeout(5000)
 
@@ -79,4 +94,67 @@ describe('restic', () => {
     it('prune', async () => {
         await fsRestic.prune()
     }).timeout(5000)
+
+    it('forget', async() => {
+        await fsRestic.forget({snapshotIds: [snapshots[0].id, snapshots[1].id], prune: true})
+    }).timeout(5000)
+
+    it('snapshots', async () => {
+        console.log(
+            snapshots = await fsRestic.snapshots()
+        )
+    }).timeout(5000)
+
+    it('backup olds', async () => {
+        await fsRestic.backup({
+            paths: [__dirname],
+            excludes: [__dirname + '/node_modules'],
+            tags: ['specific-tag-all-dir'],
+            time: new Date('2023-01-01T12:00:00+01:00')
+        })
+
+        await fsRestic.backup({
+            paths: [__dirname],
+            excludes: [__dirname + '/node_modules'],
+            tags: ['specific-tag-all-dir'],
+            time: new Date('2023-02-01T12:00:00+01:00')
+        })
+
+        await fsRestic.backup({
+            paths: [__dirname],
+            excludes: [__dirname + '/node_modules'],
+            tags: ['specific-tag-all-dir'],
+            time: new Date('2023-02-03T12:00:00+01:00')
+        })
+
+        await fsRestic.backup({
+            paths: [__dirname + '/test.ts'],
+            tags: ['specific-tag-one-file'],
+            time: new Date('2023-02-06T12:00:00+01:00')
+        })
+
+        await fsRestic.backup({
+            paths: [__dirname],
+            excludes: [__dirname + '/node_modules'],
+            tags: ['specific-tag-all-dir'],
+            time: new Date('2023-02-09T12:00:00+01:00')
+        })
+    }).timeout(10000)
+
+    it('snapshots', async () => {
+        console.log(
+            snapshots = await fsRestic.snapshots()
+        )
+    }).timeout(5000)
+
+    it('forget', async() => {
+        await fsRestic.forget({keepMonthly: 12, prune: true})
+    }).timeout(5000)
+
+    it('snapshots', async () => {
+        console.log(
+            snapshots = await fsRestic.snapshots()
+        )
+    }).timeout(5000)
+
 })
