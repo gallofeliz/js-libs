@@ -180,4 +180,14 @@ describe('restic', () => {
         )
     }).timeout(5000)
 
+    it('rewrite dryRun', async () => {
+        console.log(
+            await fsRestic.rewrite({
+                excludes: [__dirname + '/test.ts'],
+                paths: [__dirname],
+                dryRun: true
+            })
+        )
+    }).timeout(5000)
+
 })

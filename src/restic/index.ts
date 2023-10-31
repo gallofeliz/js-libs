@@ -1,4 +1,4 @@
-import { Logger } from '@gallofeliz/logger'
+import { UniversalLogger } from '@gallofeliz/logger'
 import { runProcess, ProcessConfig } from '@gallofeliz/run-process'
 import { reduce, pick, uniq, omit } from 'lodash'
 import dayjs from 'dayjs'
@@ -30,9 +30,9 @@ export interface ResticNetworkLimit {
 }
 
 export interface ResticOpts {
-    logger: Logger
-    abortSignal?: AbortSignal
+    logger: UniversalLogger
     repository: ResticRepository
+    abortSignal?: AbortSignal
     networkLimit?: ResticNetworkLimit
     host?: string
     tags?: ResticListTags //ResticRecordTags
@@ -53,11 +53,11 @@ export interface ResticForgetPolicy {
 export class Restic {
     protected defaultOpts: Partial<ResticOpts>
 
-    public constructor(defaultOpts: Partial<ResticOpts> = {}) {
+    public constructor(defaultOpts: Omit<Partial<ResticOpts>, 'abortSignal'> = {}) {
         this.defaultOpts = defaultOpts
     }
 
-    public child(opts: Partial<ResticOpts>): Restic {
+    public child(opts: Omit<Partial<ResticOpts>, 'abortSignal'>): Restic {
         return new Restic({...this.defaultOpts, ...opts})
     }
 
@@ -247,9 +247,30 @@ export class Restic {
     }
 
     public async rewrite(
-        opts: Partial<ResticOpts> & { forget?: boolean, snapshotIds?: string[], exclude?: string[], iexclude?: string[], dryRun?: boolean }
+        opts: Partial<ResticOpts> & { prune?: boolean, snapshotIds?: string[], excludes?: string[], iexcludes?: string[], dryRun?: boolean, paths?: string[] }
     ) {
-        throw new Error('to do')
+        await this.unlock(opts)
+
+        const data: string = await this.runRestic({
+            cmd: 'rewrite',
+            args: [
+                //'-q',
+                ...opts.dryRun ? ['--dry-run'] : [],
+                ...opts.prune ? ['--prune'] : [],
+                ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : [],
+                ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : [],
+                ...opts.paths ? opts.paths.map(path => '--path=' + path) : [],
+                ...opts.snapshotIds || []
+            ],
+            ...opts,
+            outputType: opts.dryRun ? 'text' : undefined
+        })
+
+        if (!opts.dryRun) {
+            return
+        }
+
+        return data
     }
 
     public async diff(opts: Partial<ResticOpts> & { snaphostIdA: string, snaphostIdB: string, path?: string }) {
@@ -302,7 +323,7 @@ export class Restic {
             tags/*this.tagsRecordToArray(tags)*/.forEach(tag => cmdArgs.push('--tag', tag))
         }
 
-        // Don't apply limits for local disk ...
+        // Don't apply limits for local disk ... or yes ?
         if (networkLimit && repository.location.substr(0, 1) !== '/') {
 
             if (networkLimit.uploadLimit) {

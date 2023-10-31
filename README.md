@@ -24,3 +24,9 @@
   - reporter is who report (type, name, uuid)
   - target/component/subject is about who the log is (tasker is report that sometimes report about one task)
 - Logs stats like (taskStats { success: 1, ended: 1 })
+
+## Todo
+
+New guilelines :
+- Componants only logs with debug level, reserving others levels for application
+- Componants emit events to watch activity
