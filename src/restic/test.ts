@@ -190,4 +190,30 @@ describe('restic', () => {
         )
     }).timeout(5000)
 
+    it('ls', async () => {
+        console.log(
+            await fsRestic.ls({snapshotId: snapshots[0].id })
+        )
+    }).timeout(5000)
+
+    it('rewrite', async () => {
+        console.log(
+            await fsRestic.rewrite({
+                excludes: [__dirname + '/test.ts'],
+                paths: [__dirname]
+            })
+        )
+    }).timeout(5000)
+
+    it('snapshots', async () => {
+        console.log(
+            snapshots = await fsRestic.snapshots()
+        )
+    }).timeout(5000)
+
+    it('ls', async () => {
+        console.log(
+            await fsRestic.ls({snapshotId: snapshots[0].id })
+        )
+    }).timeout(5000)
 })

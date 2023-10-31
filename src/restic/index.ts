@@ -41,14 +41,11 @@ export interface ResticOpts {
     backendConnections?: integer
 }
 
-export interface ResticForgetPolicy {
-    nbOfHourly?: integer
-    nbOfdaily?: integer
-    nbOfWeekly?: integer
-    nbOfMonthly?: integer
-    nbOfYearly?: integer
-    minTime?: number
+/*
+export async function backup(opts: Partial<ResticOpts> = {}) {
+    return (new Restic).backup(opts)
 }
+*/
 
 export class Restic {
     protected defaultOpts: Partial<ResticOpts>
@@ -99,12 +96,15 @@ export class Restic {
         })
     }
 
-    public async snapshots(opts: Partial<ResticOpts> = {}): Promise<ResticSnapshot[]> {
+    public async snapshots(opts: Partial<ResticOpts> & { paths?: string[] } = {}): Promise<ResticSnapshot[]> {
         await this.unlock(opts)
 
         return await this.runRestic({
             cmd: 'snapshots',
             outputType: 'json',
+            args: [
+                ...opts.paths ? opts.paths.map(path => '--path=' + path) : [],
+            ],
             ...opts
         })
     }
