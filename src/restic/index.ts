@@ -15,7 +15,36 @@ export interface ResticSnapshot {
     host: string
     tags: ResticListTags //ResticRecordTags
     id: string
-    objects?: object[]
+}
+
+export interface ResticSnapshotLs extends ResticSnapshot{
+    objects: Array<{
+        name: string
+        type: 'file' | 'dir' | string
+        path: string
+        permissions: string
+        size?: number
+    }>
+}
+
+export interface ResticDiff {
+    sourceSnapshot: string
+    targetSnapshot: string
+    changes: Array<{
+        path: string
+        modifier: '-' | '+' | string
+    }>
+}
+
+export interface ResticFindResult {
+    snapshot: string
+    hits: integer
+    matches: Array<{
+        path: string
+        permissions: string
+        type: 'file' | 'dir' | string
+        size?: number
+    }>
 }
 
 export interface ResticRepository {
@@ -85,7 +114,7 @@ export class Restic {
         })
     }
 
-    public async find(opts: Partial<ResticOpts> & { pattern: string | string[] }) {
+    public async find(opts: Partial<ResticOpts> & { pattern: string | string[] }): Promise<ResticFindResult[]> {
         await this.unlock(opts)
 
         return await this.runRestic({
@@ -209,10 +238,10 @@ export class Restic {
         })
     }
 
-    public async ls(opts: Partial<ResticOpts> & { snapshotId: string }): Promise<ResticSnapshot> {
+    public async ls(opts: Partial<ResticOpts> & { snapshotId: string }): Promise<ResticSnapshotLs> {
         await this.unlock(opts)
 
-        const [infos, ...objects]: [ResticSnapshot, object[]] = await this.runRestic({
+        const [infos, ...objects]: [ResticSnapshot, ResticSnapshotLs['objects'][0]] = await this.runRestic({
             cmd: 'ls',
             args: ['--long', opts.snapshotId],
             outputType: 'multilineJson',
@@ -221,8 +250,7 @@ export class Restic {
 
         return {
             ...infos,
-            // tags: this.tagsArrayToRecord(infos.tags as any), // Todo fix
-            objects: objects
+            objects
         }
     }
 
@@ -273,7 +301,7 @@ export class Restic {
         return data
     }
 
-    public async diff(opts: Partial<ResticOpts> & { snaphostIdA: string, snaphostIdB: string, path?: string }) {
+    public async diff(opts: Partial<ResticOpts> & { snaphostIdA: string, snaphostIdB: string, path?: string }): Promise<ResticDiff> {
         await this.unlock(opts)
 
         const data: Array<any> = await this.runRestic({
@@ -292,8 +320,8 @@ export class Restic {
         const changes = data.slice(0, -1)
 
         return {
-            ...omit(stats, 'messageType'),
-            changes: changes.map(c => omit(c, 'messageType'))
+            ...omit(stats, 'messageType') as any,
+            changes: changes.map(c => omit(c, 'messageType')) as ResticDiff['changes']
         }
     }
 

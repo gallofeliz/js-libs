@@ -72,7 +72,10 @@ describe('restic', () => {
 
     it('find', async () => {
         console.log(
-            await fsRestic.find({pattern: 'test.ts'})
+            JSON.stringify(
+                await fsRestic.find({pattern: 'test.ts'}),
+                undefined, 4
+            )
         )
     }).timeout(5000)
 
@@ -197,12 +200,10 @@ describe('restic', () => {
     }).timeout(5000)
 
     it('rewrite', async () => {
-        console.log(
-            await fsRestic.rewrite({
-                excludes: [__dirname + '/test.ts'],
-                paths: [__dirname]
-            })
-        )
+        await fsRestic.rewrite({
+            excludes: [__dirname + '/test.ts'],
+            paths: [__dirname]
+        })
     }).timeout(5000)
 
     it('snapshots', async () => {
