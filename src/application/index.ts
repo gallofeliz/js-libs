@@ -1,5 +1,5 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { UniversalLogger, LoggerOpts, Logger, logUnhandled, logWarnings } from '@gallofeliz/logger'
+import { LoggerOpts, Logger, logUnhandled, logWarnings, MemoryHandler, ConsoleHandler, LoggerProxyHandler } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 
@@ -12,7 +12,7 @@ export class AbortError extends Error {
 }
 
 export type InjectedServices<Config> = {
-    logger: UniversalLogger
+    logger: Logger
     config: Config
     appName: string
     appVersion: string
@@ -36,8 +36,8 @@ export interface AppDefinition<Config> {
     name?: string
     version?: string
     allowConsoleUse?: boolean
-    config?: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: UniversalLogger, watchChanges?: boolean }) | (() => Config)
-    logger?: LoggerOpts | ((services: Partial<Services<Config>>) => UniversalLogger)
+    config?: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: Logger, watchChanges?: boolean }) | (() => Config)
+    logger?: (Omit<LoggerOpts, 'handlers' | 'errorHandler'>) | ((services: Partial<Services<Config>>) => Logger)
     services?: ServicesDefinition<Config>
     run: RunHandler<Config>
 }
@@ -101,48 +101,32 @@ class App<Config> {
 
         const watchEventEmitter = new EventEmitter
 
-        if (appDefinition.logger instanceof Function) {
+        const temporaryLogHandler = new MemoryHandler({
+            maxLevel: 'debug',
+            minLevel: 'crit'
+        })
 
-            throw new Error('Unhandled for the moment')
+        this.logger = new Logger({
+            handlers: [temporaryLogHandler],
+            metadata: { appRunUuid: uuid() }
+        })
 
-            // const tmpLogger: Logger = null as any as Logger
+        logUnhandled(this.logger)
+        logWarnings(this.logger)
 
-            // try {
-            //     this.config = appDefinition.config instanceof Function
-            //         ? appDefinition.config()
-            //         : loadConfig<any, any>({...defaultConfigArgs, ...appDefinition.config, logger: tmpLogger})
-
-            //     this.logger = appDefinition.logger({config: this.config}).child({
-            //         appRunUuid: uuid()
-            //     })
-            // } catch (e) {
-            //     e.logs = e
-            //     throw e
-            // }
-            // tmpLogger.transport.messages.forEach(msg => {
-            //     this.logger.info(msg)
-            // })
-
-        } else {
-            this.logger = (new Logger(appDefinition.logger)).child({ appRunUuid: uuid() })
-
-            logUnhandled(this.logger)
-            logWarnings(this.logger)
-
-            this.config = appDefinition.config instanceof Function
-                ? await appDefinition.config()
-                : await loadConfig<any, any>({
-                    ...defaultConfigArgs,
-                    ...appDefinition.config,
-                    logger: this.logger,
-                    watchChanges: appDefinition.config?.watchChanges
-                        ? {
-                            abortSignal: this.abortController.signal,
-                            eventEmitter: watchEventEmitter,
-                        }
-                        : undefined
-                })
-        }
+        this.config = appDefinition.config instanceof Function
+            ? await appDefinition.config()
+            : await loadConfig<any, any>({
+                ...defaultConfigArgs,
+                ...appDefinition.config,
+                logger: this.logger,
+                watchChanges: appDefinition.config?.watchChanges
+                    ? {
+                        abortSignal: this.abortController.signal,
+                        eventEmitter: watchEventEmitter,
+                    }
+                    : undefined
+            })
 
         if (appDefinition.allowConsoleUse !== true) {
             for (const method in console) {
@@ -162,6 +146,28 @@ class App<Config> {
             abortController: this.abortController,
             abortSignal: this.abortController.signal
         }, appDefinition.services || {})
+
+        const appLogger = appDefinition.logger instanceof Function
+            ? appDefinition.logger(this.services)
+            : new Logger({
+                ...appDefinition.logger,
+                handlers: [new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})]
+            })
+
+        this.logger.setHandlers([
+            new LoggerProxyHandler({
+                logger: appLogger,
+                minLevel: 'crit',
+                maxLevel: 'debug'
+            })
+        ])
+
+        temporaryLogHandler.getWrittenLogs().forEach(log => {
+            this.logger!.getHandlers()[0].handle(log)
+        })
+
+        temporaryLogHandler.clearWrittenLogs()
+
     }
 
     public async run(abortSignal?: AbortSignal) {
