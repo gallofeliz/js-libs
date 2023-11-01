@@ -7,11 +7,10 @@ describe('restic', () => {
     const repositoryLocation = '/tmp/restic-test/repository' + Math.random()
     const downloadLocation = '/tmp/restic-test-download' + Math.random()
     const repository = {
-        location: repositoryLocation,
-        password: 'test'
+        location: repositoryLocation
     }
     const logger = createLogger()
-    const restic = new Restic({logger, host: 'test-hostname', tags: ['global-tag']})
+    const restic = new Restic({logger, host: 'test-hostname', tags: ['global-tag'], password: 'test'})
     const fsRestic = restic.child({repository})
 
     before(async () => {

@@ -46,7 +46,6 @@ export interface ResticFindResult {
 
 export interface ResticRepository {
     location: string
-    password: string
     //locationParams?: Record<string, string>
     [providerKey: string]: string
 }
@@ -59,6 +58,7 @@ export interface ResticNetworkLimit {
 export interface ResticOpts {
     logger: UniversalLogger
     repository: ResticRepository
+    password: string
     abortSignal?: AbortSignal
     networkLimit?: ResticNetworkLimit
     host?: string
@@ -183,7 +183,11 @@ export class Restic {
             throw new Error('Missing repository')
         }
 
-        return merged as Partial<ResticOpts> & Pick<ResticOpts, 'logger' | 'repository'>
+        if (!merged.password) {
+            throw new Error('Missing password')
+        }
+
+        return merged as Partial<ResticOpts> & Pick<ResticOpts, 'logger' | 'repository' | 'password'>
     }
 
     public async init(opts: Partial<ResticOpts> = {}) {
@@ -411,7 +415,7 @@ export class Restic {
         Partial<ResticOpts> & {cmd: string, args?: string[], outputStream?: NodeJS.WritableStream, outputType?: ProcessConfig['outputType']}
     ): Promise<T> {
 
-        const {repository, logger, host, abortSignal, tags, networkLimit, backendConnections, cacheDir, packSize} = this.mergeOptsWithDefaults(opts)
+        const {repository, logger, host, abortSignal, tags, networkLimit, backendConnections, cacheDir, packSize, password} = this.mergeOptsWithDefaults(opts)
 
         // perfs : cleanup cache can be run periodically even of each time
         const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
@@ -447,7 +451,7 @@ export class Restic {
 
         const env = {
             RESTIC_REPOSITORY: repository.location,
-            RESTIC_PASSWORD: repository.password,
+            RESTIC_PASSWORD: password,
             ...cacheDir && {RESTIC_CACHE_DIR: cacheDir},
             ...packSize && {RESTIC_PACK_SIZE: (packSize / 1024 / 1024).toString()},
             ...this.getProviderEnvs(repository)
@@ -471,7 +475,7 @@ export class Restic {
     protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
         const provider = extractProvider(repository.location)
 
-        return reduce(omit(repository, ['location', 'password']), (providerEnvs: Record<string, string>, value: string, key: string) => {
+        return reduce(omit(repository, ['location']), (providerEnvs: Record<string, string>, value: string, key: string) => {
             providerEnvs[provider.toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
 
             return providerEnvs

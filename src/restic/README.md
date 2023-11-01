@@ -11,7 +11,8 @@ Features
 import { Restic } from '@gallofeliz/restic'
 
 const restic = new Restic({
-    logger: ...
+    logger: // ...
+    password: '...'
 })
 
 /*
@@ -24,13 +25,9 @@ const restic = new Restic({
         ...
     }
 
-    and put password, that is not repository password but restic password, out
-    of repository object, in options. See Repository Keys (we can use repository and various passwords)
-
 */
 const repository = {
     location: '...',
-    password: '...',
     accessKeyId: '...',
     // ...
 }
