@@ -1,19 +1,16 @@
 import { UniversalLogger } from '@gallofeliz/logger'
 import { runProcess, ProcessConfig } from '@gallofeliz/run-process'
-import { reduce, pick, uniq, omit } from 'lodash'
+import { reduce, pick, uniq, omit, castArray } from 'lodash'
 import dayjs from 'dayjs'
 import camelcaseKeys from 'camelcase-keys';
 
 /** @type integer */
 type integer = number
 
-type ResticListTags = string[]
-//type ResticRecordTags = Record<string, string> | string[]
-
 export interface ResticSnapshot {
     time: string
     host: string
-    tags: ResticListTags //ResticRecordTags
+    tags: string[] //ResticRecordTags
     id: string
 }
 
@@ -64,7 +61,7 @@ export interface ResticOpts {
     abortSignal?: AbortSignal
     networkLimit?: ResticNetworkLimit
     host?: string
-    tags?: ResticListTags //ResticRecordTags
+    tags?: string | string[]
     cacheDir?: string
     packSize?: number
     backendConnections?: integer
@@ -75,6 +72,89 @@ export async function backup(opts: Partial<ResticOpts> = {}) {
     return (new Restic).backup(opts)
 }
 */
+
+function extractProvider(location: string) {
+    if (location.substr(0, 1) === '/' || !location.includes(':')) { // I don't know the rule ...
+        return 'fs'
+    }
+
+    const locationProvider = location.split(':')[0]
+
+    switch(locationProvider) {
+        case 'rest':
+            return 'restic_rest'
+        case 'b2':
+        case 'fs':
+        case 'sftp':
+        case 'azure':
+        case 'rclone':
+            return locationProvider
+        case 's3':
+            return 'aws'
+        case 'gs':
+            return 'google'
+        case 'swift':
+            return 'os'
+        default:
+            throw new Error('Unknown provider')
+    }
+}
+
+const locationExplainMapping: any = {
+    fs(location: string) {
+        return { path: location }
+    },
+    restic_rest(location: string) {
+        const parsedUrl = new URL('https://nodejs.org/api/url.html')
+        return { path: parsedUrl.pathname, origin: parsedUrl.origin}
+    },
+    b2(location: string) {
+        const [_, bucket, path] = location.split(':')
+        return { bucket, path }
+    },
+    sftp(location: string) {
+        // sftp:user@host:/srv/restic-repo
+        const [_, authority, path] = location.split(':')
+        return { authority, path }
+    },
+    azure(location: string) {
+        const [_, bucket, path] = location.split(':')
+        return { bucket, path }
+    },
+    rclone(location: string) {
+        const [_, service, path] = location.split(':')
+        return { service, path }
+    },
+    aws(location: string) {
+        //  s3:s3.amazonaws.com/bucket_name/resti
+        const [authority, bucket, path] = location.substring(3).split('/')
+        return { authority, bucket, path }
+    },
+    google(location: string) {
+        const [_, bucket, path] = location.split(':')
+        return { bucket, path }
+    },
+    os(location: string) {
+        const [_, container, path] = location.split(':')
+        return { container, path }
+    }
+}
+
+export function explainLocation(location: string) {
+
+    let provider = extractProvider(location)
+
+    const mapper = locationExplainMapping[provider]
+
+    if (!mapper) {
+        throw new Error('Unknow provider ' + provider)
+    }
+
+    return {
+        provider,
+        ...mapper(location)
+    }
+}
 
 export class Restic {
     protected defaultOpts: Partial<ResticOpts>
@@ -120,19 +200,19 @@ export class Restic {
         return await this.runRestic({
             cmd: 'find',
             outputType: 'json',
-            args: ['--long', ...Array.isArray(opts.pattern) ? opts.pattern : [opts.pattern]],
+            args: ['--long', ...castArray(opts.pattern)],
             ...opts
         })
     }
 
-    public async snapshots(opts: Partial<ResticOpts> & { paths?: string[] } = {}): Promise<ResticSnapshot[]> {
+    public async snapshots(opts: Partial<ResticOpts> & { paths?: string | string[] } = {}): Promise<ResticSnapshot[]> {
         await this.unlock(opts)
 
         return await this.runRestic({
             cmd: 'snapshots',
             outputType: 'json',
             args: [
-                ...opts.paths ? opts.paths.map(path => '--path=' + path) : [],
+                ...opts.paths ? (castArray(opts.paths)).map(path => '--path=' + path) : [],
             ],
             ...opts
         })
@@ -202,7 +282,10 @@ export class Restic {
         })
     }
 
-    public async backup(opts: Partial<ResticOpts> & { paths: string[], excludes?: string[], iexcludes?: string[], time?: Date, dryRun?: boolean }) {
+    public async backup(
+        opts: Partial<ResticOpts>
+        & { paths: string | string[], excludes?: string | string[], iexcludes?: string | string[], time?: Date, dryRun?: boolean }
+    ) {
         await this.unlock(opts)
 
         const data: Array<any> = await this.runRestic({
@@ -211,18 +294,14 @@ export class Restic {
                 //'-q',
                 '--no-scan',
                 ...opts.dryRun ? ['--dry-run'] : [],
-                ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : [],
-                ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : [],
+                ...opts.excludes ? castArray(opts.excludes).map(exclude => '--exclude=' + exclude) : [],
+                ...opts.iexcludes ? castArray(opts.iexcludes).map(exclude => '--iexclude=' + exclude) : [],
                 ...opts.time ? ['--time=' + dayjs(opts.time).format('YYYY-MM-DD HH:mm:ss')]: [],
                 ...opts.paths
             ],
             ...opts,
-            outputType: opts.dryRun ? 'multilineJson' : undefined
+            outputType: 'multilineJson'
         })
-
-        if (!opts.dryRun) {
-            return
-        }
 
         return omit(data.find(o => o.messageType === 'summary'), 'messageType')
     }
@@ -275,7 +354,8 @@ export class Restic {
     }
 
     public async rewrite(
-        opts: Partial<ResticOpts> & { prune?: boolean, snapshotIds?: string[], excludes?: string[], iexcludes?: string[], dryRun?: boolean, paths?: string[] }
+        opts: Partial<ResticOpts>
+        & { prune?: boolean, snapshotIds?: string | string[], excludes?: string | string[], iexcludes?: string | string[], dryRun?: boolean, paths?: string | string[] }
     ) {
         await this.unlock(opts)
 
@@ -285,9 +365,9 @@ export class Restic {
                 //'-q',
                 ...opts.dryRun ? ['--dry-run'] : [],
                 ...opts.prune ? ['--prune'] : [],
-                ...opts.excludes ? opts.excludes.map(exclude => '--exclude=' + exclude) : [],
-                ...opts.iexcludes ? opts.iexcludes.map(exclude => '--iexclude=' + exclude) : [],
-                ...opts.paths ? opts.paths.map(path => '--path=' + path) : [],
+                ...opts.excludes ? castArray(opts.excludes).map(exclude => '--exclude=' + exclude) : [],
+                ...opts.iexcludes ? castArray(opts.iexcludes).map(exclude => '--iexclude=' + exclude) : [],
+                ...opts.paths ? castArray(opts.paths).map(path => '--path=' + path) : [],
                 ...opts.snapshotIds || []
             ],
             ...opts,
@@ -344,11 +424,11 @@ export class Restic {
         }
 
         if (backendConnections) {
-            cmdArgs.push('-o '+this.explainLocation(repository.location).provider+'.connections=' + backendConnections)
+            cmdArgs.push('-o '+extractProvider(repository.location)+'.connections=' + backendConnections)
         }
 
         if (tags) {
-            tags/*this.tagsRecordToArray(tags)*/.forEach(tag => cmdArgs.push('--tag', tag))
+            (castArray(tags)).forEach(tag => cmdArgs.push('--tag', tag))
         }
 
         // Don't apply limits for local disk ... or yes ?
@@ -387,41 +467,8 @@ export class Restic {
             : data
     }
 
-    public explainLocation(location: string) {
-        if (location.substr(0, 1) === '/' || !location.includes(':')) { // I don't know the rule ...
-            location = 'fs::' + location
-        }
-
-        const [service/*, container, path*/] = location.split(':')
-
-        const provider = (() => {
-            switch(service) {
-                case 'rest':
-                    return 'restic_rest'
-                case 'b2':
-                case 'fs':
-                case 'sftp':
-                case 'azure':
-                case 'rclone':
-                    return service
-                case 's3':
-                    return 'aws'
-                case 'gs':
-                    return 'google'
-                case 'swift':
-                    return 'os'
-                default:
-                    throw new Error('Unknown provider')
-            }
-        })()
-
-        return {
-            provider/*, container, path*/
-        }
-    }
-
     protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
-        const {provider} = this.explainLocation(repository.location)
+        const provider = extractProvider(repository.location)
 
         return reduce(repository.locationParams || {}, (providerEnvs: Record<string, string>, value: string, key: string) => {
             providerEnvs[provider.toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
@@ -429,24 +476,5 @@ export class Restic {
             return providerEnvs
         }, {})
     }
-    /*
-    protected tagsArrayToRecord(tags: ResticListTags): ResticRecordTags {
-        return reduce(tags, (record, stringifyed) => {
-            const [key, ...valueParts] = stringifyed.split('=')
-            return {
-                ...record,
-                [key]: valueParts.join('=')
-            }
-        }, {})
-    }
 
-    protected tagsRecordToArray(tags: ResticRecordTags): ResticListTags {
-        return Array.isArray(tags) ? tags : reduce(tags, (list, value, key) => {
-            return [
-                ...list,
-                key + '=' + value
-            ]
-        }, [] as ResticListTags)
-    }
-    */
 }

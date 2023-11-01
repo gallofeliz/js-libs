@@ -1,5 +1,5 @@
 import { createLogger } from '@gallofeliz/logger'
-import { Restic, ResticSnapshot } from '.'
+import { Restic, ResticSnapshot, explainLocation } from '.'
 import { rm, mkdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
 
@@ -23,6 +23,13 @@ describe('restic', () => {
         await rm(downloadLocation, {recursive: true})
     })
 
+    it('explain location', () => {
+        console.log(explainLocation('/home/me'))
+        console.log(explainLocation('s3:s3.amazonaws.com/my-own-bucket'))
+        console.log(explainLocation('s3:s3.amazonaws.com/my-own-bucket/backups'))
+        console.log(explainLocation('sftp:user@host:/home/me/backups'))
+    })
+
     it('init', async () => {
         await restic.init({
             repository
@@ -40,11 +47,11 @@ describe('restic', () => {
     }).timeout(5000)
 
     it('backup 1', async () => {
-        await fsRestic.backup({
+        console.log(await fsRestic.backup({
             paths: [__dirname],
             excludes: [__dirname + '/node_modules'],
-            tags: ['specific-tag-all-dir']
-        })
+            tags: 'specific-tag-all-dir'
+        }))
     }).timeout(5000)
 
     it('backup 2', async () => {
