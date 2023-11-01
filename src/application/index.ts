@@ -1,7 +1,10 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { LoggerOpts, Logger, logUnhandled, logWarnings, MemoryHandler, ConsoleHandler, LoggerProxyHandler } from '@gallofeliz/logger'
+import { LoggerOpts, Logger, logUnhandled, logWarnings, MemoryHandler, ConsoleHandler, LoggerProxyHandler, LogLevel } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
+import { get } from 'lodash'
+import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
+import { validate } from '@gallofeliz/validate'
 
 export class AbortError extends Error {
     name = 'AbortError'
@@ -10,6 +13,9 @@ export class AbortError extends Error {
         super(message)
     }
 }
+
+/** @default info */
+export type LogLevelWithDefault = LogLevel
 
 export type InjectedServices<Config> = {
     logger: Logger
@@ -37,7 +43,7 @@ export interface AppDefinition<Config> {
     version?: string
     allowConsoleUse?: boolean
     config?: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: Logger, watchChanges?: boolean }) | (() => Config)
-    logger?: (Omit<LoggerOpts, 'handlers' | 'errorHandler'>) | ((services: Partial<Services<Config>>) => Logger)
+    logger?: (Omit<LoggerOpts, 'handlers' | 'errorHandler'> & { logLevelConfigPath?: string }) | ((services: Partial<Services<Config>>) => Logger)
     services?: ServicesDefinition<Config>
     run: RunHandler<Config>
 }
@@ -90,17 +96,6 @@ class App<Config> {
     }
 
     protected async prepare() {
-        const appDefinition = this.appDefinition
-
-        const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
-            userProvidedConfigSchema: { type: 'object' },
-            defaultFilename: '/etc/' + this.shortName + '/config.yaml',
-            envFilename: this.shortName + '_CONFIG_PATH',
-            envPrefix: this.shortName
-        }
-
-        const watchEventEmitter = new EventEmitter
-
         const temporaryLogHandler = new MemoryHandler({
             maxLevel: 'debug',
             minLevel: 'crit'
@@ -111,63 +106,143 @@ class App<Config> {
             metadata: { appRunUuid: uuid() }
         })
 
-        logUnhandled(this.logger)
-        logWarnings(this.logger)
+        try {
+            logUnhandled(this.logger)
+            logWarnings(this.logger)
 
-        this.config = appDefinition.config instanceof Function
-            ? await appDefinition.config()
-            : await loadConfig<any, any>({
+            const appDefinition = this.appDefinition
+
+            const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
+                userProvidedConfigSchema: { type: 'object' },
+                defaultFilename: '/etc/' + this.shortName + '/config.yaml',
+                envFilename: this.shortName + '_CONFIG_PATH',
+                envPrefix: this.shortName
+            }
+
+            const watchEventEmitter = new EventEmitter
+
+            const configDef = {
                 ...defaultConfigArgs,
-                ...appDefinition.config,
-                logger: this.logger,
-                watchChanges: appDefinition.config?.watchChanges
-                    ? {
-                        abortSignal: this.abortController.signal,
-                        eventEmitter: watchEventEmitter,
-                    }
-                    : undefined
-            })
+                ...appDefinition.config
+            }
 
-        if (appDefinition.allowConsoleUse !== true) {
-            for (const method in console) {
-                // @ts-ignore
-                console[method] = (...args) => {
-                    this.logger!.warning('Used console.' + method + ', please fix it', {args})
+            this.config = appDefinition.config instanceof Function
+                ? await appDefinition.config()
+                : await loadConfig<any, any>({
+                    ...configDef,
+                    logger: this.logger,
+                    watchChanges: appDefinition.config?.watchChanges
+                        ? {
+                            abortSignal: this.abortController.signal,
+                            eventEmitter: watchEventEmitter,
+                        }
+                        : undefined
+                })
+
+            let maxLogLevel
+
+            if (appDefinition.logger && !(appDefinition.logger instanceof Function) && appDefinition.logger.logLevelConfigPath) {
+                maxLogLevel = get(this.config, appDefinition.logger.logLevelConfigPath, 'info')
+
+                validate(maxLogLevel, { schema: tsToJsSchema<LogLevelWithDefault>() })
+
+                if (!(appDefinition.config instanceof Function) && appDefinition.config?.watchChanges) {
+                    watchEventEmitter.on('change:' + appDefinition.logger.logLevelConfigPath, ({value}) => {
+                        try {
+                            validate(value, { schema: tsToJsSchema<LogLevelWithDefault>() })
+                        } catch (e) {
+                            this.logger!.warning('Invalid log level ; missing config type check ?')
+                            return
+                        }
+
+                        appLogger.setHandlers([
+                            new ConsoleHandler({minLevel: 'crit', maxLevel: value})
+                        ])
+                    })
+                }
+
+            } else {
+
+                const _conf = await loadConfig<any, any>({
+                    ...configDef,
+                    userProvidedConfigSchema: {
+                        type: 'object',
+                        properties: {
+                            log: {
+                                type: 'object',
+                                default: {},
+                                properties: {
+                                    level: tsToJsSchema<LogLevelWithDefault>() //{ enum: levels, default: 'info' }
+                                }
+                            }
+                        }
+                    },
+                    logger: this.logger,
+                    watchChanges: !(appDefinition.config instanceof Function) && appDefinition.config?.watchChanges
+                        ? {
+                            abortSignal: this.abortController.signal,
+                            onChange: ({config: {log: {level: maxLogLevel}}}) => {
+                                appLogger.setHandlers([
+                                    new ConsoleHandler({minLevel: 'crit', maxLevel: maxLogLevel})
+                                ])
+                            }
+                        }
+                        : undefined
+                })
+
+                maxLogLevel = _conf.log.level
+            }
+
+            if (appDefinition.allowConsoleUse !== true) {
+                for (const method in console) {
+                    // @ts-ignore
+                    console[method] = (...args) => {
+                        this.logger!.warning('Used console.' + method + ', please fix it', {args})
+                    }
                 }
             }
+
+            this.services = createDiContainer({
+                config: this.config,
+                logger: this.logger,
+                appName: this.name,
+                appVersion: this.version,
+                configWatcher: watchEventEmitter,
+                abortController: this.abortController,
+                abortSignal: this.abortController.signal
+            }, appDefinition.services || {})
+
+            const appLogger = appDefinition.logger instanceof Function
+                ? appDefinition.logger(this.services)
+                : new Logger({
+                    ...appDefinition.logger,
+                    handlers: [new ConsoleHandler({minLevel: 'crit', maxLevel: maxLogLevel})]
+                })
+
+            this.logger.setHandlers([
+                new LoggerProxyHandler({
+                    logger: appLogger,
+                    minLevel: 'crit',
+                    maxLevel: 'debug'
+                })
+            ])
+
+        } catch (e) {
+            this.logger.setHandlers([
+                new ConsoleHandler({
+                    minLevel: 'crit',
+                    maxLevel: 'debug'
+                })
+            ])
+
+            throw e
+        } finally {
+            temporaryLogHandler.getWrittenLogs().forEach(log => {
+                this.logger!.getHandlers()[0].handle(log)
+            })
+
+            temporaryLogHandler.clearWrittenLogs()
         }
-
-        this.services = createDiContainer({
-            config: this.config,
-            logger: this.logger,
-            appName: this.name,
-            appVersion: this.version,
-            configWatcher: watchEventEmitter,
-            abortController: this.abortController,
-            abortSignal: this.abortController.signal
-        }, appDefinition.services || {})
-
-        const appLogger = appDefinition.logger instanceof Function
-            ? appDefinition.logger(this.services)
-            : new Logger({
-                ...appDefinition.logger,
-                handlers: [new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})]
-            })
-
-        this.logger.setHandlers([
-            new LoggerProxyHandler({
-                logger: appLogger,
-                minLevel: 'crit',
-                maxLevel: 'debug'
-            })
-        ])
-
-        temporaryLogHandler.getWrittenLogs().forEach(log => {
-            this.logger!.getHandlers()[0].handle(log)
-        })
-
-        temporaryLogHandler.clearWrittenLogs()
-
     }
 
     public async run(abortSignal?: AbortSignal) {

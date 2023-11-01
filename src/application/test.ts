@@ -4,6 +4,7 @@ import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 
 interface Config {
     dbPath: string
+    //loglevel?: string
 }
 
 type UserConfig = Config
@@ -48,6 +49,9 @@ describe('Application', () => {
                     watchChanges: true,
                     userProvidedConfigSchema: tsToJsSchema<UserConfig>()
                 },
+                /*logger: {
+                    logLevelConfigPath: 'loglevel'
+                },*/
                 services: {
                     userService({logger, db}): UserService {
                         return new UserService(logger, db)
