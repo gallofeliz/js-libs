@@ -44,11 +44,87 @@ export interface ResticFindResult {
     }>
 }
 
-export interface ResticRepository {
-    location: string
-    //locationParams?: Record<string, string>
-    [providerKey: string]: string
+export interface ResticRepositoryFs {
+    type: 'fs'
+    path: string
 }
+
+export interface ResticRepositoryS3 {
+    type: 's3'
+    authority: string
+    bucketName: string
+    path?: string
+    accessKeyId?: string
+    secretAccessKey?: string
+    sessionToken?: string
+    defaultRegion?: string
+    profile?: string
+    sharedCredentialsFile?: string
+}
+
+export interface ResticRepositoryAzure {
+    type: 'azure'
+    bucketName: string
+    path?: string
+    accountName?: string
+    accountKey?: string
+    accountSas?: string
+    endpointSuffix?: string
+}
+
+export interface ResticRepositorySftp {
+    type: 'sftp'
+    authority: string
+    path?: string
+}
+
+export interface ResticRepositoryRest {
+    type: 'resticRest'
+    url: string
+    restUsername?: string
+    restPassword?: string
+}
+
+export interface ResticRepositorySwift {
+    type: 'swift'
+    containerName: string
+    //path?: string
+    [param: string]: string
+}
+
+export interface ResticRepositoryB2 {
+    type: 'b2'
+    bucketName: string
+    path?: string
+    accountId: string
+    accountKey: string
+}
+
+export interface ResticRepositoryGs {
+    type: 'gs'
+    bucketName: string
+    path?: string
+    projectId: string
+    applicationCredentials?: string
+}
+
+export interface ResticRepositoryRclone {
+    type: 'rclone'
+    service: string
+    path?: string
+    bwlimit?: string
+}
+
+export type ResticRepository =
+    ResticRepositoryFs
+    | ResticRepositoryS3
+    | ResticRepositoryAzure
+    | ResticRepositorySftp
+    | ResticRepositoryRest
+    | ResticRepositorySwift
+    | ResticRepositoryB2
+    | ResticRepositoryGs
+    | ResticRepositoryRclone
 
 export interface ResticNetworkLimit {
     uploadLimit?: number
@@ -73,89 +149,6 @@ export async function backup(opts: Partial<ResticOpts> = {}) {
     return (new Restic).backup(opts)
 }
 */
-
-function extractProvider(location: string) {
-    if (location.substr(0, 1) === '/' || !location.includes(':')) { // I don't know the rule ...
-        return 'fs'
-    }
-
-    const locationProvider = location.split(':')[0]
-
-    switch(locationProvider) {
-        case 'rest':
-            return 'restic_rest'
-        case 'b2':
-        case 'fs':
-        case 'sftp':
-        case 'azure':
-        case 'rclone':
-            return locationProvider
-        case 's3':
-            return 'aws'
-        case 'gs':
-            return 'google'
-        case 'swift':
-            return 'os'
-        default:
-            throw new Error('Unknown provider')
-    }
-}
-
-const locationExplainMapping: any = {
-    fs(location: string) {
-        return { path: location }
-    },
-    restic_rest(location: string) {
-        const parsedUrl = new URL('https://nodejs.org/api/url.html')
-        return { path: parsedUrl.pathname, origin: parsedUrl.origin}
-    },
-    b2(location: string) {
-        const [_, bucket, path] = location.split(':')
-        return { bucket, path }
-    },
-    sftp(location: string) {
-        // sftp:user@host:/srv/restic-repo
-        const [_, authority, path] = location.split(':')
-        return { authority, path }
-    },
-    azure(location: string) {
-        const [_, bucket, path] = location.split(':')
-        return { bucket, path }
-    },
-    rclone(location: string) {
-        const [_, service, path] = location.split(':')
-        return { service, path }
-    },
-    aws(location: string) {
-        //  s3:s3.amazonaws.com/bucket_name/resti
-        const [authority, bucket, path] = location.substring(3).split('/')
-        return { authority, bucket, path }
-    },
-    google(location: string) {
-        const [_, bucket, path] = location.split(':')
-        return { bucket, path }
-    },
-    os(location: string) {
-        const [_, container, path] = location.split(':')
-        return { container, path }
-    }
-}
-
-export function explainLocation(location: string) {
-
-    let provider = extractProvider(location)
-
-    const mapper = locationExplainMapping[provider]
-
-    if (!mapper) {
-        throw new Error('Unknow provider ' + provider)
-    }
-
-    return {
-        provider,
-        ...mapper(location)
-    }
-}
 
 export class Restic {
     protected defaultOpts: Partial<ResticOpts>
@@ -429,7 +422,7 @@ export class Restic {
         }
 
         if (backendConnections) {
-            cmdArgs.push('-o '+extractProvider(repository.location)+'.connections=' + backendConnections)
+            cmdArgs.push('-o '+repository.type+'.connections=' + backendConnections)
         }
 
         if (tags) {
@@ -437,7 +430,7 @@ export class Restic {
         }
 
         // Don't apply limits for local disk ... or yes ?
-        if (networkLimit && repository.location.substr(0, 1) !== '/') {
+        if (networkLimit && repository.type !== 'fs') {
 
             if (networkLimit.uploadLimit) {
                 cmdArgs.push('--limit-upload', (networkLimit.uploadLimit / 1024).toString())
@@ -450,11 +443,11 @@ export class Restic {
         }
 
         const env = {
-            RESTIC_REPOSITORY: repository.location,
+            RESTIC_REPOSITORY: this.getRepositoryLocation(repository),
             RESTIC_PASSWORD: password,
             ...cacheDir && {RESTIC_CACHE_DIR: cacheDir},
             ...packSize && {RESTIC_PACK_SIZE: (packSize / 1024 / 1024).toString()},
-            ...this.getProviderEnvs(repository)
+            ...this.getRepositoryEnvs(repository)
         }
 
         const data = await runProcess({
@@ -472,11 +465,46 @@ export class Restic {
             : data
     }
 
-    protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
-        const provider = extractProvider(repository.location)
+    protected getRepositoryLocation(repository: ResticRepository): string {
+        switch(repository.type) {
+            case 'fs':
+                return repository.path
+            case 'sftp':
+                return 'sftp:' + repository.authority + (repository.path ? ':' + repository.path : '')
+            case 'resticRest':
+                return 'rest:' + repository.url
+            case 's3':
+                return 's3:' + repository.bucketName + (repository.path ? ':' + repository.path : '')
+            case 'swift':
+                return 'swift:' + repository.containerName + (repository.path ? ':' + repository.path : '')
+            case 'b2':
+                return 'b2:' + repository.bucketName + (repository.path ? ':' + repository.path : '')
+            case 'azure':
+                return 'azure:' + repository.bucketName + (repository.path ? ':' + repository.path : '')
+            case 'gs':
+                return 'gs:' + repository.bucketName + (repository.path ? ':' + repository.path : '')
+            case 'rclone':
+                return 'rclone:' + repository.service + (repository.path ? ':' + repository.path : '')
+        }
+    }
 
-        return reduce(omit(repository, ['location']), (providerEnvs: Record<string, string>, value: string, key: string) => {
-            providerEnvs[provider.toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
+    protected getRepositoryEnvs(repository: ResticRepository): Record<string, string> {
+        const prefixes = {
+            s3: 'AWS',
+            fs: '',
+            azure: 'AZURE',
+            gs: 'GOOGLE',
+            swift: 'OS',
+            rclone: 'RCLONE',
+            resticRest: 'RESTIC_REST',
+            sftp: '',
+            b2: 'B2'
+        }
+
+        return reduce(omit(repository, ['type', 'path', 'bucketName', 'containerName', 'authority']), (providerEnvs: Record<string, string>, value: string | undefined, key: string) => {
+            if (value !== undefined) {
+                providerEnvs[prefixes[repository.type].toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
+            }
 
             return providerEnvs
         }, {})

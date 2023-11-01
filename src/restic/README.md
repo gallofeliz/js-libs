@@ -8,28 +8,19 @@ Features
 
 ```typescript
 
-import { Restic } from '@gallofeliz/restic'
+import { Restic, ResticRepositoryS3 } from '@gallofeliz/restic'
 
 const restic = new Restic({
     logger: // ...
     password: '...'
 })
 
-/*
-    Idea: instead of "stupid" repository, why not
-
-    {
-        provider: 's3',
-        bucket: 'my-bucket',
-        accessKeyId: 'bla'
-        ...
-    }
-
-*/
-const repository = {
-    location: '...',
-    accessKeyId: '...',
-    // ...
+const repository: ResticRepositoryS3 = {
+    type: 's3',
+    bucketName: 'bucket-name',
+    authority: 's3.amazonaws.com',
+    accessKeyId: '***',
+    secretAccessKey: '***'
 }
 
 await restic.init({repository})
@@ -52,9 +43,9 @@ const myAwsBucketResticForPersoBackups = myAwsBucketRestic.child({
     tags: ['perso']
 })
 
-await myAwsBucketResticForPersoBackups.backup({paths: ['/home/me']})
+await myAwsBucketResticForPersoBackups.backup({paths: '/home/me'})
 // or
-await myAwsBucketRestic.backup({paths: ['/home/me'], tags: ['perso']})
+await myAwsBucketRestic.backup({paths: ['/home/me'], tags: 'perso'})
 // or
 await restic.backup({paths: ['/home/me'], tags: ['perso'], repository})
 // or

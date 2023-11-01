@@ -1,13 +1,14 @@
 import { createLogger } from '@gallofeliz/logger'
-import { Restic, ResticSnapshot, explainLocation } from '.'
+import { Restic, ResticSnapshot, ResticRepositoryFs, ResticRepositoryS3 } from '.'
 import { rm, mkdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
 
 describe('restic', () => {
     const repositoryLocation = '/tmp/restic-test/repository' + Math.random()
     const downloadLocation = '/tmp/restic-test-download' + Math.random()
-    const repository = {
-        location: repositoryLocation
+    const repository: ResticRepositoryFs = {
+        type: 'fs',
+        path: repositoryLocation
     }
     const logger = createLogger()
     const restic = new Restic({logger, host: 'test-hostname', tags: ['global-tag'], password: 'test'})
@@ -22,13 +23,6 @@ describe('restic', () => {
         await rm(downloadLocation, {recursive: true})
     })
 
-    it('explain location', () => {
-        console.log(explainLocation('/home/me'))
-        console.log(explainLocation('s3:s3.amazonaws.com/my-own-bucket'))
-        console.log(explainLocation('s3:s3.amazonaws.com/my-own-bucket/backups'))
-        console.log(explainLocation('sftp:user@host:/home/me/backups'))
-    })
-
     it('init', async () => {
         await restic.init({
             repository
@@ -39,11 +33,12 @@ describe('restic', () => {
         try {
             await restic.init({
                 repository: {
-                    location: 's3:s3.amazonaws.com/bucket-name',
-                    password: '***',
-                    accessKeyId: '',
-                    secretAccessKey: ''
-                }
+                    type: 's3',
+                    bucketName: 'bucket-name',
+                    authority: 's3.amazonaws.com',
+                    accessKeyId: '***',
+                    secretAccessKey: '***'
+                } as ResticRepositoryS3
             })
         } catch (e) {
             console.log(e)
