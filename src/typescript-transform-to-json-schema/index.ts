@@ -25,7 +25,7 @@ export default function(program: ts.Program, pluginOptions: {}) {
 
                         const type = node.typeArguments![0].getText()
 
-                        let schema
+                        let schema: any
 
                         switch(type) {
                             case 'string':
@@ -52,6 +52,15 @@ export default function(program: ts.Program, pluginOptions: {}) {
                                     config
                                 )
                                 schema = generator.createSchema(type)
+
+                                if (schema.$ref && Object.keys(schema.definitions || {}).length === 1) {
+                                    delete schema.$ref
+                                    schema = {
+                                        ...schema,
+                                        ...Object.values(schema.definitions as object)[0]
+                                    }
+                                    delete schema.definitions
+                                }
 
                         }
                         const strSchema = JSON.stringify(schema)

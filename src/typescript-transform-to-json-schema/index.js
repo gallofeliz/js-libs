@@ -75,6 +75,14 @@ function default_1(program, pluginOptions) {
                                 )
                                 schema = generator.createSchema(type)
 
+                                if (schema.$ref && Object.keys(schema.definitions || {}).length === 1) {
+                                    delete schema.$ref
+                                    schema = {
+                                        ...schema,
+                                        ...Object.values(schema.definitions)[0]
+                                    }
+                                    delete schema.definitions
+                                }
                         }
                         const strSchema = JSON.stringify(schema)
                         return ts.factory.createCallExpression(ts.factory.createRegularExpressionLiteral('JSON.parse'), [ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral('string'))], [ts.factory.createStringLiteral(strSchema)]);
