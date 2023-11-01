@@ -19,10 +19,6 @@ export function createLogger(loggerOpts?: LoggerOpts) {
     return new Logger(loggerOpts)
 }
 
-export function createBlackwholeLogger() {
-    return createLogger({ handlers: [] })
-}
-
 function ensureNotKeys(object: Object, keys: string[]): Object {
     return mapKeys(object, (value, key) => {
         if (!keys.includes(key)) {
@@ -41,7 +37,7 @@ function ensureNotKeys(object: Object, keys: string[]): Object {
 
 export interface Handler {
     // willHandle(log: Log): boolean
-    handle(log: Log, logger: UniversalLogger): Promise<void>
+    handle(log: Log): Promise<void>
 }
 
 export type Processor = (log: Log) => Log
@@ -157,7 +153,7 @@ export class Logger implements UniversalLogger {
         log = obfuscate(log, this.obfuscation)
 
         try {
-            await Promise.all(this.handlers.map(handler => handler.handle(log, this))) // cloneDeep to protected others handlers ?
+            await Promise.all(this.handlers.map(handler => handler.handle(log))) // cloneDeep to protected others handlers ?
         } catch (e) {
             await this.errorHandler(e as Error)
         }
@@ -284,7 +280,7 @@ export class BaseHandler implements Handler {
         return shouldBeLogged(log.level, this.maxLevel, this.minLevel)
     }
 
-    public async handle(log:Log, logger: UniversalLogger) {
+    public async handle(log:Log) {
         if (!this.willHandle(log)) {
             return
         }
@@ -297,10 +293,10 @@ export class BaseHandler implements Handler {
             }
         }
 
-        return this.write(this.formatter(log), log, logger)
+        return this.write(this.formatter(log), log)
     }
 
-    protected write(formatted: any, log: Log, logger: UniversalLogger): any {
+    protected write(formatted: any, log: Log): any {
         throw new Error('To implement in handler')
     }
 }
@@ -336,84 +332,29 @@ export class ConsoleHandler extends BaseHandler {
     }
 }
 
-export interface LogLevelTriggerHandlerOpts extends Omit<BaseHandlerOpts, 'formatter'> {
-    handlers: Handler[]
-    triggerLevel: LogLevel
-    embeddedLogs?: boolean
-}
-
-export class LogLevelTriggerHandler extends BaseHandler {
-    protected triggerLevel: LogLevel
-    protected handlers: Handler[]
-    protected store: WeakMap<UniversalLogger, Log[]> = new WeakMap
-    protected embeddedLogs : boolean
-
-    constructor(opts: LogLevelTriggerHandlerOpts) {
-        super({
-            ...opts,
-            formatter: () => {}
-        })
-        this.triggerLevel = opts.triggerLevel
-        this.handlers = opts.handlers
-        this.embeddedLogs = opts.embeddedLogs || false
-    }
-
-    public async write(_: void, log: Log, logger: UniversalLogger) {
-        const logs = this.store.get(logger) || []
-        logs.push(log)
-        this.store.set(logger, logs)
-
-        if (shouldBeLogged(log.level, this.triggerLevel)) {
-            this.store.delete(logger)
-
-            if (this.embeddedLogs) {
-                log = {
-                    ...log,
-                    ...logs.length > 1 && { stackedLogs: logs.slice(0, -1) }
-                }
-                await Promise.all(this.handlers.map(handler => handler.handle(log, logger)))
-            } else {
-                await Promise.all(logs.map(async log => {
-                    await Promise.all(this.handlers.map(handler => handler.handle(log, logger)))
-                }))
-            }
-        }
-    }
-}
-
 export class MemoryHandler extends BaseHandler {
-    protected logs: WeakMap<UniversalLogger | this, Log[]> = new WeakMap
-    protected byLogger: boolean
+    protected writtenLogs: Array<any> = []
 
-    constructor(opts: BaseHandlerOpts & { byLogger?: boolean }) {
+    constructor(opts: BaseHandlerOpts) {
         super({formatter: log => log, ...opts})
-        this.byLogger = opts.byLogger || true
     }
 
-    protected async write(formatted: any, log: Log, logger: UniversalLogger) {
-        const target = this.byLogger ? logger : this
-        if (!this.logs.has(target)) {
-            this.logs.set(target, [])
-        }
-        this.logs.get(target)!.push(formatted)
+    protected async write(formatted: any, log: Log) {
+        this.writtenLogs.push(formatted)
     }
 
     public getWrittenLogs(consume: boolean = false) {
-        const logs = this.logs
+        const writtenLogs = this.writtenLogs
 
         if (consume) {
             this.clearWrittenLogs()
         }
 
-        return logs
+        return writtenLogs
     }
 
     public clearWrittenLogs() {
-        //this.logs = []
-    }
-
-    protected getTarget() {
-
+        this.writtenLogs = []
     }
 }
 
@@ -450,8 +391,8 @@ export class CallbackHandler extends BaseHandler {
         this.cb = opts.cb
     }
 
-    protected async write(formatted: any, log: Log, logger: UniversalLogger) {
-        return this.cb(formatted, log, logger)
+    protected async write(formatted: any, log: Log) {
+        return this.cb(formatted, log)
     }
 }
 

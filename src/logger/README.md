@@ -8,13 +8,6 @@ Simple logger:
 - Log warnings, unhandled
 
 
-[ ] handler pipe
-[ ] Stack handler with read/write and option to stack by logger
-[ ] Fingercross
-
-
-
-
 ```typescript
 
 const logger = createLogger({...})
