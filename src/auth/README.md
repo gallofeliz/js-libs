@@ -13,6 +13,7 @@ Authentication/Authorization:
   - namespace/resource/id/operation
   - What you want ! But caution that read-article-* matches read-article-33 but also read-article-333 and read-article-author-email
 - [-] Multi requireAuth for example to separate operations to resources (['operation.article.write', 'resource.article[\*]'])
+- [ ] Complexe resources/actions like require(['action=read', 'article.category=sport', 'article.tag=swim', 'article.tag=international'] and user having ['action=read', 'article.category=sport', 'article.category=hobbies', 'article.tag=\*'] to be able to read articles only about sport or hobbies, but with any tag). Why not an object, for user {action: read, article.category: [sport, hobbies], article.tag: \* } and for require {action: read, article.category: sport, article.tag: [swim, international]} and why not deep {article: {category: ..., tags: ...}}
 
 ```typescript
 import { Auth, createAuthMiddleware } from '.'
