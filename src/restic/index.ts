@@ -47,7 +47,8 @@ export interface ResticFindResult {
 export interface ResticRepository {
     location: string
     password: string
-    locationParams?: Record<string, string>
+    //locationParams?: Record<string, string>
+    [providerKey: string]: string
 }
 
 export interface ResticNetworkLimit {
@@ -470,7 +471,7 @@ export class Restic {
     protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
         const provider = extractProvider(repository.location)
 
-        return reduce(repository.locationParams || {}, (providerEnvs: Record<string, string>, value: string, key: string) => {
+        return reduce(omit(repository, ['location', 'password']), (providerEnvs: Record<string, string>, value: string, key: string) => {
             providerEnvs[provider.toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
 
             return providerEnvs

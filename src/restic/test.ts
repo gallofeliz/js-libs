@@ -36,6 +36,21 @@ describe('restic', () => {
         })
     }).timeout(5000)
 
+    it('init aws', async () => {
+        try {
+            await restic.init({
+                repository: {
+                    location: 's3:s3.amazonaws.com/bucket-name',
+                    password: '***',
+                    accessKeyId: '',
+                    secretAccessKey: ''
+                }
+            })
+        } catch (e) {
+            console.log(e)
+        }
+    }).timeout(5000)
+
     it('backup dryRun', async () => {
         console.log(
             await fsRestic.backup({
