@@ -48,7 +48,6 @@ function default_1(program, pluginOptions) {
                         const type = node.typeArguments[0].getText();
 
                         let schema
-
                         switch(type) {
                             case 'string':
                             case 'number':

@@ -1,5 +1,5 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { LoggerOpts, Logger, logUnhandled, logWarnings, MemoryHandler, ConsoleHandler, LoggerProxyHandler, LogLevel } from '@gallofeliz/logger'
+import { LoggerOpts, Logger, MemoryHandler, ConsoleHandler, LoggerProxyHandler, LogLevel } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 import { get } from 'lodash'
@@ -106,10 +106,44 @@ class App<Config> {
             metadata: { appRunUuid: uuid() }
         })
 
-        try {
-            logUnhandled(this.logger)
-            logWarnings(this.logger)
+        let maxLogLevel: LogLevel | undefined
 
+        process.on('warning', async (warning) => {
+            await this.logger!.warning(warning.message, {warning})
+        })
+
+        // Hack because I don't know why, this event listener is registered again
+        // On first call. The code is called twice with listenerCount() to 1 then 2
+        const handledRejections: Error[] = []
+        process.on('unhandledRejection', async (reason) => {
+            if (handledRejections.includes(reason as Error)) {
+                return
+            }
+
+            handledRejections.push(reason as Error)
+
+            await this.logger!.crit('Unhandled Rejection ; dirty exiting', {reason})
+
+            if (this.logger!.getHandlers()[0] === temporaryLogHandler) {
+                const handler = new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})
+                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log)))
+            }
+
+            process.exit(1)
+        })
+
+        process.on('uncaughtException', async (err, origin) => {
+            await this.logger!.crit('UncaughtException ; dirty exiting', {err, origin})
+
+            if (this.logger!.getHandlers()[0] === temporaryLogHandler) {
+                const handler = new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})
+                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log)))
+            }
+
+            process.exit(1)
+        })
+
+        try {
             const appDefinition = this.appDefinition
 
             const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
@@ -126,23 +160,25 @@ class App<Config> {
                 ...appDefinition.config
             }
 
-            this.config = appDefinition.config instanceof Function
-                ? await appDefinition.config()
-                : await loadConfig<any, any>({
-                    ...configDef,
-                    logger: this.logger,
-                    watchChanges: appDefinition.config?.watchChanges
-                        ? {
-                            abortSignal: this.abortController.signal,
-                            eventEmitter: watchEventEmitter,
-                        }
-                        : undefined
-                })
-
-            let maxLogLevel
+            if (appDefinition.config) {
+                this.config = appDefinition.config instanceof Function
+                    ? await appDefinition.config()
+                    : await loadConfig<any, any>({
+                        ...configDef,
+                        logger: this.logger,
+                        watchChanges: appDefinition.config?.watchChanges
+                            ? {
+                                abortSignal: this.abortController.signal,
+                                eventEmitter: watchEventEmitter,
+                            }
+                            : undefined
+                    })
+                } else {
+                    this.config = {} as Config
+                }
 
             if (appDefinition.logger && !(appDefinition.logger instanceof Function) && appDefinition.logger.logLevelConfigPath) {
-                maxLogLevel = get(this.config, appDefinition.logger.logLevelConfigPath, 'info')
+                maxLogLevel = get(this.config, appDefinition.logger.logLevelConfigPath, 'info') as LogLevel
 
                 validate(maxLogLevel, { schema: tsToJsSchema<LogLevelWithDefault>() })
 
@@ -237,11 +273,15 @@ class App<Config> {
 
             throw e
         } finally {
-            temporaryLogHandler.getWrittenLogs().forEach(log => {
+            await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => {
                 this.logger!.getHandlers()[0].handle(log)
-            })
+            }))
 
             temporaryLogHandler.clearWrittenLogs()
+        }
+
+        return {
+            maxLogLevel
         }
     }
 
@@ -250,7 +290,7 @@ class App<Config> {
             throw new Error('Application already run')
         }
 
-        await this.prepare()
+        const {maxLogLevel} = await this.prepare()
 
         this.alreadyRun = true
 
@@ -268,10 +308,33 @@ class App<Config> {
 
         ;['SIGTERM', 'SIGINT'].forEach(signal => process.on(signal, processSignalHandler))
         // Add clean up / beforeExitOnError ?
-        // Handle unhandled rejections ? process.prependListener
 
-        this.logger!.info('Running', { config: this.config, name: this.name, version: this.version })
-        this.runFn(this.services!)
+        this.logger!.info('Running app', {
+            config: this.config,
+            name: this.name,
+            version: this.version,
+            logLevel: maxLogLevel
+        })
+
+        this.abortController.signal.addEventListener('abort', () => {
+            this.logger!.info('Abort requested', {reason: this.abortController.signal.reason})
+        })
+
+        try {
+            await this.runFn(this.services!)
+        } catch (e) {
+            if (e !== this.abortController.signal.reason && (e as any)?.cause !== this.abortController.signal.reason) {
+                throw e
+            }
+        }
+
+        const experimentalProcess = process as NodeJS.Process & { getActiveResourcesInfo?: () => string[] }
+
+        if (experimentalProcess.getActiveResourcesInfo) {
+            this.logger!.debug('Actives resources', { activeResources: experimentalProcess.getActiveResourcesInfo() })
+        }
+
+        this.logger!.info('App exited')
     }
 }
 

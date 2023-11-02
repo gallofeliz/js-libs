@@ -1,6 +1,9 @@
 {
   "exclude": ["**/*tst.ts"],
   "compilerOptions": {
+    "plugins": [
+      { "transform": "@gallofeliz/typescript-transform-to-json-schema" }
+    ],
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
     /* Projects */

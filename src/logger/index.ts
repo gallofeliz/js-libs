@@ -118,24 +118,24 @@ export class Logger implements UniversalLogger {
     }
 
     public async log(level: LogLevel, message: string, metadata?: Object): Promise<void> {
-        let log: Log = {
-            ...ensureNotKeys(cloneDeep({...this.metadata, ...metadata}), ['level', 'message', 'timestamp']),
-            timestamp: new Date,
-            level,
-            message,
-        }
-
-        for (const processor of this.processors) {
-            log = processor(log)
-
-            if (!log) {
-                return
-            }
-        }
-
-        log = obfuscate(log, this.obfuscation)
-
         try {
+            let log: Log = {
+                ...ensureNotKeys(cloneDeep({...this.metadata, ...metadata}), ['level', 'message', 'timestamp']),
+                timestamp: new Date,
+                level,
+                message,
+            }
+
+            for (const processor of this.processors) {
+                log = processor(log)
+
+                if (!log) {
+                    return
+                }
+            }
+
+            log = obfuscate(log, this.obfuscation)
+
             await Promise.all(this.handlers.map(handler => handler.handle(log))) // cloneDeep to protected others handlers ?
         } catch (e) {
             await this.errorHandler(e as Error)

@@ -29,6 +29,9 @@ describe('Obfuscator', () => {
 
         const url = 'https://melanie:dontshouldseethat@mydomain/endpoint'
 
+        const ac = new AbortController
+        ac.abort()
+
         const data = {
             message: 'Badaboom',
             level: 'error',
@@ -40,6 +43,7 @@ describe('Obfuscator', () => {
                     port: 80
                 }
             },
+            domException: ac.signal.reason,
             session: {
                 user: new User
             },

@@ -40,7 +40,7 @@ export class Obfuscator {
         const self = this
 
         return traverse(cloneDeep(data)).forEach(function (data: any) {
-            if (data instanceof Error && self.handleErrors) {
+            if (data instanceof Error && !(data instanceof DOMException) && self.handleErrors) {
                 const newRawData = self.obfuscate({
                     ...data,
                     message: data.message,

@@ -11,7 +11,7 @@ DEST=dist/$LIB
 
 test -e $SRC/README.md
 rm -Rf dist
-tsc
+ttsc
 
 find dist -mindepth 1 -maxdepth 1 -not -name "$LIB" -exec rm -R {} \;
 
