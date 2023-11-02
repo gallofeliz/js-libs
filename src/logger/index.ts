@@ -42,23 +42,6 @@ export interface Handler {
 
 export type Processor = (log: Log) => Log
 
-export function logUnhandled(logger: UniversalLogger) {
-    process.on('unhandledRejection', async (reason) => {
-        await logger.crit('Unhandled Rejection', {reason})
-        process.exit(1)
-    })
-    process.on('uncaughtException', async (err, origin) => {
-        await logger.crit('UncaughtException', {err, origin})
-        process.exit(1)
-    })
-}
-
-export function logWarnings(logger: UniversalLogger) {
-    process.on('warning', async (warning) => {
-        await logger.warning('Warning', {warning})
-    })
-}
-
 export interface UniversalLogger {
     crit(message: string, metadata?: Object): Promise<void>
     error(message: string, metadata?: Object): Promise<void>

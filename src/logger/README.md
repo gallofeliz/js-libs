@@ -5,8 +5,6 @@ Simple logger:
 - Advanced childs (not only metadata but also own processors and handlers stack)
 - Default simple JSON console logging
 - Secrets Obfuscation ?
-- Log warnings, unhandled
-
 
 ```typescript
 

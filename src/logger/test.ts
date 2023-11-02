@@ -1,13 +1,8 @@
-import {createCallbackHandler, createLogger, logWarnings, ConsoleHandler, createJsonFormatter, createConsoleHandler} from '.'
+import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler} from '.'
 
 const logger = createLogger()
 
 describe('Logger', () => {
-
-  it('warning', () => {
-    logWarnings(logger)
-    process.emitWarning('No good good good', { code: 'NOT_GOOD_GOOD_GOOD' })
-  })
 
   it('basic test', () => {
     logger.info('Basic test', {
