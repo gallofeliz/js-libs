@@ -1,7 +1,7 @@
 import { readBeewiDevice, BeewiDeviceReader } from '.'
 import { createLogger } from '@gallofeliz/logger'
 import { setTimeout } from 'timers/promises'
-import {fail} from 'assert'
+import assert from 'assert'
 
 describe('Beewi reader', () => {
     const logger = createLogger()
@@ -69,15 +69,15 @@ describe('Beewi reader', () => {
 
             const r = reader.read({abortSignal: ac.signal})
 
-            await setTimeout(100, undefined)
+            await setTimeout(10, undefined)
 
             ac.abort()
 
             try {
                 await r
-                fail('Should not sucess')
+                assert.fail('Should not sucess')
             } catch (e) {
-                console.log(r)
+                assert((e as Error).name === 'AbortError', e as Error)
             }
         }).timeout(10000)
 

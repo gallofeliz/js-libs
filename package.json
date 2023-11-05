@@ -62,6 +62,8 @@
     "src/dates-iterators",
     "src/mysql-dump",
     "src/sqlite-dump",
-    "src/restic"
+    "src/restic",
+    "beewi-reader",
+    "src/beewi-reader"
   ]
 }
