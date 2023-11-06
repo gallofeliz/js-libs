@@ -195,15 +195,18 @@ export class Process<Result extends any> extends EventEmitter {
             if (exitCode > 0) {
                 throw new Error('Process error : ' + stderr.trim())
             }
+            if (inputDataProcessError) {
+                throw new Error('ProcessPipeError : ' + inputDataProcessError.message)
+            }
+            if (exitCode === null && process.killed) {
+                throw new Error('Timeout')
+            }
         } catch (e) {
             if (e === abortSignal?.reason) {
                 this.logger.info('Abort requested, awaiting process ends')
                 await once(process, 'exit')
             }
             throw e
-        }
-        if (inputDataProcessError) {
-            throw new Error('ProcessPipeError : ' + inputDataProcessError.message)
         }
 
         if (this.config.outputStream) {

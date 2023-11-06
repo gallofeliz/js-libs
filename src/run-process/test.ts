@@ -7,6 +7,20 @@ const logger = createLogger()
 
 describe('Run Process', () => {
 
+    it('Timeout test', async () => {
+        try {
+            await runProcess({
+                logger,
+                command: 'sleep 1 ; echo hello',
+                outputType: 'text',
+                timeout: 100
+            })
+            fail('Unexpected success')
+        } catch (e) {
+            strictEqual((e as Error).message, 'Timeout')
+        }
+    })
+
     it('Simple text process', async () => {
         strictEqual(await runProcess({
             logger,
