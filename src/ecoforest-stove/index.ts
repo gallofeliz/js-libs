@@ -8,10 +8,14 @@ import pRetry from 'async-retry'
 export interface StoveSummary {
     status: 'running' | 'stopped' | 'stopping' | 'error' | 'starting' | 'standby'
     configuredPower: number
+    configuredTemperature: number
     burnTemperature: number
+    configuredMaxPower: number
 }
 
 export class EcoforestStove {
+    static MAX_CONFIGURED_POWER: Symbol = Symbol('MAX_CONFIGURED_POWER')
+
     public start() {
         throw new Error('Nope')
     }
@@ -21,17 +25,27 @@ export class EcoforestStove {
     }
 
     public async getSummary(): Promise<StoveSummary> {
-        const [data, data3] = await Promise.all([
+        const [data, data3, data4] = await Promise.all([
             this.callStoveAndRetryForShittyErrors(1002),
-            this.callStoveAndRetryForShittyErrors(1020)
+            this.callStoveAndRetryForShittyErrors(1020),
+            this.callStoveAndRetryForShittyErrors(1096)
         ])
 
         return {
             configuredPower: parseInt(data.consigna_potencia, 10),
             status: this.computeStatusFromInt(parseInt(data.estado, 10)),
-            burnTemperature: parseFloat(data3.Th)
+            burnTemperature: parseFloat(data3.Th),
+            configuredTemperature: parseFloat(data.consigna_temperatura),
+            configuredMaxPower: parseInt(data4.nivelmax_onoff, 10)
         }
 
+    }
+
+    public async configurePower(power: number | typeof EcoforestStove.MAX_CONFIGURED_POWER): Promise<void> {
+        if (power === EcoforestStove.MAX_CONFIGURED_POWER) {
+            power = (await this.getSummary()).configuredMaxPower
+        }
+        await this.callStoveAndRetryForShittyErrors(1004, {potencia: power as number})
     }
 
     protected computeStatusFromInt(statusInt: number): StoveSummary['status'] {
@@ -60,17 +74,17 @@ export class EcoforestStove {
         throw new Error('Unknown')
     }
 
-    protected async callStoveAndRetryForShittyErrors(operationId: number): Promise<any> {
-        return pRetry(() => this.callStove(operationId), {retries: 5})
+    protected async callStoveAndRetryForShittyErrors(operationId: number, params?: Record<string, number | string>): Promise<any> {
+        return pRetry(() => this.callStove(operationId, params), {retries: 5})
     }
 
-    protected async callStove(operationId: number): Promise<any> {
+    protected async callStove(operationId: number, params?: Record<string, number | string>): Promise<any> {
 
         const data: string = await httpRequest({
             logger: createLogger(),
             method: 'POST',
             url: 'http://ecoforest/recepcion_datos_4.cgi',
-            bodyData: {'idOperacion': operationId},
+            bodyData: {'idOperacion': operationId, ...params},
             bodyType: 'form',
             responseType: 'text'
         })
