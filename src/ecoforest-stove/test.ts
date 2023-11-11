@@ -1,4 +1,3 @@
-import { setTimeout } from "timers/promises";
 import { EcoforestStove } from ".";
 
 describe('EcoforestStove', () => {
@@ -9,14 +8,17 @@ describe('EcoforestStove', () => {
 
     }).timeout(10000)
 
+    it('configureConvectorSpeedModifier', async () => {
+        const stove = new EcoforestStove
+
+        console.log(await stove.configureConvectorSpeedModifier(-15))
+
+    }).timeout(10000)
+
     it('configurePower', async () => {
         const stove = new EcoforestStove
 
         await stove.configurePower(2)
-
-        await setTimeout(5000)
-
-        await stove.configurePower(EcoforestStove.MAX_CONFIGURED_POWER)
 
     }).timeout(10000)
 

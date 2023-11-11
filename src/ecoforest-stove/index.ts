@@ -10,12 +10,12 @@ export interface StoveSummary {
     configuredPower: number
     configuredTemperature: number
     burnTemperature: number
-    configuredMaxPower: number
+    //configuredMaxPower: number
+    configuredConvectorSpeedModifierPct: number
+    convectorSpeedPct: number
 }
 
 export class EcoforestStove {
-    static MAX_CONFIGURED_POWER: Symbol = Symbol('MAX_CONFIGURED_POWER')
-
     public start() {
         throw new Error('Nope')
     }
@@ -25,27 +25,33 @@ export class EcoforestStove {
     }
 
     public async getSummary(): Promise<StoveSummary> {
-        const [data, data3, data4] = await Promise.all([
+        const [data, data3, /*data4,*/ data5] = await Promise.all([
             this.callStoveAndRetryForShittyErrors(1002),
             this.callStoveAndRetryForShittyErrors(1020),
-            this.callStoveAndRetryForShittyErrors(1096)
+            //this.callStoveAndRetryForShittyErrors(1096),
+            this.callStoveAndRetryForShittyErrors(1061)
         ])
+
+        console.log(data3)
 
         return {
             configuredPower: parseInt(data.consigna_potencia, 10),
             status: this.computeStatusFromInt(parseInt(data.estado, 10)),
             burnTemperature: parseFloat(data3.Th),
             configuredTemperature: parseFloat(data.consigna_temperatura),
-            configuredMaxPower: parseInt(data4.nivelmax_onoff, 10)
+            //configuredMaxPower: parseInt(data4.nivelmax_onoff, 10),
+            configuredConvectorSpeedModifierPct: parseFloat(data5.Co),
+            convectorSpeedPct: parseFloat(data3.Co),
         }
 
     }
 
-    public async configurePower(power: number | typeof EcoforestStove.MAX_CONFIGURED_POWER): Promise<void> {
-        if (power === EcoforestStove.MAX_CONFIGURED_POWER) {
-            power = (await this.getSummary()).configuredMaxPower
-        }
-        await this.callStoveAndRetryForShittyErrors(1004, {potencia: power as number})
+    public async configurePower(power: number): Promise<void> {
+        await this.callStoveAndRetryForShittyErrors(1004, {potencia: power})
+    }
+
+    public async configureConvectorSpeedModifier(pct: number): Promise<void> {
+        await this.callStoveAndRetryForShittyErrors(1054, {delta_convector: pct})
     }
 
     protected computeStatusFromInt(statusInt: number): StoveSummary['status'] {
