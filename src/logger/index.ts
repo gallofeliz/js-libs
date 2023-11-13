@@ -1,7 +1,9 @@
-import { cloneDeep, mapKeys, omit } from 'lodash'
+import { cloneDeep, mapKeys, omit, chain } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
 import { ObfuscationRule, obfuscate } from '@gallofeliz/obfuscator'
+// @ts-ignore
+import {flatten as flattenObject} from 'flat'
 
 export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
 const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
@@ -188,7 +190,7 @@ interface CreateJsonFormatterOpts {
     indentation?: number
 }
 
-export function createJsonFormatter(opts: CreateJsonFormatterOpts = {}) {
+export function createJsonFormatter(opts: CreateJsonFormatterOpts = {}): Formatter {
     const replacer = (key: any, value: any) => {
         if (opts.customReplacements && opts.customReplacements.length > 0) {
             value = opts.customReplacements.reduce((value, replacer) => replacer(key, value), value)
@@ -225,6 +227,30 @@ export function createJsonFormatter(opts: CreateJsonFormatterOpts = {}) {
 
     return (log: Log) => {
         return stringify(log, replacer, opts.indentation)
+    }
+}
+
+export function createLogfmtFormatter(): Formatter {
+    const toJson = createJsonFormatter()
+
+    return (log: Log) => {
+        return chain(
+            flattenObject<Log, object>(JSON.parse(toJson(log)), {delimiter: '.'})
+        )
+        .omitBy(v => v === undefined)
+        .mapKeys((_, k: string) => k.replace(/ /g, '_'))
+        .mapValues(v => {
+            if (typeof v === 'string' && !v.includes(' ')) {
+                return v
+            }
+
+            return JSON.stringify(v)
+        })
+        .omitBy(v => v === '' || v === undefined)
+        .toPairs()
+        .map(kv => kv.join('='))
+        .join(' ')
+        .value()
     }
 }
 

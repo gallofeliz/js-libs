@@ -1,8 +1,30 @@
-import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler} from '.'
+import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler, createLogfmtFormatter} from '.'
 
 const logger = createLogger()
 
 describe('Logger', () => {
+
+  it('logfmt', () => {
+    const logger = createLogger({handlers: [
+      createConsoleHandler({
+        formatter: createLogfmtFormatter()
+      })
+    ]})
+    logger.info('My message', {
+      tag: 'hello',
+      emptyStr: '',
+      bool: true,
+      numb: 33,
+      nul: null,
+      undef: undefined,
+      'key with space': true,
+      createdDate: new Date,
+      my: { deep: { data: true }},
+      error: new Error('Invalid data'),
+      fn() { console.log('hello') },
+      symbol: Symbol.for('A symbol')
+    })
+  })
 
   it('basic test', () => {
     logger.info('Basic test', {
