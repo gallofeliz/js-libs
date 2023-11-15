@@ -240,7 +240,7 @@ export function createLogfmtFormatter(): Formatter {
         .omitBy(v => v === undefined)
         .mapKeys((_, k: string) => k.replace(/ /g, '_'))
         .mapValues(v => {
-            if (typeof v === 'string' && !v.includes(' ')) {
+            if (typeof v === 'string' && !v.match(/\s/)) {
                 return v
             }
 

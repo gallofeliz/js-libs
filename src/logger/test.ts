@@ -12,6 +12,8 @@ describe('Logger', () => {
     ]})
     logger.info('My message', {
       tag: 'hello',
+      str: 'very\ttab',
+      str2: 'some\nlines',
       emptyStr: '',
       bool: true,
       numb: 33,
