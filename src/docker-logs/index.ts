@@ -2,6 +2,8 @@ import matcher from 'matcher'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { ContainerRunInfo, DockerContainersRunStateWatcher } from './docker-containers-run-state-watcher'
 import { DockerContainerLogsListener, Log, Stream } from './docker-container-logs-listener'
+import { Readable } from 'stream'
+import EventEmitter from 'events'
 
 interface ContainerState extends ContainerRunInfo {
     listeners: {
@@ -48,12 +50,25 @@ export class DockerLogs {
         this.runStateMatcher = new DockerContainersRunStateWatcher(logger)
     }
 
-    public async watch(watch: DockerLogWatchOpts) {
+    public watch(watch: Omit<DockerLogWatchOpts, 'onLog'>): EventEmitter
+    public watch(watch: Omit<DockerLogWatchOpts, 'onLog'> & {onLog: (log: DockerLog) => void}): void
+    public watch(watch: Omit<DockerLogWatchOpts, 'onLog'> & {onLog?: (log: DockerLog) => void}) {
         if (watch.abortSignal.aborted) {
             return
         }
 
-        this.watchers.push(watch)
+        const em = watch.onLog ? undefined : new EventEmitter
+
+        const onLog = watch.onLog || ((log: DockerLog) => {
+            em!.emit('log', log)
+        })
+
+        const watch2: DockerLogWatchOpts = {
+            ...watch,
+            onLog
+        }
+
+        this.watchers.push(watch2)
         this.logger.info('Subscriving new watcher', {watch})
 
         if (!this.started) {
@@ -64,13 +79,34 @@ export class DockerLogs {
 
         watch.abortSignal?.addEventListener('abort', () => {
             this.logger.info('Unsubscriving watcher', {watch})
-            this.watchers.splice(this.watchers.indexOf(watch), 1)
+            this.watchers.splice(this.watchers.indexOf(watch2), 1)
             this.computeListeners()
 
             if (this.watchers.length === 0) {
                 this.stop()
             }
         })
+
+        return em
+    }
+
+    public stream(opts: Omit<DockerLogWatchOpts, 'onLog'>): Readable {
+        const stream = new Readable({objectMode: true, read(){} })
+        const ac = new AbortController
+
+        this.watch({
+            ...opts,
+            abortSignal: ac.signal,
+            onLog(log: DockerLog) {
+                stream.push(log)
+            }
+        })
+
+        opts.abortSignal.addEventListener('abort', (e) => ac.abort(e))
+
+        stream.once('close', () => { ac.abort() })
+
+        return stream
     }
 
     protected onContainerLog(log: Log, container: ContainerState, stream: Stream) {

@@ -10,8 +10,8 @@ Follow docker logs based on criteria :)
 - [ ] Optimize container stream using dual stdout/stderr when both are watched ?
 - [ ] Unordered logs in some cases (very fast loggin in stdout and stderr). Example : docker run node:16-alpine sh -c 'echo OK; echo ERROR >&2; exit 1' will show in random order the messages, also in the console. Adding -t option resolves, but impact the container. Probably no fix, even with attach api.
 - [ ] Using run -t outputs only in stdout. The order is respected. Note that in the console also it is to STDOUT. Probably no fix.
-- [ ] Change inside code Date to Docker dates to improve the precision and avoid strange some codes
 - [ ] Multiline support
+- [X] watch as stream
 
 ## Motivations
 
@@ -51,6 +51,34 @@ dockerLogs.watch({
     },
     abortSignal: abortController.signal
 })
+
+const watcher = dockerLogs.watch({
+    namePattern: ['*', '!*special*'],
+    stream: 'both',
+    abortSignal: abortController.signal
+})
+
+watcher.on('log', console.log)
+for await (const [log] of on(watcher, 'log', { signal: abortController.signal })) {
+    console.log(log)
+}
+
+const stream = dockerLogs.stream({
+    namePattern: '*special*',
+    stream: 'both',
+    abortSignal: abortController.signal
+})
+
+stream.on('data', console.log)
+stream.pipe(otherStreamObjectMode)
+
+for await (const log of dockerLogs.stream({
+    namePattern: '*',
+    stream: 'both',
+    abortSignal: abortController.signal
+})) {
+    console.log(log)
+}
 
 setTimeout(() => { abortController.abort() }, 30000)
 ```
