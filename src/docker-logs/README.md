@@ -2,7 +2,7 @@
 
 Follow docker logs based on criteria :)
 
-- [x] Follow on container patterns (using component matcher, on container name, id, image, compose), stdout/stdin/both
+- [x] Follow on container patterns (using component matcher, on container name, id, image, compose, labels), stdout/stdin/both
 - [x] Realtime
 - [x] Docker disconnects tolerance
 - [x] Very fast containers (unless others tested components, but this is thanks to a small hack)

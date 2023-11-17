@@ -21,11 +21,12 @@ export interface DockerLogWatchOpts {
         image?: {
             name?: string | string[]
             tag?: string | string[]
-        },
+        }
         compose?: {
             project?: string | string[]
             service?: string | string[]
         }
+        labels?: Record<string, string | string[]>
     }//Record<string, string | string[]>
     stream: 'stdout' | 'stderr' | 'both'
     onLog: (log: DockerLog) => void
@@ -43,6 +44,7 @@ export interface DockerLog {
             name: string
             tag: string
         },
+        labels: Record<string, string>
         compose?: {
             project: string
             service: string
@@ -119,7 +121,8 @@ export class DockerLogs {
                 name: container.name,
                 id: container.id,
                 image: container.image,
-                compose: container.compose
+                compose: container.compose,
+                labels: container.labels
             },
             stream,
             date: log.date,

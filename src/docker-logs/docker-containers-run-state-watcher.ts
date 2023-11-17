@@ -1,5 +1,6 @@
 import { UniversalLogger } from '@gallofeliz/logger'
 import Dockerode from 'dockerode'
+import { omit } from 'lodash'
 
 export interface ContainerRunInfo {
     name: string
@@ -10,6 +11,7 @@ export interface ContainerRunInfo {
     }
     runningUpdateAt: Date
     running: boolean
+    labels: Record<string, string>
     compose?: {
         project: string
         service: string
@@ -123,8 +125,9 @@ export class DockerContainersRunStateWatcher {
                 id: dEvent.id,
                 image: {
                     name: dEvent.Actor.Attributes.image.split(':')[0],
-                    tag: dEvent.Actor.Attributes.image.split(':').slice(1).join(':')
+                    tag: dEvent.Actor.Attributes.image.split(':').slice(1).join(':') || 'latest'
                 },
+                labels: omit(dEvent.Actor.Attributes, ['image', 'name']),
                 ...dEvent.Actor.Attributes['com.docker.compose.project']
                     && {
                         compose: {
@@ -185,8 +188,9 @@ export class DockerContainersRunStateWatcher {
             id: c.Id,
             image: {
                 name: c.Image.split(':')[0],
-                tag: c.Image.split(':').slice(1).join(':')
+                tag: c.Image.split(':').slice(1).join(':') || 'latest'
             },
+            labels: c.Labels,
             ...c.Labels['com.docker.compose.project']
                 && {
                     compose: {
