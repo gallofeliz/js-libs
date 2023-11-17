@@ -2,7 +2,7 @@
 
 Follow docker logs based on criteria :)
 
-- [x] Follow on name pattern (using component matcher), stdout/stdin/both (and why not others criteria like compose project/service, labels etc)
+- [x] Follow on container patterns (using component matcher, on container name, id, image, compose), stdout/stdin/both
 - [x] Realtime
 - [x] Docker disconnects tolerance
 - [x] Very fast containers (unless others tested components, but this is thanks to a small hack)
@@ -12,12 +12,13 @@ Follow docker logs based on criteria :)
 - [ ] Using run -t outputs only in stdout. The order is respected. Note that in the console also it is to STDOUT. Probably no fix.
 - [ ] Multiline support
 - [X] watch as stream
+- [ ] Subscrive containers with dedicated stream(s)
 
 ## Motivations
 
 The main goal of the tool is to read in realtime the logs of my containers and makes some metrics (errors, operations) and see them in grafana with alerts.
 
-THIS IS NOT a tool to collect logs. I tested some tools like logspout, interesting because it can be used to collect logs AND to consume them, but the projects seems to be not maintened. Using a tool as container to collect logs or configuring the logging driver (thanks to dual-logging, you also can read log with docker daemon) is more appropriated.
+THIS IS NOT a tool to collect logs. I tested some tools like logspout, interesting because it can be used to collect logs AND to consume them, but the projects seems to be not maintened. Using a tool as container to collect logs or configuring the logging driver (thanks to dual-logging, you also can read log with docker daemon) like Loki is more appropriated (but it was disastrous for me).
 
 ## How to use
 
@@ -32,7 +33,7 @@ const dockerLogs = new DockerLogs({
 })
 
 dockerLogs.watch({
-    namePattern: ['*', '!*special*'],
+    containerMatches: { name: ['*', '!*special*'] },
     stream: 'both',
     onLog(log) {
         const name = log.container.compose
@@ -44,7 +45,7 @@ dockerLogs.watch({
 })
 
 dockerLogs.watch({
-    namePattern: '*special*',
+    containerMatches: { compose: { project: 'special' } },
     stream: 'stderr',
     onLog(log) {
         console.log('SPECIAL STDERR', log.date, '-', log.container.name, '-', log.message)
@@ -52,19 +53,8 @@ dockerLogs.watch({
     abortSignal: abortController.signal
 })
 
-const watcher = dockerLogs.watch({
-    namePattern: ['*', '!*special*'],
-    stream: 'both',
-    abortSignal: abortController.signal
-})
-
-watcher.on('log', console.log)
-for await (const [log] of on(watcher, 'log', { signal: abortController.signal })) {
-    console.log(log)
-}
-
 const stream = dockerLogs.stream({
-    namePattern: '*special*',
+    containerMatches: { name: '*special*' },
     stream: 'both',
     abortSignal: abortController.signal
 })
@@ -73,7 +63,6 @@ stream.on('data', console.log)
 stream.pipe(otherStreamObjectMode)
 
 for await (const log of dockerLogs.stream({
-    namePattern: '*',
     stream: 'both',
     abortSignal: abortController.signal
 })) {

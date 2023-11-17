@@ -1,7 +1,6 @@
 import { DockerLogs, DockerLog } from '.'
 import { createLogger } from '@gallofeliz/logger'
 import chalk from 'chalk'
-import {on} from 'events'
 import { Writable } from 'stream'
 
 const abortController = new AbortController;
@@ -49,8 +48,7 @@ const onLog = (log: DockerLog) => {
 }
 
 (async () => {
-    for await (const log of dockerLogs.stream({
-        namePattern: ['*'],
+    for await (const log of dockerLogs.watch({
         stream: 'both',
         abortSignal: abortController.signal
     })) {
@@ -58,8 +56,7 @@ const onLog = (log: DockerLog) => {
     }
 })()
 
-const stream = dockerLogs.stream({
-    namePattern: ['*'],
+const stream = dockerLogs.watch({
     stream: 'both',
     abortSignal: abortController.signal
 })
@@ -76,32 +73,24 @@ const formatLogStream = new Writable({
 stream.pipe(formatLogStream)
 
 dockerLogs.watch({
-    namePattern: ['*'],
     stream: 'both',
     onLog,
     abortSignal: abortController.signal
 })
 
-const watcher = dockerLogs.watch({
-    namePattern: ['*'],
+dockerLogs.watch({
+    containerMatches: {
+        compose: {
+            service: '*test*'
+        }
+        //'compose.service': '*test*'
+    },
     stream: 'both',
+    onLog(log: DockerLog) {
+        console.log(log)
+    },
     abortSignal: abortController.signal
 })
-
-watcher.on('log', onLog)
-
-;(async() => {
-
-    const watcher2 = dockerLogs.watch({
-        namePattern: ['*'],
-        stream: 'both',
-        abortSignal: abortController.signal
-    })
-    for await (const [log] of on(watcher2, 'log', { signal: abortController.signal })) {
-        onLog(log)
-    }
-
-})()
 
 // dockerLogs.watch({
 //     namePattern: '*special*',

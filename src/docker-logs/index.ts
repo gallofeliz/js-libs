@@ -3,7 +3,9 @@ import { UniversalLogger } from '@gallofeliz/logger'
 import { ContainerRunInfo, DockerContainersRunStateWatcher } from './docker-containers-run-state-watcher'
 import { DockerContainerLogsListener, Log, Stream } from './docker-container-logs-listener'
 import { Readable } from 'stream'
-import EventEmitter from 'events'
+import { every, get } from 'lodash'
+// @ts-ignore
+import {flatten as flattenObject} from 'flat'
 
 interface ContainerState extends ContainerRunInfo {
     listeners: {
@@ -13,7 +15,18 @@ interface ContainerState extends ContainerRunInfo {
 }
 
 export interface DockerLogWatchOpts {
-    namePattern: string | string[]
+    containerMatches?: {
+        name?: string | string[]
+        id?: string | string[]
+        image?: {
+            name?: string | string[]
+            tag?: string | string[]
+        },
+        compose?: {
+            project?: string | string[]
+            service?: string | string[]
+        }
+    }//Record<string, string | string[]>
     stream: 'stdout' | 'stderr' | 'both'
     onLog: (log: DockerLog) => void
     abortSignal: AbortSignal
@@ -25,7 +38,7 @@ export interface DockerLog {
     message: string
     container: {
         name: string
-        id: string,
+        id: string
         image: {
             name: string
             tag: string
@@ -50,25 +63,18 @@ export class DockerLogs {
         this.runStateMatcher = new DockerContainersRunStateWatcher(logger)
     }
 
-    public watch(watch: Omit<DockerLogWatchOpts, 'onLog'>): EventEmitter
+    public watch(watch: Omit<DockerLogWatchOpts, 'onLog'>): Readable
     public watch(watch: Omit<DockerLogWatchOpts, 'onLog'> & {onLog: (log: DockerLog) => void}): void
     public watch(watch: Omit<DockerLogWatchOpts, 'onLog'> & {onLog?: (log: DockerLog) => void}) {
         if (watch.abortSignal.aborted) {
             return
         }
 
-        const em = watch.onLog ? undefined : new EventEmitter
-
-        const onLog = watch.onLog || ((log: DockerLog) => {
-            em!.emit('log', log)
-        })
-
-        const watch2: DockerLogWatchOpts = {
-            ...watch,
-            onLog
+        if (!watch.onLog) {
+            return this.stream(watch)
         }
 
-        this.watchers.push(watch2)
+        this.watchers.push(watch as DockerLogWatchOpts)
         this.logger.info('Subscriving new watcher', {watch})
 
         if (!this.started) {
@@ -79,18 +85,16 @@ export class DockerLogs {
 
         watch.abortSignal?.addEventListener('abort', () => {
             this.logger.info('Unsubscriving watcher', {watch})
-            this.watchers.splice(this.watchers.indexOf(watch2), 1)
+            this.watchers.splice(this.watchers.indexOf(watch as DockerLogWatchOpts), 1)
             this.computeListeners()
 
             if (this.watchers.length === 0) {
                 this.stop()
             }
         })
-
-        return em
     }
 
-    public stream(opts: Omit<DockerLogWatchOpts, 'onLog'>): Readable {
+    protected stream(opts: Omit<DockerLogWatchOpts, 'onLog'>): Readable {
         const stream = new Readable({objectMode: true, read(){} })
         const ac = new AbortController
 
@@ -125,8 +129,18 @@ export class DockerLogs {
         this.dispatchLog(dockerLog)
     }
 
-    protected isMatch(container: {name: string}, watch: DockerLogWatchOpts) {
-        return matcher(container.name, watch.namePattern).length === 1
+    protected isMatch(container: ContainerState | DockerLog['container'], watch: DockerLogWatchOpts) {
+        if (!watch.containerMatches) {
+            return true
+        }
+
+        const flatContainerMatches = flattenObject(watch.containerMatches)
+
+        return every(flatContainerMatches, (pattern, containerKey) => {
+            const value = get(container, containerKey)
+
+            return matcher(value, pattern).length === 1
+        })
     }
 
     protected dispatchLog(log: DockerLog) {
