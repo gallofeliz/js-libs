@@ -1,4 +1,6 @@
-import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler, createLogfmtFormatter} from '.'
+import { setTimeout } from 'timers/promises'
+import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler, createLogfmtFormatter, BreadCrumbHandler} from '.'
+import {times} from 'lodash'
 
 const logger = createLogger()
 
@@ -82,6 +84,62 @@ describe('Logger', () => {
     ])
 
     child1.info('Very secret', { password: 'verySecret', symbol: Symbol.for('A symbol'), fn() { console.log('hello') } })
+  })
+
+  it('Scenario with Bread Crumb Handler', async () => {
+
+    const appLogger = createLogger({
+      metadata: {appUid: '118218'},
+      handlers: [
+        new BreadCrumbHandler({
+          //passthroughMaxLevel: 'notice',
+          handler: new ConsoleHandler
+        })
+
+      ]
+    })
+
+    appLogger.debug('Building app')
+    appLogger.info('Starting app')
+
+    const httpServerLogger = appLogger.child({ serverUid: 'coolserver1' })
+
+    httpServerLogger.debug('Created http server')
+    httpServerLogger.info('Server running')
+
+    await Promise.all(times(10, async (i) => {
+      await setTimeout(50*i)
+      const httpRequestLogger = httpServerLogger.child({requestUid: i})
+      httpRequestLogger.info('Received request')
+
+      const commandLogger = httpRequestLogger.child({cmd: 'ls', cmdUid: Math.random()})
+
+      commandLogger.debug('Starting running ls')
+
+      await setTimeout(100)
+
+      if (i === 4) {
+        commandLogger.debug('STDERR : invalid file descriptor')
+        await setTimeout(50)
+        commandLogger.debug('ExitCode 1')
+
+        httpRequestLogger.error('cmd error', { error : new Error('Invalid file descriptor')})
+        httpRequestLogger.info('Request ended code 500')
+      } else if (i === 8) {
+        commandLogger.debug('STDERR : Boooooom')
+        await setTimeout(50)
+        commandLogger.debug('ExitCode 2')
+
+        appLogger.crit('Unhandled exception', { error: new Error('Boooooom') })
+      } else {
+        await setTimeout(100)
+        commandLogger.debug('STDOUT : . .. home backups music')
+        await setTimeout(50)
+        commandLogger.debug('ExitCode 0')
+
+        httpRequestLogger.info('Request ended code 200')
+      }
+    }))
 
   })
 })

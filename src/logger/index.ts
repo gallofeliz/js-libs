@@ -39,7 +39,7 @@ function ensureNotKeys(object: Object, keys: string[]): Object {
 
 export interface Handler {
     // willHandle(log: Log): boolean
-    handle(log: Log): Promise<void>
+    handle(log: Log, logger: Logger): Promise<void>
 }
 
 export type Processor = (log: Log) => Log
@@ -83,6 +83,7 @@ export class Logger implements UniversalLogger {
         replaceDefaultRules?: boolean,
         replacement?: string
     }
+    protected parent?: Logger
 
     constructor(opts: LoggerOpts = {}) {
         this.metadata = opts.metadata || {}
@@ -138,14 +139,14 @@ export class Logger implements UniversalLogger {
 
             log = obfuscate(log, this.obfuscation)
 
-            await Promise.all(this.handlers.map(handler => handler.handle(log))) // cloneDeep to protected others handlers ?
+            await Promise.all(this.handlers.map(handler => handler.handle(log, this))) // cloneDeep to protected others handlers ?
         } catch (e) {
             await this.errorHandler(e as Error)
         }
     }
 
     public child(metadata?: Object): Logger {
-        return new Logger({
+        const logger = new Logger({
             metadata: cloneDeep({...this.metadata, ...(metadata || {})}),
             processors: [...this.processors],
             handlers: [...this.handlers],
@@ -155,6 +156,14 @@ export class Logger implements UniversalLogger {
                 rules: [...this.obfuscation.rules]
             }
         })
+
+        logger.parent = this
+
+        return logger
+    }
+
+    public getParent(): Logger | undefined {
+        return this.parent
     }
 
     public async crit(message: string, metadata?: Object) {
@@ -263,7 +272,7 @@ export class BaseHandler implements Handler {
     protected processors: Processor[]
 
     constructor(opts: BaseHandlerOpts = {}) {
-        this.maxLevel = opts.maxLevel || 'info'
+        this.maxLevel = opts.maxLevel || 'debug'
         this.minLevel = opts.minLevel || 'crit'
         this.processors = opts.processors || []
         this.formatter = opts.formatter || createJsonFormatter()
@@ -289,7 +298,7 @@ export class BaseHandler implements Handler {
         return shouldBeLogged(log.level, this.maxLevel, this.minLevel)
     }
 
-    public async handle(log:Log) {
+    public async handle(log:Log, logger: Logger) {
         if (!this.willHandle(log)) {
             return
         }
@@ -302,10 +311,10 @@ export class BaseHandler implements Handler {
             }
         }
 
-        return this.write(this.formatter(log), log)
+        return this.write(this.formatter(log), log, logger)
     }
 
-    protected write(formatted: any, log: Log): any {
+    protected write(formatted: any, log: Log, logger: Logger): any {
         throw new Error('To implement in handler')
     }
 }
@@ -400,8 +409,8 @@ export class CallbackHandler extends BaseHandler {
         this.cb = opts.cb
     }
 
-    protected async write(formatted: any, log: Log) {
-        return this.cb(formatted, log)
+    protected async write(formatted: any, log: Log, logger: Logger) {
+        return this.cb(formatted, log, logger)
     }
 }
 
@@ -409,8 +418,59 @@ export function createCallbackHandler(opts: CallbackHandlerOpts) {
     return new CallbackHandler(opts)
 }
 
-// export function createObfuscationProcessor(rules: ObfuscatorRule[], replacement?: string): Processor {
-//     const lib = new Obfuscator(rules, replacement)
 
-//     return log => lib.obfuscate(log)
-// }
+export type BreadCrumbHandlerOpts = Omit<BaseHandlerOpts, 'formatter'> & {
+    handler: Handler
+    flushMinLevel?: LogLevel
+    flushMaxLevel?: LogLevel
+    passthroughMinLevel?: LogLevel
+    passthroughMaxLevel?: LogLevel
+    crumbStackSize?: number
+}
+
+export class BreadCrumbHandler extends BaseHandler {
+    protected handler: Handler
+    protected stack = new WeakMap<Logger, Log[]>
+    protected flushMinLevel: LogLevel
+    protected flushMaxLevel: LogLevel
+    protected passthroughMinLevel: LogLevel
+    protected passthroughMaxLevel: LogLevel
+    protected crumbStackSize: number
+
+    constructor({handler, ...opts}: BreadCrumbHandlerOpts) {
+        super(opts)
+        this.handler = handler
+        this.flushMaxLevel = opts.flushMaxLevel || 'notice'
+        this.flushMinLevel = opts.flushMinLevel || 'crit'
+        this.passthroughMaxLevel = opts.passthroughMaxLevel || 'info'
+        this.passthroughMinLevel = opts.passthroughMinLevel || 'crit'
+        this.crumbStackSize = opts.crumbStackSize || 10
+    }
+
+    protected async write(formatted: any, log: Log, logger: Logger) {
+        // Flushing
+        if (shouldBeLogged(log.level, this.flushMaxLevel, this.flushMinLevel)) {
+            const previousLogs = this.stack.get(logger) || []
+            this.stack.delete(logger)
+            return await Promise.all([...previousLogs, log].map(log => this.handler.handle(log, logger)))
+        }
+
+        // Passthrough
+        if (shouldBeLogged(log.level, this.passthroughMaxLevel, this.passthroughMinLevel)) {
+            return this.handler.handle(log, logger)
+        }
+
+        // breadcrumbing
+        let loggerBubble: Logger | undefined = logger
+        while(loggerBubble) {
+            if (!this.stack.has(loggerBubble)) {
+                this.stack.set(loggerBubble, [])
+            }
+            this.stack.get(loggerBubble)!.push(log)
+            if (this.stack.get(loggerBubble)!.length > this.crumbStackSize) {
+                this.stack.get(loggerBubble)!.shift()
+            }
+            loggerBubble = loggerBubble.getParent()
+        }
+    }
+}

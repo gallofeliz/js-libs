@@ -6,7 +6,7 @@ Simple logger:
 - Default simple JSON console logging
 - logfmt formatter available
 - Secrets Obfuscation
-- [ ] CrossFingers logs : debug logs that are flushed in case of warning/error (keep logs > level1 and flush on level2 or less)
+- BreadCrumb handler (like Monolog Fingers crossed handler) : keep some verbose logs in memory until an error-like log is logged. Kept verbose logs are flushed with it. Verbose logs are kept on a logger chain (parent/child) to flush only (as possible) relevant logs.
 
 ```typescript
 
