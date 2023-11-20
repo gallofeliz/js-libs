@@ -42,7 +42,7 @@ export interface Handler {
     handle(log: Log, logger: Logger): Promise<void>
 }
 
-export type Processor = (log: Log) => Log
+export type Processor = (log: Log, logger: Logger) => Log
 
 export interface UniversalLogger {
     crit(message: string, metadata?: Object): Promise<void>
@@ -130,7 +130,7 @@ export class Logger implements UniversalLogger {
             }
 
             for (const processor of this.processors) {
-                log = processor(log)
+                log = processor(log, this)
 
                 if (!log) {
                     return
@@ -304,7 +304,7 @@ export class BaseHandler implements Handler {
         }
 
         for (const processor of this.processors) {
-            log = processor(log)
+            log = processor(log, logger)
 
             if (!log) {
                 return
