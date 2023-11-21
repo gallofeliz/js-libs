@@ -17,7 +17,7 @@ export function shouldBeLogged(logLevel: LogLevel, maxLogLevel: LogLevel, minLog
         && (minLogLevel ? levels.indexOf(logLevel) >= levels.indexOf(minLogLevel) : true)
 }
 
-export function createLogger(loggerOpts?: LoggerOpts) {
+export function createLogger(loggerOpts: LoggerOpts = {}) {
     return new Logger(loggerOpts)
 }
 
@@ -54,7 +54,10 @@ export interface UniversalLogger {
     child(metadata?: Object): UniversalLogger
 }
 
+export type LoggerId = Exclude<any, undefined>
+
 export interface LoggerOpts {
+    id?: LoggerId
     metadata?: Object
     processors?: Processor[]
     handlers?: Handler[]
@@ -69,6 +72,8 @@ export interface LoggerOpts {
 export interface Log {
     level: LogLevel
     timestamp: Date
+    logger?: LoggerId
+    parentLoggers?: LoggerId[]
     message: string
     [k: string]: any
 }
@@ -84,8 +89,10 @@ export class Logger implements UniversalLogger {
         replacement?: string
     }
     protected parent?: Logger
+    protected id?: LoggerId
 
     constructor(opts: LoggerOpts = {}) {
+        this.id = opts.id
         this.metadata = opts.metadata || {}
         this.processors = opts.processors || []
         this.handlers = opts.handlers || [new ConsoleHandler]
@@ -122,11 +129,18 @@ export class Logger implements UniversalLogger {
 
     public async log(level: LogLevel, message: string, metadata?: Object): Promise<void> {
         try {
+            const parents: LoggerId[] = this.getParents().map(l => l.id).filter(id => id !== undefined) as LoggerId[]
+
             let log: Log = {
-                ...ensureNotKeys(cloneDeep({...this.metadata, ...metadata}), ['level', 'message', 'timestamp']),
                 timestamp: new Date,
                 level,
+                ...this.id !== undefined && {logger: this.id},
+                ...parents.length > 0 && {parentLoggers: parents},
                 message,
+                ...ensureNotKeys(
+                    cloneDeep({...this.metadata, ...metadata}),
+                    ['level', 'message', 'timestamp', 'logger', 'parentLoggers']
+                )
             }
 
             for (const processor of this.processors) {
@@ -145,8 +159,9 @@ export class Logger implements UniversalLogger {
         }
     }
 
-    public child(metadata?: Object): Logger {
+    public child(id?: LoggerId, metadata?: Object): Logger {
         const logger = new Logger({
+            id,
             metadata: cloneDeep({...this.metadata, ...(metadata || {})}),
             processors: [...this.processors],
             handlers: [...this.handlers],
@@ -162,8 +177,26 @@ export class Logger implements UniversalLogger {
         return logger
     }
 
+    public getId(): LoggerId | undefined {
+        return this.id
+    }
+
     public getParent(): Logger | undefined {
         return this.parent
+    }
+
+    /**
+    * From bottom to top ancestors
+    */
+    public getParents(): Logger[] {
+        let cursor: Logger | undefined = this
+        const parents = []
+
+        while(cursor = cursor.getParent()) {
+            parents.push(cursor)
+        }
+
+        return parents
     }
 
     public async crit(message: string, metadata?: Object) {
@@ -418,6 +451,9 @@ export function createCallbackHandler(opts: CallbackHandlerOpts) {
     return new CallbackHandler(opts)
 }
 
+export function createBreadCrumbHandler(opts: BreadCrumbHandlerOpts) {
+    return new BreadCrumbHandler(opts)
+}
 
 export type BreadCrumbHandlerOpts = Omit<BaseHandlerOpts, 'formatter'> & {
     handler: Handler
@@ -461,8 +497,7 @@ export class BreadCrumbHandler extends BaseHandler {
         }
 
         // breadcrumbing
-        let loggerBubble: Logger | undefined = logger
-        while(loggerBubble) {
+        [logger, ...logger.getParents()].forEach(loggerBubble => {
             if (!this.stack.has(loggerBubble)) {
                 this.stack.set(loggerBubble, [])
             }
@@ -470,7 +505,6 @@ export class BreadCrumbHandler extends BaseHandler {
             if (this.stack.get(loggerBubble)!.length > this.crumbStackSize) {
                 this.stack.get(loggerBubble)!.shift()
             }
-            loggerBubble = loggerBubble.getParent()
-        }
+        })
     }
 }

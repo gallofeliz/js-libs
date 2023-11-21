@@ -42,8 +42,13 @@ describe('Logger', () => {
 
   it('child test', () => {
 
+    console.log(logger.getParents())
+
     const child1 = logger.child({child: true})
     const child2 = child1.child({childOfChild: true})
+
+    console.log(child1.getParents())
+    console.log(child2.getParents())
 
     child2.info('I am child of child')
 
@@ -89,7 +94,7 @@ describe('Logger', () => {
   it('Scenario with Bread Crumb Handler', async () => {
 
     const appLogger = createLogger({
-      metadata: {appUid: '118218'},
+      id: { name: 'app', uid: '118218' },
       handlers: [
         new BreadCrumbHandler({
           //passthroughMaxLevel: 'notice',
@@ -102,17 +107,17 @@ describe('Logger', () => {
     appLogger.debug('Building app')
     appLogger.info('Starting app')
 
-    const httpServerLogger = appLogger.child({ serverUid: 'coolserver1' })
+    const httpServerLogger = appLogger.child({ name: 'http-server' })
 
     httpServerLogger.debug('Created http server')
     httpServerLogger.info('Server running')
 
     await Promise.all(times(10, async (i) => {
       await setTimeout(50*i)
-      const httpRequestLogger = httpServerLogger.child({requestUid: i})
+      const httpRequestLogger = httpServerLogger.child({ name: 'http-server-request', uid: i})
       httpRequestLogger.info('Received request')
 
-      const commandLogger = httpRequestLogger.child({cmd: 'ls', cmdUid: Math.random()})
+      const commandLogger = httpRequestLogger.child({ name: 'run-process', cmdUid: Math.random()})
 
       commandLogger.debug('Starting running ls')
 

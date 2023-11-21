@@ -2,7 +2,7 @@
 
 Simple logger:
 - log -> processors -> obfuscation -> handlers (own processors + format + transport)
-- Advanced childs (not only metadata but also own processors and handlers stack)
+- Advanced childs (not only id and metadata but also own processors and handlers stack)
 - Default simple JSON console logging
 - logfmt formatter available
 - Secrets Obfuscation
@@ -12,10 +12,12 @@ Simple logger:
 
 const logger = createLogger({...})
 
-const child = logger.child({child: true})
+// loggerId can be any type
+const child = logger.child({ component: 'http-server', alias: 'public-server' })
+const child = logger.child('public-server', {child: true})
 
 child.info('My log', {password: 'secret'})
 
-// Will log {level: 'info', message: 'My log', password: '***', child: true, timestamp: '(date)'}
+// Will log {level: 'info', message: 'My log', password: '***', child: true, timestamp: '(date)', logger: 'public-server'}
 
 ```
