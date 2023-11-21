@@ -6,7 +6,8 @@ Advanced config:
 - [X] Finalization fn to transform user config to config
 - [X] watch changes and emit on change new config
 - [X] watch alerts in case of no listen on watch events
-- [ ] watch changes included files
+- [X] watch changes included files
+- [ ] watch new files and unwatch old files if new config does not use same files
 - [ ] include files into config from envs (ex: APP_DB_PASSWORD='!include /run/secrets/db_password')
 - [ ] Super Json (like Yaml, for example { db: { password: { $include: '/run/secrets/db_password' }, username: { $env: 'USER' } } })
 - [ ] Command line arguments as config param

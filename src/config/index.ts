@@ -85,6 +85,7 @@ function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: st
 export async function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Promise<Config> {
     let userProvidedConfig: UserProvidedConfig = {} as UserProvidedConfig
     let filename = opts.defaultFilename
+    const readFilenames: string[] = []
 
     if (opts.envFilename && process.env[opts.envFilename]) {
         filename = process.env[opts.envFilename]
@@ -101,7 +102,7 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
             switch(extname(filename)) {
                 case '.yml':
                 case '.yaml':
-                    userProvidedConfig = await parseYmlFile(filename)
+                    userProvidedConfig = await parseYmlFile(filename, { onFileRead: (f) => readFilenames.push(f) })
                     break
                 case '.json':
                     userProvidedConfig = JSON.parse(fs.readFileSync(filename, 'utf8'))
@@ -157,7 +158,7 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
             }
         }
 
-        const watcher = chokidar.watch(filename)
+        const watcher = chokidar.watch(readFilenames.length > 0 ? readFilenames : filename)
         .on('all', async () => {
             let newConfig
 

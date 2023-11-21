@@ -3,6 +3,8 @@ import { createLogger } from '@gallofeliz/logger'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import { deepEqual } from 'assert'
 import EventEmitter from 'events'
+import { readFile, writeFile } from 'fs/promises'
+import { setTimeout } from 'timers/promises'
 
 export interface Config {
     machin: {
@@ -17,6 +19,7 @@ export interface Config {
     deep: {
         config: boolean
     }
+    users: Array<{login: string, password: string}>
 }
 
 // @ts-ignore
@@ -45,19 +48,28 @@ describe('Config', () => {
                 envShell: 'hello world',
                 deep: {
                     config: true
-                }
+                },
+                users: [
+                  {
+                    login: 'Gilles',
+                    password: '1234'
+                  },
+                  {
+                    login: 'Guigui',
+                    password: 'abcd'
+                  }
+                ]
+
             }
         )
 
     })
 
     // @ts-ignore
-    it.skip('watch-test', async () => {
+    it('watch-test', async () => {
 
         process.env.APP_ENVSHELL = 'hello world'
         const abortController = new AbortController
-
-        setTimeout(() => abortController.abort(), 10000)
 
         const eventEmitter: WatchChangesEventEmitter<Config> = new EventEmitter
 
@@ -67,6 +79,10 @@ describe('Config', () => {
 
         eventEmitter.on('change:machin.truc', ({config, value}) => {
             console.log('events change machin truc', config, value)
+        })
+
+        eventEmitter.on('change:users', ({config, value}) => {
+            console.log('events change users', config, value)
         })
 
         deepEqual(
@@ -92,9 +108,32 @@ describe('Config', () => {
                 },
                 envShell: 'hello world',
                 deep: {
-                    config: false
-                }
+                    config: true
+                },
+                users: [
+                  {
+                    login: 'Gilles',
+                    password: '1234'
+                  },
+                  {
+                    login: 'Guigui',
+                    password: 'abcd'
+                  }
+                ]
             }
         )
+
+        await setTimeout(100)
+
+        const originalContent = await readFile(__dirname + '/config2.test.yml', {encoding: 'utf8'})
+        await writeFile(__dirname + '/config2.test.yml', originalContent.replace('abcd', 'abcde'))
+
+        await setTimeout(100)
+
+        await writeFile(__dirname + '/config2.test.yml', originalContent.replace('abcde', 'abcd'))
+
+        await setTimeout(100)
+        abortController.abort()
+
     })
 })

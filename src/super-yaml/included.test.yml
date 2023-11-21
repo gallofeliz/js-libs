@@ -2,3 +2,5 @@
   id: 4
 - name: Sarah
   id: 5
+- name: Mélanie
+  id: !include included2.test.yml
