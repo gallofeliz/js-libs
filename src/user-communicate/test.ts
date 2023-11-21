@@ -25,7 +25,8 @@ describe('user-communicate', () => {
                 method: 'POST',
                 url: 'https://httpbin.org/anything',
                 responseType: 'json',
-                responseTransformation: '$number($split(data, " ")[2])'
+                responseTransformation: '$number($split(data, " ")[2])',
+                timeout: 5000
             },
             logger: createLogger(),
             data: 'There are 3 errors',

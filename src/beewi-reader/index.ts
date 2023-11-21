@@ -1,5 +1,6 @@
 import { runProcess } from '@gallofeliz/run-process'
 import { UniversalLogger } from '@gallofeliz/logger'
+import pRetry from 'async-retry'
 
 export async function readBeewiDevice(opts: BeewiDeviceReaderOpts): Promise<BeewiReadResult> {
     return (new BeewiDeviceReader(opts)).read()
@@ -42,13 +43,16 @@ export class BeewiDeviceReader {
             throw new Error('Missing one of opts')
         }
 
-        const v: string = await runProcess({
-            logger,
-            command: ['gatttool', '-i', device, '-b', hmac, '--char-read', '--handle=0x003f'],
-            timeout: 10000,
-            outputType: 'text',
-            abortSignal
-        })
+        const v: string = await pRetry(
+            () => runProcess({
+                logger,
+                command: ['gatttool', '-i', device, '-b', hmac, '--char-read', '--handle=0x003f'],
+                timeout: 10000,
+                outputType: 'text',
+                abortSignal
+            }),
+            { retries: 3, }
+        )
 
         const octetList = v.split(':')[1].trim().split(' ')
 

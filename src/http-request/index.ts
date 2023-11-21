@@ -10,11 +10,11 @@ export interface HttpRequestConfig {
    logger: UniversalLogger
    abortSignal?: AbortSignal
    url: string
+   timeout: number | Options['timeout'] | null
    method?: Method
    responseStream?: NodeJS.WritableStream
    responseType?: 'text' | 'json' | 'auto'
    responseTransformation?: string
-   timeout?: number
    retries?: number
    headers?: Record<string, string | string[]>
    params?: Record<string, string | string[]> | [string, string][]
@@ -53,7 +53,7 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
     const gotOpts: Partial<Options> = {
         method: request.method as Method || 'GET',
         url: url,
-        timeout: { request: request.timeout },
+        ...request.timeout && { timeout: request.timeout instanceof Object ? request.timeout : { request: request.timeout } },
         retry: { limit: request.retries || 0},
         headers: request.headers || {},
         ...(request.auth ? {

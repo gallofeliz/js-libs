@@ -97,8 +97,8 @@ export class DockerLogs {
     }
 
     protected stream(opts: Omit<DockerLogWatchOpts, 'onLog'>): Readable {
-        const stream = new Readable({objectMode: true, read(){} })
         const ac = new AbortController
+        const stream = new Readable({objectMode: true, read(){}, signal: ac.signal })
 
         this.watch({
             ...opts,

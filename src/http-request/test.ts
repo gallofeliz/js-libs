@@ -11,6 +11,7 @@ describe('Http request', () => {
                 logger,
                 url: 'https://jsonplaceholder.typicode.com/todos/1',
                 responseType: 'auto',
+                timeout: 5000,
                 responseTransformation: '{"name": title}',
                 resultSchema: {
                     type: 'object',
@@ -34,7 +35,8 @@ describe('Http request', () => {
                 logger,
                 abortSignal: ac.signal,
                 url: 'http://ip.jsontest.com/',
-                responseType: 'auto'
+                responseType: 'auto',
+                timeout: 5000
             })
         } catch (e) {
             strictEqual(e, reason)

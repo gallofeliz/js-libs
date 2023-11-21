@@ -102,6 +102,7 @@ const server = new HttpServer({
                     abortSignal,
                     logger,
                     responseStream: res,
+                    timeout: 10000,
                     url: 'https://www.poulesenville.com/wp-content/uploads/elementor/thumbs/img-0549-owvoi9sxmd60uttg8x4baqvc5dldoncb52q86velg0.jpeg'
                 })
             }

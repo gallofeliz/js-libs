@@ -8,7 +8,7 @@ interface Config {
     //loglevel?: string
 }
 
-type UserConfig = Config
+type InputConfig = Config
 
 class Db {
     protected path: string
@@ -37,9 +37,7 @@ class UserService {
     }
 }
 
-// @ts-ignore
 describe('Application', () => {
-    // @ts-ignore
     it('test', async () => {
         process.env.pikatchu_dbPath = '/usr/local/db/file.db'
 
@@ -47,9 +45,9 @@ describe('Application', () => {
             name: '@gallofeliz/Pikatchu',
             config: {
                 watchChanges: true,
-                userProvidedConfigSchema: tsToJsSchema<UserConfig>()
+                userProvidedConfigSchema: tsToJsSchema<InputConfig>()
             },
-            allowConsoleUse: true,
+            // allowConsoleUse: true,
             /*logger: {
                 logLevelConfigPath: 'loglevel'
             },*/
@@ -65,7 +63,7 @@ describe('Application', () => {
                     return db
                 }
             },
-            async run({userService, logger, abortSignal, abortController}) {
+            async run({userService, logger, abortSignal}) {
                 userService.doAJob()
 
                 abortSignal.addEventListener('abort', () => {
@@ -81,6 +79,99 @@ describe('Application', () => {
 
         await setTimeout(1000)
         process.kill(process.pid, 'SIGINT')
+
+        await run
+    }).timeout(10000)
+
+    it('test', async () => {
+        process.env.pikatchu_dbPath = '/usr/local/db/file.db'
+
+        const run = runApp<Config>({
+            name: '@gallofeliz/Pikatchu',
+            config: {
+                watchChanges: true,
+                userProvidedConfigSchema: tsToJsSchema<InputConfig>()
+            },
+            // allowConsoleUse: true,
+            /*logger: {
+                logLevelConfigPath: 'loglevel'
+            },*/
+            services: {
+                userService({logger, db}): UserService {
+                    return new UserService(logger, db)
+                },
+                db({config, configWatcher}): Db {
+                    const db = new Db(config.dbPath)
+
+                    configWatcher.on('change:dbPath', ({value}) => db.setPath(value as string))
+
+                    return db
+                }
+            },
+            async run({userService, logger, abortSignal}) {
+                userService.doAJob()
+
+                abortSignal.addEventListener('abort', () => {
+                    console.log('NOOOOOOOOOOOOOOOOOOOOOOO')
+                    userService.clean()
+                })
+
+                logger.info('I did my work bro')
+            }
+        })
+
+        await setTimeout(1000)
+
+        process.once('SIGINT', () => {})
+
+        process.kill(process.pid, 'SIGINT')
+
+        await run
+    }).timeout(10000)
+
+
+    it('test', async () => {
+        process.env.pikatchu_dbPath = '/usr/local/db/file.db'
+
+        const myAbortController = new AbortController
+
+        const run = runApp<Config>({
+            name: '@gallofeliz/Pikatchu',
+            config: {
+                watchChanges: true,
+                userProvidedConfigSchema: tsToJsSchema<InputConfig>()
+            },
+            abortSignal: myAbortController.signal,
+            // allowConsoleUse: true,
+            /*logger: {
+                logLevelConfigPath: 'loglevel'
+            },*/
+            services: {
+                userService({logger, db}): UserService {
+                    return new UserService(logger, db)
+                },
+                db({config, configWatcher}): Db {
+                    const db = new Db(config.dbPath)
+
+                    configWatcher.on('change:dbPath', ({value}) => db.setPath(value as string))
+
+                    return db
+                }
+            },
+            async run({userService, logger, abortSignal}) {
+                userService.doAJob()
+
+                abortSignal.addEventListener('abort', () => {
+                    console.log('NOOOOOOOOOOOOOOOOOOOOOOO')
+                    userService.clean()
+                })
+
+                logger.info('I did my work bro')
+            }
+        })
+
+        await setTimeout(1000)
+        myAbortController.abort()
 
         await run
     }).timeout(10000)

@@ -37,7 +37,8 @@ describe('Http Server', () => {
                 method: 'POST',
                 bodyData: {test: '42'},
                 bodyType: 'json',
-                responseType: 'text'
+                responseType: 'text',
+                timeout: 2000
             })))
 
             console.log('string json test', JSON.stringify(await httpRequest({
@@ -46,7 +47,8 @@ describe('Http Server', () => {
                 method: 'POST',
                 bodyData: '42',
                 bodyType: 'json',
-                responseType: 'text'
+                responseType: 'text',
+                timeout: 2000
             })))
 
             console.log('string text test', JSON.stringify(await httpRequest({
@@ -55,7 +57,8 @@ describe('Http Server', () => {
                 method: 'POST',
                 bodyData: '42',
                 bodyType: 'text',
-                responseType: 'text'
+                responseType: 'text',
+                timeout: 2000
             })))
 
         } finally {

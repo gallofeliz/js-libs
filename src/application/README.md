@@ -7,6 +7,8 @@ Application runner:
 - Structured
 - Built-in config (load from files, envs, validation, watches, etc) and logger
 
+[ ] Refactorize aborts, with aborts to interrupt, aborts to stop/clean, etc
+
 ```typescript
 import { runApp } from '@gallofeliz/application'
 

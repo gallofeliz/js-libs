@@ -64,6 +64,8 @@
     "src/sqlite-dump",
     "src/restic",
     "beewi-reader",
-    "src/beewi-reader"
+    "src/beewi-reader",
+    "src/ecoforest-stove",
+    "src/logs-parser"
   ]
 }

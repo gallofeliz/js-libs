@@ -32,8 +32,6 @@ export class EcoforestStove {
             this.callStoveAndRetryForShittyErrors(1061)
         ])
 
-        console.log(data3)
-
         return {
             configuredPower: parseInt(data.consigna_potencia, 10),
             status: this.computeStatusFromInt(parseInt(data.estado, 10)),
@@ -92,7 +90,8 @@ export class EcoforestStove {
             url: 'http://ecoforest/recepcion_datos_4.cgi',
             bodyData: {'idOperacion': operationId, ...params},
             bodyType: 'form',
-            responseType: 'text'
+            responseType: 'text',
+            timeout: 10000
         })
 
         if (operationId === 1081) {

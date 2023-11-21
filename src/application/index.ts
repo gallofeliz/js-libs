@@ -86,6 +86,7 @@ class App<Config> {
     protected runFn: RunHandler<Config>
     protected abortController = new AbortController
     protected appDefinition: AppDefinition<Config>
+    protected configAbortController = new AbortController
 
     constructor(appDefinition: AppDefinition<Config>) {
         this.name = appDefinition.name || require(process.cwd() + '/package.json').name
@@ -126,7 +127,7 @@ class App<Config> {
 
             if (this.logger!.getHandlers()[0] === temporaryLogHandler) {
                 const handler = new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})
-                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log)))
+                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log, this.logger!)))
             }
 
             process.exit(1)
@@ -137,7 +138,7 @@ class App<Config> {
 
             if (this.logger!.getHandlers()[0] === temporaryLogHandler) {
                 const handler = new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})
-                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log)))
+                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log, this.logger!)))
             }
 
             process.exit(1)
@@ -168,7 +169,7 @@ class App<Config> {
                         logger: this.logger,
                         watchChanges: appDefinition.config?.watchChanges
                             ? {
-                                abortSignal: this.abortController.signal,
+                                abortSignal: this.configAbortController.signal,
                                 eventEmitter: watchEventEmitter,
                             }
                             : undefined
@@ -274,7 +275,7 @@ class App<Config> {
             throw e
         } finally {
             await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => {
-                this.logger!.getHandlers()[0].handle(log)
+                this.logger!.getHandlers()[0].handle(log, this.logger!)
             }))
 
             temporaryLogHandler.clearWrittenLogs()
@@ -294,15 +295,24 @@ class App<Config> {
 
         this.alreadyRun = true
 
+        // Todo use abort for events listener
+
+        const onProvidedAbortSignalAborted = () => {
+            this.abortController.abort(abortSignal!.reason)
+        }
+
         if (abortSignal) {
             if (abortSignal.aborted) {
                 return
             }
-            abortSignal.addEventListener('abort', () => this.abortController.abort(abortSignal.reason))
+            abortSignal.addEventListener('abort', onProvidedAbortSignalAborted)
+        }
+
+        function unregisterSignalHandlers() {
+            ['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
         }
 
         const processSignalHandler = (signal: NodeJS.Signals) => {
-            ['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
             this.abortController.abort(new AbortError('Process receives signal ' + signal))
         }
 
@@ -316,9 +326,12 @@ class App<Config> {
             logLevel: maxLogLevel
         })
 
-        this.abortController.signal.addEventListener('abort', () => {
+        const onAbort = () => {
+            unregisterSignalHandlers()
             this.logger!.info('Abort requested', {reason: this.abortController.signal.reason})
-        })
+        }
+
+        this.abortController.signal.addEventListener('abort', onAbort)
 
         try {
             await this.runFn(this.services!)
@@ -326,13 +339,25 @@ class App<Config> {
             if (e !== this.abortController.signal.reason && (e as any)?.cause !== this.abortController.signal.reason) {
                 throw e
             }
+        } finally {
+            this.abortController.signal.removeEventListener('abort', onAbort)
+            abortSignal?.removeEventListener('abort', onProvidedAbortSignalAborted)
+            unregisterSignalHandlers()
+            this.configAbortController.abort()
         }
 
-        const experimentalProcess = process as NodeJS.Process & { getActiveResourcesInfo?: () => string[] }
+        /*
+        setImmediate(() => {
+            const experimentalProcess = process as NodeJS.Process & { getActiveResourcesInfo?: () => string[] }
 
-        if (experimentalProcess.getActiveResourcesInfo) {
-            this.logger!.debug('Actives resources', { activeResources: experimentalProcess.getActiveResourcesInfo() })
-        }
+            const activeResources = experimentalProcess.getActiveResourcesInfo
+                ? experimentalProcess.getActiveResourcesInfo()
+                : undefined
+
+            this.logger!.warning('')
+
+        }).unref()
+        */
 
         this.logger!.info('App exited')
     }

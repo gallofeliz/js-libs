@@ -2,6 +2,8 @@
 
 Got more hight level.
 
+- [ ] Replace transformation by custom fn and retry ?
+
 ```typescript
 deepEqual(
     await httpRequest({
@@ -16,7 +18,8 @@ deepEqual(
             },
             required: ['name']
         },
-        abortSignal
+        abortSignal,
+        timeout: 5000
     }),
     { name: 'delectus aut autem' }
 )

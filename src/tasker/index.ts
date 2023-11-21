@@ -166,7 +166,7 @@ export class Tasker extends EventEmitter {
     protected runNextsLock: boolean = false
     protected runNextsRequested: boolean = false
     protected archivingFrequency: number
-    protected archivingInterval?: NodeJS.Timer
+    protected archivingInterval?: NodeJS.Timeout
     protected addQueue = new Pqueue({concurrency: 1})
     protected runningCount = 0
     protected lastQueueCount = 0
