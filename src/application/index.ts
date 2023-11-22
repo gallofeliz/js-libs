@@ -1,5 +1,5 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { LoggerOpts, Logger, MemoryHandler, ConsoleHandler, LoggerProxyHandler, LogLevel } from '@gallofeliz/logger'
+import { LoggerOpts, Logger, MemoryHandler, ConsoleHandler, BreadCrumbHandler, LogLevel } from '@gallofeliz/logger'
 import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 import { get } from 'lodash'
@@ -14,10 +14,15 @@ export class AbortError extends Error {
     }
 }
 
-/** @default info */
-export type LogLevelWithDefault = LogLevel
+export interface BaseConfig {
+    /** @default {} */
+    log?: {
+        /** @default info */
+        level?: LogLevel
+    }
+}
 
-export type InjectedServices<Config> = {
+export type InjectedServices<Config extends BaseConfig> = {
     logger: Logger
     config: Config
     appName: string
@@ -28,22 +33,22 @@ export type InjectedServices<Config> = {
     abortSignal: AbortSignal
 }
 
-export type Services<Config> = Record<keyof ServicesDefinition<Config>, any> & InjectedServices<Config>
+export type Services<Config extends BaseConfig> = Record<keyof ServicesDefinition<Config>, any> & InjectedServices<Config>
 
 type ReservedServicesNames = keyof InjectedServices<any>
 
-export type ServicesDefinition<Config> = Record<Exclude<string, ReservedServicesNames>, ServiceDefinition<any, Config>>
+export type ServicesDefinition<Config extends BaseConfig> = Record<Exclude<string, ReservedServicesNames>, ServiceDefinition<any, Config>>
 
-export type ServiceDefinition<T, Config> = (services: Services<Config>) => T
+export type ServiceDefinition<T, Config extends BaseConfig> = (services: Services<Config>) => T
 
-export type RunHandler<Config> = (services: Services<Config>) => void
+export type RunHandler<Config extends BaseConfig> = (services: Services<Config>) => void
 
-export interface AppDefinition<Config> {
+export interface AppDefinition<Config extends BaseConfig> {
     name?: string
     version?: string
-    allowConsoleUse?: boolean
-    config?: (Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { logger?: Logger, watchChanges?: boolean }) | (() => Config)
-    logger?: (Omit<LoggerOpts, 'handlers' | 'errorHandler'> & { logLevelConfigPath?: string }) | ((services: Partial<Services<Config>>) => Logger)
+    consoleUse?: 'accepted' | 'to-log' | 'block&warn' | 'block'
+    config?: Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { watchChanges?: boolean }
+    logger?: Omit<LoggerOpts, 'handlers' | 'errorHandler'>
     services?: ServicesDefinition<Config>
     run: RunHandler<Config>
 }
@@ -74,7 +79,7 @@ function createDiContainer(builtinServices: Omit<InjectedServices<any>, 'contain
     return myself
 }
 
-class App<Config> {
+class App<Config extends BaseConfig> {
     //protected status: 'READY' | 'RUNNING' = 'READY'
     protected alreadyRun: boolean = false
     protected name: string
@@ -99,13 +104,15 @@ class App<Config> {
     protected async prepare() {
         const temporaryLogHandler = new MemoryHandler({
             maxLevel: 'debug',
-            minLevel: 'crit'
+            minLevel: 'fatal'
         })
 
         this.logger = new Logger({
             handlers: [temporaryLogHandler],
             metadata: { appRunUuid: uuid() }
         })
+
+        this.logger.debug('Configuration schema is', { schema: this.appDefinition.config?.userProvidedConfigSchema })
 
         let maxLogLevel: LogLevel | undefined
 
@@ -230,13 +237,26 @@ class App<Config> {
                 maxLogLevel = _conf.log.level
             }
 
-            if (appDefinition.allowConsoleUse !== true) {
-                for (const method in console) {
-                    // @ts-ignore
-                    console[method] = (...args) => {
-                        this.logger!.warning('Used console.' + method + ', please fix it', {args})
+            switch(appDefinition.consoleUse) {
+                case 'accepted':
+                    break
+                case 'block':
+                    for (const method in console) {
+                        // @ts-ignore
+                        console[method] = () => {}
                     }
-                }
+                    break
+                case 'to-log':
+                    throw new Error('todo')
+                    break
+                case 'block&warn':
+                default:
+                    for (const method in console) {
+                        // @ts-ignore
+                        console[method] = (...args) => {
+                            this.logger!.warning('Used console.' + method + ', please fix it', {args})
+                        }
+                    }
             }
 
             this.services = createDiContainer({
@@ -363,6 +383,6 @@ class App<Config> {
     }
 }
 
-export async function runApp<Config>(appDefinition: AppDefinition<Config> & { abortSignal?: AbortSignal }) {
+export async function runApp<Config extends BaseConfig>(appDefinition: AppDefinition<Config> & { abortSignal?: AbortSignal }) {
     return await (new App(appDefinition)).run(appDefinition.abortSignal)
 }

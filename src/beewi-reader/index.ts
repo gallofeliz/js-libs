@@ -1,5 +1,5 @@
 import { runProcess } from '@gallofeliz/run-process'
-import { UniversalLogger } from '@gallofeliz/logger'
+import { Logger } from '@gallofeliz/logger'
 import pRetry from 'async-retry'
 
 export async function readBeewiDevice(opts: BeewiDeviceReaderOpts): Promise<BeewiReadResult> {
@@ -15,7 +15,7 @@ export interface BeewiReadResult {
 export interface BeewiDeviceReaderOpts {
     device: string
     hmac: string
-    logger: UniversalLogger
+    logger?: Pick<Logger, 'debug'>
 }
 
 export class BeewiDeviceReader {

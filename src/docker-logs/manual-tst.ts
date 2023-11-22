@@ -1,12 +1,14 @@
 import { DockerLogs, DockerLog } from '.'
-import { createLogger } from '@gallofeliz/logger'
+import { createLogger, createConsoleHandler } from '@gallofeliz/logger'
 import chalk from 'chalk'
 import { Writable } from 'stream'
 
 const abortController = new AbortController;
 
 const dockerLogs = new DockerLogs({logger: createLogger({
-    handlers: []
+    handlers: [
+        createConsoleHandler({maxLevel: 'info'})
+    ]
 })})
 
 // dockerLogs.watch({
@@ -48,11 +50,18 @@ const onLog = (log: DockerLog) => {
 }
 
 (async () => {
-    for await (const log of dockerLogs.watch({
-        stream: 'both',
-        abortSignal: abortController.signal
-    })) {
-        onLog(log)
+    try {
+        for await (const log of dockerLogs.watch({
+            stream: 'both',
+            abortSignal: abortController.signal
+        })) {
+            onLog(log)
+        }
+
+    } catch (e) {
+        if (!abortController.signal.aborted) {
+            throw e
+        }
     }
 })()
 
@@ -101,5 +110,5 @@ dockerLogs.watch({
 //     abortSignal: abortController.signal
 // })
 
-setTimeout(() => { abortController.abort() }, 30000)
+setTimeout(() => { abortController.abort() }, 5000)
 // sudo docker run --name very-special-container --rm node:16-alpine sh -c 'echo 'Hello'; echo ERRORRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR >&2; exit 1'

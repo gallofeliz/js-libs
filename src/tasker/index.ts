@@ -1,6 +1,6 @@
 import { DocumentCollection, NeDbDocumentCollection, DocumentCollectionQuery, DocumentCollectionSort } from '@gallofeliz/documents-collection'
 import { each, omit, mapValues, groupBy } from 'lodash'
-import { getMaxLevelsIncludes, Logger, LogLevel, UniversalLogger } from '@gallofeliz/logger'
+import { getMaxLevelsIncludes, LogLevel, Logger } from '@gallofeliz/logger'
 import { v4 as uuid } from 'uuid'
 import EventEmitter, { once } from 'events'
 import jsonata from 'jsonata'
@@ -30,7 +30,7 @@ export class SkippedAddTask extends Error {
 }
 
 export interface RunningData extends Task {
-    logger: UniversalLogger
+    logger: Logger
     abortSignal: AbortSignal
 }
 

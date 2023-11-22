@@ -1,8 +1,8 @@
 import fs, { existsSync } from 'fs'
 import { mapKeys, pickBy, each, set, get } from 'lodash'
-import {extname, resolve} from 'path'
-import {UniversalLogger} from '@gallofeliz/logger'
-import {validate, SchemaObject} from '@gallofeliz/validate'
+import { extname, resolve } from 'path'
+import { Logger } from '@gallofeliz/logger'
+import { validate, SchemaObject } from '@gallofeliz/validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import { compare, Operation } from 'fast-json-patch'
 import chokidar from 'chokidar'
@@ -25,8 +25,8 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     envFilename?: string
     envPrefix?: string
     envDelimiter?: string
-    finalizer?: (userProvidedConfig: UserProvidedConfig, logger: UniversalLogger) => Config
-    logger: UniversalLogger
+    finalizer?: (userProvidedConfig: UserProvidedConfig, logger?: Pick<Logger, 'warning'>) => Config
+    logger?: Pick<Logger, 'warning'>
     watchChanges?: {
         onError?: (e: Error) => void
         abortSignal?: AbortSignal
@@ -153,8 +153,10 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
                 if (opts.watchChanges!.eventEmitter?.listenerCount('error')) {
                     opts.watchChanges!.eventEmitter.emit('error', error)
                 }
-            } else {
+            } else if (opts.logger) {
                 opts.logger.warning('Config ' + context + ' error', {error})
+            } else {
+                throw error
             }
         }
 

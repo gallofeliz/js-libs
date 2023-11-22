@@ -18,7 +18,6 @@
   "dependencies": {
     "@gallofeliz/validate": "^0.1.1",
     "got": "^11.8.6",
-    "jsonata": "^2.0.1",
-    "uuid": "^9.0.0"
+    "jsonata": "^2.0.1"
   }
 }

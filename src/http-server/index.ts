@@ -1,4 +1,4 @@
-import { UniversalLogger } from '@gallofeliz/logger'
+import { Logger } from '@gallofeliz/logger'
 import express from 'express'
 import { Server } from 'http'
 import {
@@ -27,7 +27,7 @@ export type HttpServerRequest<
 > = express.Request & {
     uuid: string
     abortSignal: AbortSignal
-    logger: UniversalLogger
+    logger: Logger
     params: Params
     query: Query
     body: Body
@@ -63,7 +63,7 @@ export interface HttpServerConfig {
         requiredAuthentication?: boolean
         requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
     }
-    logger: UniversalLogger
+    logger: Logger
 }
 
 export interface ApiRoute {
@@ -105,7 +105,7 @@ export function runServer({abortSignal, ...config}: HttpServerConfig & {abortSig
 }
 
 export class HttpServer {
-    protected logger: UniversalLogger
+    protected logger: Logger
     protected app: express.Application
     protected server?: Server
     protected connections: Record<string, Socket> = {}
@@ -114,9 +114,7 @@ export class HttpServer {
 
     constructor(config: HttpServerConfig) {
         this.config = config
-        this.logger = config.logger.child({
-            httpServerUuid: uuid()
-        })
+        this.logger = config.logger
 
         this.auth = new Auth({
             users: this.config.auth?.users,
@@ -165,7 +163,7 @@ export class HttpServer {
         this.configureRoutes()
 
         this.app.use((err: Error, req: any, res: express.Response, next: any) => {
-            this.logger.notice('Http Server error', { e: err })
+            this.logger.warning('Http Server error', { e: err })
             res.status(500).end()
         })
     }
@@ -227,12 +225,12 @@ export class HttpServer {
 
     protected configureRoutes() {
         const swaggerDocument: OpenApi = {
-              "openapi": "3.0.0",
-              "info": {
-                "title": this.config.name || 'API',
-                "version": this.config.version || 'Current'
+              openapi: '3.0.0',
+              info: {
+                title: this.config.name || 'API',
+                version: this.config.version || 'Current'
               },
-              "paths": {
+              paths: {
               }
             }
 
@@ -291,6 +289,10 @@ export class HttpServer {
                         }
                     }
                 )
+            )
+
+            this.logger.info(
+                'Swagger available on ' + this.config.swagger.apiPath + ' (api) and ' + this.config.swagger.uiPath + ' (ui)'
             )
 
         }

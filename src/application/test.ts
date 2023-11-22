@@ -1,9 +1,9 @@
-import { runApp } from '.'
+import { runApp, BaseConfig } from '.'
 import { UniversalLogger } from '@gallofeliz/logger'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import { setTimeout } from 'timers/promises'
 
-interface Config {
+interface Config extends BaseConfig {
     dbPath: string
     //loglevel?: string
 }

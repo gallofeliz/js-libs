@@ -1,19 +1,18 @@
-import { UniversalLogger } from '@gallofeliz/logger'
+import { Logger } from '@gallofeliz/logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
 import { validate, SchemaObject } from '@gallofeliz/validate'
-import { v4 as uuid } from 'uuid'
 import { pipeline } from 'stream/promises'
 
 export interface HttpRequestConfig {
-   logger: UniversalLogger
+   logger?: Pick<Logger, 'debug'>
    abortSignal?: AbortSignal
    url: string
    timeout: number | Options['timeout'] | null
    method?: Method
    responseStream?: NodeJS.WritableStream
-   responseType?: 'text' | 'json' | 'auto'
+   responseType?: 'text' | 'json' | 'auto' // | 'buffer'
    responseTransformation?: string
    retries?: number
    headers?: Record<string, string | string[]>
@@ -29,6 +28,7 @@ export interface HttpRequestConfig {
 
 export async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
     if (abortSignal?.aborted) {
+      logger?.debug('Aborted', {reason: abortSignal?.reason})
       throw abortSignal.reason
     }
 
@@ -36,7 +36,6 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
         throw new Error('Unable to stream and responseType')
     }
 
-    logger = logger.child({ httpRequestUid: uuid() })
     let url = request.url
 
     if (request.params) {
@@ -55,7 +54,10 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
         url: url,
         ...request.timeout && { timeout: request.timeout instanceof Object ? request.timeout : { request: request.timeout } },
         retry: { limit: request.retries || 0},
-        headers: request.headers || {},
+        headers: {
+            'user-agent':  '@gallofeliz/http-request',
+            ...request.headers || {}
+        },
         ...(request.auth ? {
             username: request.auth.username,
             password: request.auth.password,
@@ -64,9 +66,30 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
             init: [],
             beforeRedirect: [],
             beforeRetry: [],
-            beforeRequest: [options  => { logger.info('Calling http request ' + options.url)}],
-            afterResponse: [response => { logger.info('Http Request returned code ' + response.statusCode) ; return response }],
-            beforeError: [error => { logger.info('Http Request returned error ' + error.message) ; return error }]
+            beforeRequest: [options  => {
+                logger?.debug('Calling http request', {
+                    url: options.url,
+                    method: options.method,
+                    headers: options.headers,
+                    body: options.body
+                })
+            }],
+            afterResponse: [response => {
+                logger?.debug('Http Request response', {
+                    durations: response.timings.phases,
+                    statusCode: response.statusCode,
+                    headers: response.headers,
+                    body: request.responseStream ? undefined : response.body
+                })
+                return response
+            }],
+            beforeError: [error => {
+                logger?.debug('Http Request returned error ' + error.message, {
+                    duration: error.timings?.phases,
+                    error
+                })
+                return error
+            }]
         }
     }
 
@@ -97,6 +120,7 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
     const gotRequest = got(gotOpts) as CancelableRequest<Response<string>>
 
     const onSignalAbort = () => {
+        logger?.debug('Abort', {reason: abortSignal?.reason})
         if (request.responseStream) {
             (gotRequest as any).destroy()
         } else {
@@ -107,6 +131,7 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
 
     try {
         if (request.responseStream) {
+            logger?.debug('Stream pipeline')
             await pipeline(gotRequest as any, request.responseStream)
             return undefined as Result
         }
@@ -114,12 +139,15 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
         const response = await gotRequest
 
         if (!request.responseType) {
+            logger?.debug('No response expected')
             return undefined as Result
         }
 
         const isJson = request.responseType === 'auto'
             ? (response.headers['content-type'] || '').includes('json')
             : request.responseType === 'json'
+
+        logger?.debug('Read response, transformations and validation')
 
         const output = (isJson ? await gotRequest.json() : await gotRequest.text())
         const result = (request.responseTransformation

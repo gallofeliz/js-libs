@@ -1,6 +1,6 @@
 import {runProcess, ProcessConfig} from '@gallofeliz/run-process'
 import { httpRequest,  HttpRequestConfig } from '@gallofeliz/http-request'
-import { UniversalLogger } from '@gallofeliz/logger'
+import { Logger } from '@gallofeliz/logger'
 import { SchemaObject } from '@gallofeliz/validate'
 
 /*
@@ -16,7 +16,7 @@ export type HttpUserConfig = { type: 'http' }
 
 export type CommandUserConfig = { type: 'command' }
     & Pick<ProcessConfig,
-        'command' | 'cwd' | 'env' | 'timeout' | 'retries' | 'outputType'
+        'command' | 'cwd' | 'env' | 'timeout' | /*'retries' |*/ 'outputType'
         | 'outputTransformation' | 'killSignal' | 'inputType'
     >
 
@@ -24,7 +24,7 @@ export type UserConfig = HttpUserConfig | CommandUserConfig
 
 export interface UserCommunicateConfig {
     userConfig: UserConfig
-    logger: UniversalLogger,
+    logger?: Pick<Logger, 'debug'>,
     abortSignal?: AbortSignal
     data?: any
     resultSchema?: SchemaObject

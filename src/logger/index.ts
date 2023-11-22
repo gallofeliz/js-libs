@@ -1,12 +1,12 @@
-import { cloneDeep, mapKeys, omit, chain } from 'lodash'
+import { cloneDeep, mapKeys, chain } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
 import { ObfuscationRule, obfuscate } from '@gallofeliz/obfuscator'
 // @ts-ignore
 import {flatten as flattenObject} from 'flat'
 
-export type LogLevel = 'crit' | 'error' | 'warning' | 'notice' | 'info' | 'debug'
-const levels: LogLevel[] = ['crit', 'error', 'warning', 'notice', 'info', 'debug']
+export type LogLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug' // | 'trace'
+const levels: LogLevel[] = ['fatal', 'error', 'warning', 'info', 'debug']
 
 export function getMaxLevelsIncludes(maxLogLevel: LogLevel) {
     return levels.slice(0, levels.indexOf(maxLogLevel) + 1)
@@ -44,16 +44,6 @@ export interface Handler {
 
 export type Processor = (log: Log, logger: Logger) => Log
 
-export interface UniversalLogger {
-    crit(message: string, metadata?: Object): Promise<void>
-    error(message: string, metadata?: Object): Promise<void>
-    warning(message: string, metadata?: Object): Promise<void>
-    notice(message: string, metadata?: Object): Promise<void>
-    info(message: string, metadata?: Object): Promise<void>
-    debug(message: string, metadata?: Object): Promise<void>
-    child(metadata?: Object): UniversalLogger
-}
-
 export type LoggerId = Exclude<any, undefined>
 
 export interface LoggerOpts {
@@ -78,7 +68,7 @@ export interface Log {
     [k: string]: any
 }
 
-export class Logger implements UniversalLogger {
+export class Logger {
     protected processors: Processor[]
     protected handlers: Handler[]
     protected metadata: Object
@@ -160,9 +150,21 @@ export class Logger implements UniversalLogger {
     }
 
     public child(id?: LoggerId, metadata?: Object): Logger {
+        return this.clone(this, id, cloneDeep({...this.metadata, ...(metadata || {})}))
+    }
+
+    public sibling(id?: LoggerId, metadata?: Object): Logger {
+        return this.clone(this.parent, id, cloneDeep({...(this.parent?.metadata || {}), ...(metadata || {})}))
+    }
+
+    public extends(metadata?: Object): Logger {
+        return this.clone(this.parent, this.id, cloneDeep({...this.metadata, ...(metadata || {})}))
+    }
+
+    protected clone(parent?: Logger, id?: LoggerId, metadata?: Object) {
         const logger = new Logger({
             id,
-            metadata: cloneDeep({...this.metadata, ...(metadata || {})}),
+            metadata,
             processors: [...this.processors],
             handlers: [...this.handlers],
             errorHandler: this.errorHandler,
@@ -172,7 +174,7 @@ export class Logger implements UniversalLogger {
             }
         })
 
-        logger.parent = this
+        logger.parent = parent
 
         return logger
     }
@@ -199,17 +201,14 @@ export class Logger implements UniversalLogger {
         return parents
     }
 
-    public async crit(message: string, metadata?: Object) {
-        return this.log('crit', message, metadata)
+    public async fatal(message: string, metadata?: Object) {
+        return this.log('fatal', message, metadata)
     }
     public async error(message: string, metadata?: Object) {
         return this.log('error', message, metadata)
     }
     public async warning(message: string, metadata?: Object) {
         return this.log('warning', message, metadata)
-    }
-    public async notice(message: string, metadata?: Object) {
-        return this.log('notice', message, metadata)
     }
     public async info(message: string, metadata?: Object) {
         return this.log('info', message, metadata)
@@ -298,7 +297,7 @@ export function createLogfmtFormatter(): Formatter {
 
 export type Formatter<T extends any = any> = (log: Log) => T
 
-export class BaseHandler implements Handler {
+export abstract class BaseHandler implements Handler {
     protected maxLevel: LogLevel
     protected minLevel: LogLevel
     protected formatter: Formatter
@@ -306,7 +305,7 @@ export class BaseHandler implements Handler {
 
     constructor(opts: BaseHandlerOpts = {}) {
         this.maxLevel = opts.maxLevel || 'debug'
-        this.minLevel = opts.minLevel || 'crit'
+        this.minLevel = opts.minLevel || 'fatal'
         this.processors = opts.processors || []
         this.formatter = opts.formatter || createJsonFormatter()
     }
@@ -347,9 +346,7 @@ export class BaseHandler implements Handler {
         return this.write(this.formatter(log), log, logger)
     }
 
-    protected write(formatted: any, log: Log, logger: Logger): any {
-        throw new Error('To implement in handler')
-    }
+    protected abstract write(formatted: any, log: Log, logger: Logger): Promise<void>
 }
 
 export interface StreamHandlerOpts extends BaseHandlerOpts {
@@ -364,7 +361,7 @@ export class StreamHandler extends BaseHandler {
         this.stream = opts.stream
     }
 
-    protected async write(formatted: any, log: Log) {
+    protected async write(formatted: any) {
         this.stream.write(formatted.toString() + EOL)
     }
 }
@@ -406,23 +403,6 @@ export class MemoryHandler extends BaseHandler {
 
     public clearWrittenLogs() {
         this.writtenLogs = []
-    }
-}
-
-export type LoggerProxyHandlerOpts = Omit<BaseHandlerOpts, 'formatter'> & {
-    logger: UniversalLogger
-}
-
-export class LoggerProxyHandler extends BaseHandler {
-    protected logger: UniversalLogger
-
-    constructor({logger, ...opts}: LoggerProxyHandlerOpts) {
-        super({...opts, formatter: log => log})
-        this.logger = logger
-    }
-
-    protected async write(formatted: any, log: Log) {
-        return this.logger[log.level](log.message, omit(log, ['level', 'message', 'timestamp']))
     }
 }
 
@@ -476,24 +456,26 @@ export class BreadCrumbHandler extends BaseHandler {
     constructor({handler, ...opts}: BreadCrumbHandlerOpts) {
         super(opts)
         this.handler = handler
-        this.flushMaxLevel = opts.flushMaxLevel || 'notice'
-        this.flushMinLevel = opts.flushMinLevel || 'crit'
+        this.flushMaxLevel = opts.flushMaxLevel || 'warning'
+        this.flushMinLevel = opts.flushMinLevel || 'fatal'
         this.passthroughMaxLevel = opts.passthroughMaxLevel || 'info'
-        this.passthroughMinLevel = opts.passthroughMinLevel || 'crit'
+        this.passthroughMinLevel = opts.passthroughMinLevel || 'fatal'
         this.crumbStackSize = opts.crumbStackSize || 10
     }
 
-    protected async write(formatted: any, log: Log, logger: Logger) {
+    protected async write(_: any, log: Log, logger: Logger) {
         // Flushing
         if (shouldBeLogged(log.level, this.flushMaxLevel, this.flushMinLevel)) {
             const previousLogs = this.stack.get(logger) || []
             this.stack.delete(logger)
-            return await Promise.all([...previousLogs, log].map(log => this.handler.handle(log, logger)))
+            await Promise.all([...previousLogs, log].map(log => this.handler.handle(log, logger)))
+            return
         }
 
         // Passthrough
         if (shouldBeLogged(log.level, this.passthroughMaxLevel, this.passthroughMinLevel)) {
-            return this.handler.handle(log, logger)
+            await this.handler.handle(log, logger)
+            return
         }
 
         // breadcrumbing

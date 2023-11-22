@@ -1,10 +1,10 @@
-import { UniversalLogger } from "@gallofeliz/logger";
+import { Logger } from "@gallofeliz/logger";
 import Dockerode from "dockerode";
 
 export type Stream = 'stdout' | 'stderr'
 
 export interface Opts {
-    logger: UniversalLogger
+    logger?: Pick<Logger, 'debug' | 'warning'>
     containerId: string
     stream: Stream
     cb: (log: Log) => void
@@ -18,7 +18,7 @@ export interface Log {
 const trippleNull = Buffer.alloc(3) // like me ahahah
 
 export class DockerContainerLogsListener {
-    protected logger: UniversalLogger
+    protected logger?: Pick<Logger, 'debug' | 'warning'>
     protected containerId: string
     protected stream: Stream
     protected dockerode: Dockerode = new Dockerode
@@ -26,7 +26,7 @@ export class DockerContainerLogsListener {
     protected cb: Opts['cb']
 
     public constructor({logger, containerId, stream, cb}: Opts) {
-        this.logger = logger.child({containerId, stream})
+        this.logger = logger
         this.containerId = containerId
         this.stream = stream
         this.cb = cb
@@ -60,7 +60,7 @@ export class DockerContainerLogsListener {
         this.abortController = new AbortController
         const abortSignal = this.abortController.signal
 
-        this.logger.info('Start to listen container logs')
+        this.logger?.debug('Start to listen container logs')
 
         let sstream
         let lastLogAt = since
@@ -76,11 +76,11 @@ export class DockerContainerLogsListener {
             })
         } catch (e) {
             if (abortSignal.aborted) {
-                this.logger.info('Aborting listen of container logs')
+                this.logger?.debug('Aborting listen of container logs')
                 return
             }
 
-            this.logger.warning('Unexpected logs stream error', {e})
+            this.logger?.warning('Unexpected logs stream error', {e})
 
             this.abortController.abort()
             this.connectAndListen(new Date(new Date(lastLogAt).getTime() + 1))
@@ -119,10 +119,10 @@ export class DockerContainerLogsListener {
         })
 
         sstream.once('close', () => {
-            this.logger.info('Stream of listen container logs closed')
+            this.logger?.debug('Stream of listen container logs closed')
             setTimeout(() => {
                 if (abortSignal.aborted) {
-                    this.logger.info('Aborting listen of container logs')
+                    this.logger?.debug('Aborting listen of container logs')
                     return
                 }
 

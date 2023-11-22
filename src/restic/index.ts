@@ -1,4 +1,4 @@
-import { UniversalLogger } from '@gallofeliz/logger'
+import { Logger } from '@gallofeliz/logger'
 import { runProcess, ProcessConfig } from '@gallofeliz/run-process'
 import { reduce, pick, uniq, omit, castArray } from 'lodash'
 import dayjs from 'dayjs'
@@ -132,7 +132,7 @@ export interface ResticNetworkLimit {
 }
 
 export interface ResticOpts {
-    logger: UniversalLogger
+    logger?: Pick<Logger, 'debug'>
     repository: ResticRepository
     password: string
     abortSignal?: AbortSignal
