@@ -1,12 +1,18 @@
 import {loadConfig, WatchChangesEventEmitter} from '.'
-import { createLogger } from '@gallofeliz/logger'
+import { createLogger, LogLevel } from '@gallofeliz/logger'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import { deepEqual } from 'assert'
 import EventEmitter from 'events'
 import { readFile, writeFile } from 'fs/promises'
 import { setTimeout } from 'timers/promises'
 
-export interface Config {
+interface BaseConfig {
+    log: {
+        level: LogLevel
+    }
+}
+
+interface Config extends BaseConfig {
     machin: {
         truc: {
             bidule: boolean
@@ -22,6 +28,10 @@ export interface Config {
     users: Array<{login: string, password: string}>
 }
 
+type AppConfig = Config
+
+type UserConfig = AppConfig
+
 // @ts-ignore
 describe('Config', () => {
     // @ts-ignore
@@ -31,15 +41,20 @@ describe('Config', () => {
 
         process.env.APP_DEEP_CONFIG = 'true'
 
+        process.env.APP_LOG_LEVEL = 'warning'
+
         deepEqual(
             await loadConfig<Config, Config>({
                 defaultFilename: __dirname + '/config.test.yml',
                 logger: createLogger(),
                 envFilename: 'config',
                 envPrefix: 'app',
-                userProvidedConfigSchema: tsToJsSchema<Config>(),
+                userProvidedConfigSchema: tsToJsSchema<UserConfig>(),
             }),
             {
+                log: {
+                    level: 'warning'
+                },
                 machin: {
                     truc: {
                         bidule: true
@@ -101,6 +116,9 @@ describe('Config', () => {
                 }
             }),
             {
+                log: {
+                    level: 'warning'
+                },
                 machin: {
                     truc: {
                         bidule: true

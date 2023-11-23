@@ -1,5 +1,5 @@
 import fs, { existsSync } from 'fs'
-import { mapKeys, pickBy, each, set, get } from 'lodash'
+import { mapKeys, pickBy, each, set, get, omit } from 'lodash'
 import { extname, resolve } from 'path'
 import { Logger } from '@gallofeliz/logger'
 import { validate, SchemaObject } from '@gallofeliz/validate'
@@ -42,6 +42,30 @@ export interface ConfigOpts<UserProvidedConfig, Config> {
     )
 }
 
+function unrefSchema(schema: Object) {
+    const traverse = require('traverse')
+
+    function resolveRef(o: any): any {
+        if (!(o instanceof Object && o.$ref)) {
+            return o
+        }
+        const $ref = o.$ref
+        if ($ref.substring(0, 1) !== '#') {
+            throw new Error('Unexpected external resource')
+        }
+        const path = $ref.substring(2).replace(/\//g, '.')
+        return {
+            ...omit(o, '$ref'),
+            ...resolveRef(get(schema, path))
+        }
+    }
+
+    const resolved = traverse(schema).map(resolveRef)
+    delete resolved.definitions
+
+    return resolved
+}
+
 function findGoodPath(userPath: string, schema: SchemaObject) {
   const correctPath = []
   let cursor = schema
@@ -74,9 +98,10 @@ function findGoodPath(userPath: string, schema: SchemaObject) {
 
 function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: string, prefix?: string, schema: SchemaObject}): Record<string, string> {
     const fullPrefix = prefix ? prefix.toLowerCase() + (prefix.endsWith(delimiter) ? '' : delimiter) : null
-
+    schema = unrefSchema(schema)
     const envs = (!fullPrefix ? process.env : mapKeys(pickBy(process.env, (value, key) => key.toLowerCase().startsWith(fullPrefix)), (v, k) => k?.substring(fullPrefix.length))) as Record<string, string>
     // If prefix add warn if not found good path ?
+
     return mapKeys(envs, (value, key) => {
         return findGoodPath(key.split(delimiter).join('.'), schema)
     })
@@ -119,11 +144,6 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
     }
 
     let userProvidedConfigSchema = opts.userProvidedConfigSchema
-
-    if (userProvidedConfigSchema.$ref) {
-        const ref = userProvidedConfigSchema.$ref.replace('#/definitions/', '')
-        userProvidedConfigSchema = userProvidedConfigSchema.definitions[ref]
-    }
 
     const userEnvProvidedConfig = extractEnvConfigPathsValues({
         delimiter: opts.envDelimiter || '_',

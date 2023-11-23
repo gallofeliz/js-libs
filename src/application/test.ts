@@ -1,5 +1,5 @@
 import { runApp, BaseConfig } from '.'
-import { UniversalLogger } from '@gallofeliz/logger'
+import { Logger } from '@gallofeliz/logger'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import { setTimeout } from 'timers/promises'
 
@@ -21,9 +21,9 @@ class Db {
 }
 
 class UserService {
-    protected logger: UniversalLogger
+    protected logger: Logger
 
-    constructor(logger: UniversalLogger, db: Db) {
+    constructor(logger: Logger, db: Db) {
         this.logger = logger
         console.log('db', db)
     }

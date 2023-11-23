@@ -1,10 +1,8 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { LoggerOpts, Logger, MemoryHandler, ConsoleHandler, BreadCrumbHandler, LogLevel } from '@gallofeliz/logger'
-import EventEmitter from 'events'
+import { createLogger, Logger, LoggerOpts, ConsoleHandler, BreadCrumbHandler, LogLevel } from '@gallofeliz/logger'
+import EventEmitter, { on, once } from 'events'
 import { v4 as uuid } from 'uuid'
-import { get } from 'lodash'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
-import { validate } from '@gallofeliz/validate'
 
 export class AbortError extends Error {
     name = 'AbortError'
@@ -16,10 +14,19 @@ export class AbortError extends Error {
 
 export interface BaseConfig {
     /** @default {} */
-    log?: {
+    log: {
         /** @default info */
-        level?: LogLevel
+        level: LogLevel
     }
+}
+
+enum ExitCodes {
+    unexpected=1,
+    invalidConfig=2,
+    appError=3,
+    appAbort=4,
+    processSignalAbort=5,
+    providedSignalAbort=6
 }
 
 export type InjectedServices<Config extends BaseConfig> = {
@@ -48,7 +55,7 @@ export interface AppDefinition<Config extends BaseConfig> {
     version?: string
     consoleUse?: 'accepted' | 'to-log' | 'block&warn' | 'block'
     config?: Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { watchChanges?: boolean }
-    logger?: Omit<LoggerOpts, 'handlers' | 'errorHandler'>
+    logger?: Omit<LoggerOpts, 'handlers' | 'errorHandler' | 'id'>
     services?: ServicesDefinition<Config>
     run: RunHandler<Config>
 }
@@ -91,7 +98,6 @@ class App<Config extends BaseConfig> {
     protected runFn: RunHandler<Config>
     protected abortController = new AbortController
     protected appDefinition: AppDefinition<Config>
-    protected configAbortController = new AbortController
 
     constructor(appDefinition: AppDefinition<Config>) {
         this.name = appDefinition.name || require(process.cwd() + '/package.json').name
@@ -101,285 +107,224 @@ class App<Config extends BaseConfig> {
         this.appDefinition = appDefinition
     }
 
-    protected async prepare() {
-        const temporaryLogHandler = new MemoryHandler({
-            maxLevel: 'debug',
-            minLevel: 'fatal'
-        })
-
-        this.logger = new Logger({
-            handlers: [temporaryLogHandler],
-            metadata: { appRunUuid: uuid() }
-        })
-
-        this.logger.debug('Configuration schema is', { schema: this.appDefinition.config?.userProvidedConfigSchema })
-
-        let maxLogLevel: LogLevel | undefined
-
-        process.on('warning', async (warning) => {
-            await this.logger!.warning(warning.message, {warning})
-        })
-
-        // Hack because I don't know why, this event listener is registered again
-        // On first call. The code is called twice with listenerCount() to 1 then 2
-        const handledRejections: Error[] = []
-        process.on('unhandledRejection', async (reason) => {
-            if (handledRejections.includes(reason as Error)) {
-                return
-            }
-
-            handledRejections.push(reason as Error)
-
-            await this.logger!.crit('Unhandled Rejection ; dirty exiting', {reason})
-
-            if (this.logger!.getHandlers()[0] === temporaryLogHandler) {
-                const handler = new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})
-                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log, this.logger!)))
-            }
-
-            process.exit(1)
-        })
-
-        process.on('uncaughtException', async (err, origin) => {
-            await this.logger!.crit('UncaughtException ; dirty exiting', {err, origin})
-
-            if (this.logger!.getHandlers()[0] === temporaryLogHandler) {
-                const handler = new ConsoleHandler({minLevel: 'crit', maxLevel: 'debug'})
-                await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => handler.handle(log, this.logger!)))
-            }
-
-            process.exit(1)
-        })
-
-        try {
-            const appDefinition = this.appDefinition
-
-            const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
-                userProvidedConfigSchema: { type: 'object' },
-                defaultFilename: '/etc/' + this.shortName + '/config.yaml',
-                envFilename: this.shortName + '_CONFIG_PATH',
-                envPrefix: this.shortName
-            }
-
-            const watchEventEmitter = new EventEmitter
-
-            const configDef = {
-                ...defaultConfigArgs,
-                ...appDefinition.config
-            }
-
-            if (appDefinition.config) {
-                this.config = appDefinition.config instanceof Function
-                    ? await appDefinition.config()
-                    : await loadConfig<any, any>({
-                        ...configDef,
-                        logger: this.logger,
-                        watchChanges: appDefinition.config?.watchChanges
-                            ? {
-                                abortSignal: this.configAbortController.signal,
-                                eventEmitter: watchEventEmitter,
-                            }
-                            : undefined
-                    })
-                } else {
-                    this.config = {} as Config
-                }
-
-            if (appDefinition.logger && !(appDefinition.logger instanceof Function) && appDefinition.logger.logLevelConfigPath) {
-                maxLogLevel = get(this.config, appDefinition.logger.logLevelConfigPath, 'info') as LogLevel
-
-                validate(maxLogLevel, { schema: tsToJsSchema<LogLevelWithDefault>() })
-
-                if (!(appDefinition.config instanceof Function) && appDefinition.config?.watchChanges) {
-                    watchEventEmitter.on('change:' + appDefinition.logger.logLevelConfigPath, ({value}) => {
-                        try {
-                            validate(value, { schema: tsToJsSchema<LogLevelWithDefault>() })
-                        } catch (e) {
-                            this.logger!.warning('Invalid log level ; missing config type check ?')
-                            return
-                        }
-
-                        appLogger.setHandlers([
-                            new ConsoleHandler({minLevel: 'crit', maxLevel: value})
-                        ])
-                    })
-                }
-
-            } else {
-
-                const _conf = await loadConfig<any, any>({
-                    ...configDef,
-                    userProvidedConfigSchema: {
-                        type: 'object',
-                        properties: {
-                            log: {
-                                type: 'object',
-                                default: {},
-                                properties: {
-                                    level: tsToJsSchema<LogLevelWithDefault>() //{ enum: levels, default: 'info' }
-                                }
-                            }
-                        }
-                    },
-                    logger: this.logger,
-                    watchChanges: !(appDefinition.config instanceof Function) && appDefinition.config?.watchChanges
-                        ? {
-                            abortSignal: this.abortController.signal,
-                            onChange: ({config: {log: {level: maxLogLevel}}}) => {
-                                appLogger.setHandlers([
-                                    new ConsoleHandler({minLevel: 'crit', maxLevel: maxLogLevel})
-                                ])
-                            }
-                        }
-                        : undefined
-                })
-
-                maxLogLevel = _conf.log.level
-            }
-
-            switch(appDefinition.consoleUse) {
-                case 'accepted':
-                    break
-                case 'block':
-                    for (const method in console) {
-                        // @ts-ignore
-                        console[method] = () => {}
-                    }
-                    break
-                case 'to-log':
-                    throw new Error('todo')
-                    break
-                case 'block&warn':
-                default:
-                    for (const method in console) {
-                        // @ts-ignore
-                        console[method] = (...args) => {
-                            this.logger!.warning('Used console.' + method + ', please fix it', {args})
-                        }
-                    }
-            }
-
-            this.services = createDiContainer({
-                config: this.config,
-                logger: this.logger,
-                appName: this.name,
-                appVersion: this.version,
-                configWatcher: watchEventEmitter,
-                abortController: this.abortController,
-                abortSignal: this.abortController.signal
-            }, appDefinition.services || {})
-
-            const appLogger = appDefinition.logger instanceof Function
-                ? appDefinition.logger(this.services)
-                : new Logger({
-                    ...appDefinition.logger,
-                    handlers: [new ConsoleHandler({minLevel: 'crit', maxLevel: maxLogLevel})]
-                })
-
-            this.logger.setHandlers([
-                new LoggerProxyHandler({
-                    logger: appLogger,
-                    minLevel: 'crit',
-                    maxLevel: 'debug'
-                })
-            ])
-
-        } catch (e) {
-            this.logger.setHandlers([
-                new ConsoleHandler({
-                    minLevel: 'crit',
-                    maxLevel: 'debug'
-                })
-            ])
-
-            throw e
-        } finally {
-            await Promise.all(temporaryLogHandler.getWrittenLogs().map(log => {
-                this.logger!.getHandlers()[0].handle(log, this.logger!)
-            }))
-
-            temporaryLogHandler.clearWrittenLogs()
-        }
-
-        return {
-            maxLogLevel
-        }
-    }
-
     public async run(abortSignal?: AbortSignal) {
         if (this.alreadyRun) {
             throw new Error('Application already run')
         }
 
-        const {maxLogLevel} = await this.prepare()
-
         this.alreadyRun = true
 
-        // Todo use abort for events listener
-
-        const onProvidedAbortSignalAborted = () => {
-            this.abortController.abort(abortSignal!.reason)
+        if (abortSignal?.aborted) {
+            return
         }
 
-        if (abortSignal) {
-            if (abortSignal.aborted) {
-                return
+        abortSignal?.addEventListener('abort', (reason) => {
+            this.logger!.info('Abort requested by provided signal ; aborting', {reason})
+            this.abortController.abort()
+        }, {signal: this.abortController.signal})
+
+        this.logger = createLogger({
+            ...this.appDefinition.logger,
+            id: { name: 'app', uid: uuid() },
+            handlers: [
+                new ConsoleHandler({
+                    maxLevel: 'debug',
+                    minLevel: 'fatal'
+                })
+            ]
+        })
+
+        ;(async() => {
+            for await(const [warning] of on(process, 'warning', {signal: this.abortController.signal})) {
+                await this.logger!.warning(warning.message, {warning})
             }
-            abortSignal.addEventListener('abort', onProvidedAbortSignalAborted)
+        })()
+
+        ;(async() => {
+            // Hack because I don't know why, this event listener is registered again
+            // On first call. The code is called twice with listenerCount() to 1 then 2
+            const handledRejections: Error[] = []
+
+            for await(const [reason] of on(process, 'unhandledRejection', {signal: this.abortController.signal})) {
+                if (handledRejections.includes(reason as Error)) {
+                    continue
+                }
+
+                handledRejections.push(reason as Error)
+
+                await this.logger!.fatal('Unhandled Rejection ; dirty exiting', {reason})
+
+                process.exit(ExitCodes.unexpected)
+            }
+        })()
+
+        ;(async() => {
+            for await(const [err, origin] of on(process, 'uncaughtException', {signal: this.abortController.signal})) {
+                await this.logger!.fatal('UncaughtException ; dirty exiting', {err, origin})
+
+                process.exit(ExitCodes.unexpected)
+            }
+        })()
+
+        const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
+            userProvidedConfigSchema: tsToJsSchema<BaseConfig>(),
+            defaultFilename: '/etc/' + this.shortName + '/config.yaml',
+            envFilename: this.shortName + '_CONFIG_PATH',
+            envPrefix: this.shortName
         }
 
-        function unregisterSignalHandlers() {
-            ['SIGTERM', 'SIGINT'].forEach(signal => process.off(signal, processSignalHandler))
+        const watchEventEmitter = new EventEmitter
+
+        try {
+            this.config = await loadConfig<any, any>({
+                ...defaultConfigArgs,
+                ...this.appDefinition.config,
+                logger: this.logger,
+                watchChanges: this.appDefinition.config?.watchChanges
+                    ? {
+                        abortSignal: this.abortController.signal,
+                        eventEmitter: watchEventEmitter,
+                    }
+                    : undefined
+            })
+        } catch (error) {
+            this.logger.fatal('Config load fails', {
+                error,
+                schema: this.appDefinition.config?.userProvidedConfigSchema
+            })
+            process.exitCode = ExitCodes.invalidConfig
+            this.abortController.abort()
+            return
         }
 
-        const processSignalHandler = (signal: NodeJS.Signals) => {
-            this.abortController.abort(new AbortError('Process receives signal ' + signal))
+        if (!this.config!.log?.level) {
+            this.logger.fatal('Unexpected not loaded BaseConfig (development problem)')
+            process.exitCode = ExitCodes.unexpected
+            this.abortController.abort()
+            return
         }
 
-        ;['SIGTERM', 'SIGINT'].forEach(signal => process.on(signal, processSignalHandler))
-        // Add clean up / beforeExitOnError ?
+        const reconfigureLoggerHandler = (logLevel: LogLevel) => {
+            this.logger!.setHandlers([
+                new BreadCrumbHandler({
+                    handler: new ConsoleHandler({
+                        maxLevel: 'debug',
+                        minLevel: 'fatal'
+                    }),
+                    flushMaxLevel: 'warning',
+                    passthroughMaxLevel: logLevel
+                })
+            ])
+        }
+
+        reconfigureLoggerHandler(this.config!.log.level)
+
+        if (this.appDefinition.config?.watchChanges) {
+            watchEventEmitter.on('change:log.level', ({value}) => {
+                //this.config!.log.level = value
+                reconfigureLoggerHandler(value)
+            })
+        }
+
+        switch(this.appDefinition.consoleUse) {
+            case 'accepted':
+                break
+            case 'block':
+                for (const method in console) {
+                    // @ts-ignore
+                    console[method] = () => {}
+                }
+                break
+            case 'to-log':
+                throw new Error('todo')
+                break
+            case 'block&warn':
+            default:
+                for (const method in console) {
+                    // @ts-ignore
+                    console[method] = (...args) => {
+                        this.logger!.warning('Used console.' + method + ', please fix it', {args})
+                    }
+                }
+        }
+
+        this.services = createDiContainer({
+            config: this.config,
+            logger: this.logger,
+            appName: this.name,
+            appVersion: this.version,
+            configWatcher: watchEventEmitter,
+            abortController: new AbortController,
+            abortSignal: this.abortController.signal
+        }, this.appDefinition.services || {})
+
+        this.services.abortController.signal.addEventListener('abort', (reason) => {
+            this.logger!.info('Abort requested by app ; aborting', {reason})
+            this.abortController.abort()
+        }, {signal: this.abortController.signal})
+
+        ;(async() => {
+            try {
+                const [signal] = await Promise.race([
+                    once(process, 'SIGTERM', {signal: this.abortController.signal}),
+                    once(process, 'SIGINT', {signal: this.abortController.signal})
+                ])
+
+                this.logger!.info('Process receives signal ' + signal + ' ; aborting')
+                this.abortController.abort()
+            } catch (e) {
+                if (!this.abortController.signal.aborted) {
+                    throw e
+                }
+            }
+        })()
+
+        if (this.appDefinition.config) {
+            this.logger.info('Config schema', {
+                schema: this.appDefinition.config.userProvidedConfigSchema
+            })
+        }
 
         this.logger!.info('Running app', {
             config: this.config,
             name: this.name,
             version: this.version,
-            logLevel: maxLogLevel
+            logLevel: this.config!.log.level
         })
-
-        const onAbort = () => {
-            unregisterSignalHandlers()
-            this.logger!.info('Abort requested', {reason: this.abortController.signal.reason})
-        }
-
-        this.abortController.signal.addEventListener('abort', onAbort)
 
         try {
             await this.runFn(this.services!)
-        } catch (e) {
-            if (e !== this.abortController.signal.reason && (e as any)?.cause !== this.abortController.signal.reason) {
-                throw e
+            this.logger!.info('App ended')
+            process.exitCode = 0
+        } catch (error) {
+            if (this.abortController.signal.aborted) {
+
+                this.logger!.info('App aborted')
+
+                if (abortSignal?.aborted) {
+                    process.exitCode = ExitCodes.providedSignalAbort
+                } else if (this.services.abortController.signal.aborted) {
+                    process.exitCode = ExitCodes.appAbort
+                } else {
+                    process.exitCode = ExitCodes.processSignalAbort
+                }
+
+                const isAbortReason = error === this.abortController.signal.reason
+                const isAboutAborting = error instanceof Error && (error as Error & {cause?:any}).cause === this.abortController.signal.reason
+
+                if (!(isAbortReason || isAboutAborting)) {
+                    this.logger!.warning('Error thrown while aborted', {error})
+                }
+
+                return
             }
+
+            this.logger!.fatal('App exited with error', {error})
+            process.exitCode = ExitCodes.appError
+            return
         } finally {
-            this.abortController.signal.removeEventListener('abort', onAbort)
-            abortSignal?.removeEventListener('abort', onProvidedAbortSignalAborted)
-            unregisterSignalHandlers()
-            this.configAbortController.abort()
+            this.abortController.abort()
         }
-
-        /*
-        setImmediate(() => {
-            const experimentalProcess = process as NodeJS.Process & { getActiveResourcesInfo?: () => string[] }
-
-            const activeResources = experimentalProcess.getActiveResourcesInfo
-                ? experimentalProcess.getActiveResourcesInfo()
-                : undefined
-
-            this.logger!.warning('')
-
-        }).unref()
-        */
-
-        this.logger!.info('App exited')
     }
 }
 

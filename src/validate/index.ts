@@ -1,5 +1,5 @@
 import {SchemaObject, default as Ajv} from 'ajv'
-import {clone} from 'lodash'
+import {clone, omit} from 'lodash'
 export {SchemaObject}
 
 export interface ValidateConfig {
@@ -28,7 +28,8 @@ export function validate<Data extends any>(data:Data, config: ValidateConfig): D
 
                 return schema
             })(config.schema)
-        }
+        },
+        definitions: omit(config.schema.definitions, config.schema.$ref?.replace('#/definitions/', ''))
     }
 
     if (!ajv.validate(wrapSchema, wrapData)) {

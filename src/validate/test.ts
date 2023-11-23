@@ -30,6 +30,16 @@ describe('Validate', () => {
             { count: 5, logs: { level: 'info' } }
         )
 
+        deepEqual(
+            validate(
+                { dbPath: '/var/data/db' },
+                {
+                    schema: {"$id":"InputConfig","$ref":"#/definitions/Config","$schema":"http://json-schema.org/draft-07/schema#","definitions":{"Config":{"additionalProperties":false,"properties":{"dbPath":{"type":"string"},"log":{"additionalProperties":false,"default":{},"properties":{"level":{"$ref":"#/definitions/LogLevel","default":"info"}},"required":["level"],"type":"object"}},"required":["dbPath","log"],"type":"object"},"LogLevel":{"enum":["fatal","error","warning","info","debug"],"type":"string"}}}
+                }
+            ),
+            { dbPath: '/var/data/db', log: { level: 'info' } }
+        )
+
     })
 
     it('fail', () => {
