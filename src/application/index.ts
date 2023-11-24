@@ -1,16 +1,8 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
 import { createLogger, Logger, LoggerOpts, ConsoleHandler, BreadCrumbHandler, LogLevel } from '@gallofeliz/logger'
-import EventEmitter, { on, once } from 'events'
+import EventEmitter from 'events'
 import { v4 as uuid } from 'uuid'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
-
-export class AbortError extends Error {
-    name = 'AbortError'
-    code = 'ABORT_ERR'
-    constructor(message: string = 'This operation was aborted') {
-        super(message)
-    }
-}
 
 export interface BaseConfig {
     /** @default {} */
@@ -20,13 +12,14 @@ export interface BaseConfig {
     }
 }
 
-enum ExitCodes {
+export enum ExitCodes {
     unexpected=1,
     invalidConfig=2,
     appError=3,
     appAbort=4,
-    processSignalAbort=5,
-    providedSignalAbort=6
+    providedSignalAbort=5,
+    SIGTERM=143,
+    SIGINT=130
 }
 
 export type InjectedServices<Config extends BaseConfig> = {
@@ -134,37 +127,50 @@ class App<Config extends BaseConfig> {
             ]
         })
 
-        ;(async() => {
-            for await(const [warning] of on(process, 'warning', {signal: this.abortController.signal})) {
-                await this.logger!.warning(warning.message, {warning})
+        const onWarning = async(warning: Error) => {
+            await this.logger!.warning(warning.message, {warning})
+        }
+
+        // Hack because I don't know why, this event listener is registered again
+        // On first call. The code is called twice with listenerCount() to 1 then 2
+        const handledRejections: Error[] = []
+        const onUnhandledRejection = async(reason: Error) => {
+            if (handledRejections.includes(reason as Error)) {
+                return
             }
-        })()
 
-        ;(async() => {
-            // Hack because I don't know why, this event listener is registered again
-            // On first call. The code is called twice with listenerCount() to 1 then 2
-            const handledRejections: Error[] = []
+            handledRejections.push(reason as Error)
 
-            for await(const [reason] of on(process, 'unhandledRejection', {signal: this.abortController.signal})) {
-                if (handledRejections.includes(reason as Error)) {
-                    continue
-                }
+            await this.logger!.fatal('Unhandled Rejection ; dirty exiting', {reason})
 
-                handledRejections.push(reason as Error)
+            process.exit(ExitCodes.unexpected)
+        }
 
-                await this.logger!.fatal('Unhandled Rejection ; dirty exiting', {reason})
+        const onUncaughtException = async(err: Error, origin: NodeJS.UncaughtExceptionOrigin) => {
+            await this.logger!.fatal('UncaughtException ; dirty exiting', {err, origin})
 
-                process.exit(ExitCodes.unexpected)
-            }
-        })()
+            process.exit(ExitCodes.unexpected)
+        }
 
-        ;(async() => {
-            for await(const [err, origin] of on(process, 'uncaughtException', {signal: this.abortController.signal})) {
-                await this.logger!.fatal('UncaughtException ; dirty exiting', {err, origin})
+        const signalsToHandle = ['SIGTERM', 'SIGINT']
+        let receivedSignal: 'SIGTERM' | 'SIGINT' | undefined
+        const onProcessSignal = async (signal: 'SIGTERM' | 'SIGINT') => {
+            receivedSignal = signal
+            this.logger!.info('Process receives signal ' + signal + ' ; aborting')
+            this.abortController.abort()
+        }
 
-                process.exit(ExitCodes.unexpected)
-            }
-        })()
+        signalsToHandle.forEach(signal => process.once(signal, onProcessSignal))
+        process.on('warning', onWarning)
+        process.on('unhandledRejection', onUnhandledRejection)
+        process.on('uncaughtException', onUncaughtException)
+
+        this.abortController.signal.addEventListener('abort', () => {
+            process.off('warning', onWarning)
+            process.off('unhandledRejection', onUnhandledRejection)
+            process.off('uncaughtException', onUncaughtException)
+            signalsToHandle.forEach(signal => process.off(signal, onProcessSignal))
+        })
 
         const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
             userProvidedConfigSchema: tsToJsSchema<BaseConfig>(),
@@ -226,6 +232,19 @@ class App<Config extends BaseConfig> {
             })
         }
 
+        const consoleMethods = {}
+        for (const method in console) {
+            // @ts-ignore
+            consoleMethods[method] = console[method]
+        }
+
+        this.abortController.signal.addEventListener('abort', () => {
+            for (const method in consoleMethods) {
+                // @ts-ignore
+                console[method] = consoleMethods[method]
+            }
+        })
+
         switch(this.appDefinition.consoleUse) {
             case 'accepted':
                 break
@@ -263,22 +282,6 @@ class App<Config extends BaseConfig> {
             this.abortController.abort()
         }, {signal: this.abortController.signal})
 
-        ;(async() => {
-            try {
-                const [signal] = await Promise.race([
-                    once(process, 'SIGTERM', {signal: this.abortController.signal}),
-                    once(process, 'SIGINT', {signal: this.abortController.signal})
-                ])
-
-                this.logger!.info('Process receives signal ' + signal + ' ; aborting')
-                this.abortController.abort()
-            } catch (e) {
-                if (!this.abortController.signal.aborted) {
-                    throw e
-                }
-            }
-        })()
-
         if (this.appDefinition.config) {
             this.logger.info('Config schema', {
                 schema: this.appDefinition.config.userProvidedConfigSchema
@@ -305,8 +308,10 @@ class App<Config extends BaseConfig> {
                     process.exitCode = ExitCodes.providedSignalAbort
                 } else if (this.services.abortController.signal.aborted) {
                     process.exitCode = ExitCodes.appAbort
+                } else if (receivedSignal) {
+                    process.exitCode = ExitCodes[receivedSignal]
                 } else {
-                    process.exitCode = ExitCodes.processSignalAbort
+                    process.exitCode = ExitCodes.unexpected
                 }
 
                 const isAbortReason = error === this.abortController.signal.reason
