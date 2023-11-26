@@ -19,13 +19,12 @@ export interface WatchChangesEventEmitter<Config> extends EventEmitter {
 /**
  * Refacto to do in this module
  */
-export interface ConfigOpts<UserProvidedConfig, Config> {
-    userProvidedConfigSchema: SchemaObject
+export interface ConfigOpts<Config> {
+    schema: SchemaObject
     defaultFilename?: string
     envFilename?: string
     envPrefix?: string
     envDelimiter?: string
-    finalizer?: (userProvidedConfig: UserProvidedConfig, logger?: Pick<Logger, 'warning'>) => Config
     logger?: Pick<Logger, 'warning'>
     watchChanges?: {
         onError?: (e: Error) => void
@@ -107,8 +106,8 @@ function extractEnvConfigPathsValues({delimiter, prefix, schema}: {delimiter: st
     })
 }
 
-export async function loadConfig<UserProvidedConfig extends object, Config extends object>(opts: ConfigOpts<UserProvidedConfig, Config>): Promise<Config> {
-    let userProvidedConfig: UserProvidedConfig = {} as UserProvidedConfig
+export async function loadConfig<Config extends object>(opts: ConfigOpts<Config>): Promise<Config> {
+    let configInProgress: Partial<Config> = {}
     let filename = opts.defaultFilename
     const readFilenames: string[] = []
 
@@ -127,13 +126,13 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
             switch(extname(filename)) {
                 case '.yml':
                 case '.yaml':
-                    userProvidedConfig = await parseYmlFile(filename, { onFileRead: (f) => readFilenames.push(f) })
+                    configInProgress = await parseYmlFile(filename, { onFileRead: (f) => readFilenames.push(f) })
                     break
                 case '.json':
-                    userProvidedConfig = JSON.parse(fs.readFileSync(filename, 'utf8'))
+                    configInProgress = JSON.parse(fs.readFileSync(filename, 'utf8'))
                     break
                 case '.js':
-                    userProvidedConfig = require(resolve(filename))
+                    configInProgress = require(resolve(filename))
                     break
                 case '.env':
                     // Sorry, but I always use Docker, and it does it for me
@@ -143,25 +142,23 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
         }
     }
 
-    let userProvidedConfigSchema = opts.userProvidedConfigSchema
+    let configSchema = opts.schema
 
     const userEnvProvidedConfig = extractEnvConfigPathsValues({
         delimiter: opts.envDelimiter || '_',
         prefix: opts.envPrefix,
-        schema: userProvidedConfigSchema
+        schema: configSchema
     })
 
     each(userEnvProvidedConfig, (value, key) => {
-        set(userProvidedConfig, key, value)
+        set(configInProgress, key, value)
     })
 
-    userProvidedConfig = validate(userProvidedConfig, {
-        schema: {...userProvidedConfigSchema, additionalProperties: false},
+    let config: Config = validate(configInProgress, {
+        schema: {...configSchema, additionalProperties: false},
         removeAdditional: true,
         contextErrorMsg: 'Configuration'
-    })
-
-    let config = opts.finalizer ? opts.finalizer(userProvidedConfig, opts.logger) : userProvidedConfig as any as Config
+    }) as Config
 
     if (opts.watchChanges && filename) {
 
@@ -182,7 +179,7 @@ export async function loadConfig<UserProvidedConfig extends object, Config exten
 
         const watcher = chokidar.watch(readFilenames.length > 0 ? readFilenames : filename)
         .on('all', async () => {
-            let newConfig
+            let newConfig: Config
 
             try {
                 newConfig = await loadConfig({...opts, watchChanges: undefined})

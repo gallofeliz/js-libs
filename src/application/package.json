@@ -17,8 +17,7 @@
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
     "@gallofeliz/config": "^0.1.0",
-    "@gallofeliz/logger": "^0.1.3",
-    "uuid": "^9.0.0"
+    "@gallofeliz/logger": "^0.1.3"
   },
   "devDependencies": {
     "@types/uuid": "^9.0.0"

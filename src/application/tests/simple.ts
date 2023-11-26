@@ -11,14 +11,14 @@ interface Config extends BaseConfig {
 
 runApp<Config>({
     config: {
-        userProvidedConfigSchema: tsToJsSchema<Config>()
+        schema: tsToJsSchema<Config>()
     },
     consoleUse: 'accepted',
     async run({logger, config, abortSignal}) {
         const response = await httpRequest({
             url: config.httpEndpoint,
             timeout: config.timeout,
-            logger,
+            logger: logger.child({name: 'httpToEndpoint'}),
             responseType: 'json',
             abortSignal,
             responseTransformation: config.query

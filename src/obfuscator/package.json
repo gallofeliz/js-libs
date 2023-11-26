@@ -16,7 +16,5 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
-    "lodash": "^4.17.21",
-    "traverse": "^0.6.7"
   }
 }

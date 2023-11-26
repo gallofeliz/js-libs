@@ -1,7 +1,6 @@
 import { cloneDeep, mapKeys, chain } from 'lodash'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
-import { ObfuscationRule, obfuscate } from '@gallofeliz/obfuscator'
 // @ts-ignore
 import {flatten as flattenObject} from 'flat'
 
@@ -44,26 +43,21 @@ export interface Handler {
 
 export type Processor = (log: Log, logger: Logger) => Log
 
-export type LoggerId = Exclude<any, undefined>
+export type LoggerId = any
 
 export interface LoggerOpts {
     id?: LoggerId
+    useFullQualifiedIdInLogs?: boolean | { separator: string/*, formatter (js to string) ? */ }
     metadata?: Object
     processors?: Processor[]
     handlers?: Handler[]
-    errorHandler?: (e: Error) => Promise<void>,
-    obfuscation?: {
-        rules?: ObfuscationRule[],
-        replaceDefaultRules?: boolean,
-        replacement?: string
-    }
+    errorHandler?: (e: Error) => Promise<void>
 }
 
 export interface Log {
     level: LogLevel
     timestamp: Date
     logger?: LoggerId
-    parentLoggers?: LoggerId[]
     message: string
     [k: string]: any
 }
@@ -73,13 +67,9 @@ export class Logger {
     protected handlers: Handler[]
     protected metadata: Object
     protected errorHandler: (e: Error) => Promise<void>
-    protected obfuscation: {
-        rules: ObfuscationRule[],
-        replaceDefaultRules?: boolean,
-        replacement?: string
-    }
     protected parent?: Logger
     protected id?: LoggerId
+    protected fullQualification?: { separator: string }
 
     constructor(opts: LoggerOpts = {}) {
         this.id = opts.id
@@ -87,9 +77,12 @@ export class Logger {
         this.processors = opts.processors || []
         this.handlers = opts.handlers || [new ConsoleHandler]
         this.errorHandler = opts.errorHandler || ((e) => { throw e })
-        this.obfuscation = {
-            ...opts.obfuscation,
-            rules: opts.obfuscation?.rules || [],
+        if (opts.useFullQualifiedIdInLogs !== false) {
+            this.fullQualification = {
+                separator: opts.useFullQualifiedIdInLogs instanceof Object
+                    ? opts.useFullQualifiedIdInLogs.separator
+                    : '.'
+            }
         }
     }
 
@@ -119,13 +112,24 @@ export class Logger {
 
     public async log(level: LogLevel, message: string, metadata?: Object): Promise<void> {
         try {
-            const parents: LoggerId[] = this.getParents().map(l => l.id).filter(id => id !== undefined) as LoggerId[]
+
+            let logger;
+
+            if (this.id) {
+                if (this.fullQualification) {
+                    const parents: LoggerId[] = this.getParents().map(l => l.id).filter(id => id) as LoggerId[]
+                    logger = [...parents.reverse(), this.id]
+                        .map(id => typeof id === 'string' ? id : JSON.stringify(id))
+                        .join(this.fullQualification.separator)
+                } else {
+                    logger = this.id
+                }
+            }
 
             let log: Log = {
                 timestamp: new Date,
                 level,
-                ...this.id !== undefined && {logger: this.id},
-                ...parents.length > 0 && {parentLoggers: parents},
+                ...logger && {logger},
                 message,
                 ...ensureNotKeys(
                     cloneDeep({...this.metadata, ...metadata}),
@@ -140,8 +144,6 @@ export class Logger {
                     return
                 }
             }
-
-            log = obfuscate(log, this.obfuscation)
 
             await Promise.all(this.handlers.map(handler => handler.handle(log, this))) // cloneDeep to protected others handlers ?
         } catch (e) {
@@ -167,11 +169,7 @@ export class Logger {
             metadata,
             processors: [...this.processors],
             handlers: [...this.handlers],
-            errorHandler: this.errorHandler,
-            obfuscation: {
-                ...this.obfuscation,
-                rules: [...this.obfuscation.rules]
-            }
+            errorHandler: this.errorHandler
         })
 
         logger.parent = parent
@@ -308,6 +306,15 @@ export abstract class BaseHandler implements Handler {
         this.minLevel = opts.minLevel || 'fatal'
         this.processors = opts.processors || []
         this.formatter = opts.formatter || createJsonFormatter()
+    }
+
+    public setLevels(levels: Pick<BaseHandlerOpts, 'maxLevel' | 'minLevel'>) {
+        if (levels.maxLevel) {
+            this.maxLevel = levels.maxLevel
+        }
+        if (levels.minLevel) {
+            this.minLevel = levels.minLevel
+        }
     }
 
     public getProcessors() {
@@ -461,6 +468,21 @@ export class BreadCrumbHandler extends BaseHandler {
         this.passthroughMaxLevel = opts.passthroughMaxLevel || 'info'
         this.passthroughMinLevel = opts.passthroughMinLevel || 'fatal'
         this.crumbStackSize = opts.crumbStackSize || 10
+    }
+
+    public setLevels(levels: Pick<BreadCrumbHandlerOpts, 'passthroughMinLevel' | 'passthroughMaxLevel' | 'minLevel' | 'maxLevel'>) {
+        super.setLevels(levels)
+
+        if (levels.passthroughMaxLevel) {
+            this.passthroughMaxLevel = levels.passthroughMaxLevel
+        }
+        if (levels.passthroughMinLevel) {
+            this.passthroughMinLevel = levels.passthroughMinLevel
+        }
+    }
+
+    public getHandler() {
+        return this.handler
     }
 
     protected async write(_: any, log: Log, logger: Logger) {

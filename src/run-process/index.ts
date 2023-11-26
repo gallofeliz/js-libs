@@ -8,7 +8,7 @@ import { pick } from 'lodash'
 import { validate, SchemaObject } from '@gallofeliz/validate'
 
 export type ProcessConfig = {
-    logger?: Pick<Logger, 'debug'>
+    logger?: Pick<Logger, 'debug' | 'info'>
     command: string | string[]
     shell?: string | string[]
     strictShell?: boolean
@@ -44,7 +44,7 @@ export function createProcess<Result extends any>(config: ProcessConfig): Proces
  */
 export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
-    protected logger?: Pick<Logger, 'debug'>
+    protected logger?: Pick<Logger, 'debug' | 'info'>
     protected process?: ChildProcess
 
     constructor(config: ProcessConfig) {
@@ -114,7 +114,9 @@ export class Process<Result extends any> extends EventEmitter {
         const passEnvKeys = ['PATH', 'USER', 'HOME', 'SHELL']
         const env = {...pick(processEnv, passEnvKeys), ...this.config.env || {}}
 
-        this.logger?.debug('Starting process', {
+        const startAt = new Date
+
+        this.logger?.info('Starting process', {
             // Todo : add spawn informations
             command: this.config.command,
             env,
@@ -190,14 +192,16 @@ export class Process<Result extends any> extends EventEmitter {
 
         try {
             const [exitCode]: [number] = await once(process, 'exit') as [number]
-            this.logger?.debug('exitCode ' + exitCode)
+            this.logger?.info('Process exited successfully', { duration: (new Date).getTime() - startAt.getTime() })
             if (exitCode > 0) {
+                this.logger?.info('Process exited with error', { exitCode, duration: (new Date).getTime() - startAt.getTime() })
                 throw new Error('Process error : ' + stderr.trim())
             }
             if (inputDataProcessError) {
                 throw new Error('ProcessPipeError : ' + inputDataProcessError.message)
             }
             if (exitCode === null && process.killed) {
+                this.logger?.info('Process timeout', { duration: (new Date).getTime() - startAt.getTime() })
                 throw new Error('Timeout')
             }
         } catch (e) {

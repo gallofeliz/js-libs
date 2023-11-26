@@ -53,9 +53,9 @@ describe('Logger', () => {
     child2.info('I am child of child')
 
     child2.getHandlers().push(createCallbackHandler({
-      maxLevel: 'notice',
+      maxLevel: 'info',
       formatter: log => '[${log.level}] ${log.message}',
-      cb(_, log) {
+      async cb(_, log) {
         console.log('child2 has log', log)
       }
     }))
@@ -135,7 +135,7 @@ describe('Logger', () => {
         await setTimeout(50)
         commandLogger.debug('ExitCode 2')
 
-        appLogger.crit('Unhandled exception', { error: new Error('Boooooom') })
+        appLogger.fatal('Unhandled exception', { error: new Error('Boooooom') })
       } else {
         await setTimeout(100)
         commandLogger.debug('STDOUT : . .. home backups music')

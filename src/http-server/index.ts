@@ -8,10 +8,9 @@ import {
     raw as rawParser
 } from 'body-parser'
 import { Socket } from 'net'
-import { once } from 'events'
+import EventEmitter, { once } from 'events'
 import morgan from 'morgan'
 import { validate, SchemaObject } from '@gallofeliz/validate'
-import { v4 as uuid } from 'uuid'
 import * as expressCore from 'express-serve-static-core'
 import { createAuthMiddleware, Auth, User , AuthMiddlewareOpts} from '@gallofeliz/auth'
 import { OpenApi, OpenApiOperation, OpenApiRequestBody, OpenApiResponse, OpenApiSchema } from 'openapi-v3'
@@ -19,13 +18,14 @@ import swaggerUi from 'swagger-ui-express'
 import { promisify } from 'util'
 import { statSync } from 'fs'
 import { resolve } from 'path'
+import { randomUUID } from 'crypto'
 
 export type HttpServerRequest<
     Params = expressCore.ParamsDictionary,
     Query = expressCore.Query,
     Body = any
 > = express.Request & {
-    uuid: string
+    uid: string
     abortSignal: AbortSignal
     logger: Logger
     params: Params
@@ -104,7 +104,7 @@ export function runServer({abortSignal, ...config}: HttpServerConfig & {abortSig
     return httpServer
 }
 
-export class HttpServer {
+export class HttpServer extends EventEmitter {
     protected logger: Logger
     protected app: express.Application
     protected server?: Server
@@ -113,6 +113,7 @@ export class HttpServer {
     protected auth: Auth
 
     constructor(config: HttpServerConfig) {
+        super()
         this.config = config
         this.logger = config.logger
 
@@ -132,7 +133,7 @@ export class HttpServer {
             .use(rawParser())
             .use((req, res, next) => {
                 (req as HttpServerRequest).auth = this.auth;
-                (req as HttpServerRequest).uuid = uuid()
+                (req as HttpServerRequest).uid = randomUUID().split('-')[0]
                 const reqAbortController = new AbortController;
                 (req as HttpServerRequest).abortSignal = reqAbortController.signal
 
@@ -142,17 +143,39 @@ export class HttpServer {
                     }
                 })
 
+                //const uriWithoutAuth = req.url.toString().replace(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi, '***')
+
+                this.logger.info('httpServer request', {
+                    requestUid: (req as HttpServerRequest).uid,
+                    method: req.method,
+                    url: req.url
+                })
+
+                // function obfuscateAuthHeader(value: string) {
+                //     return value.split(' ')[0] + ' ***'
+                // }
+
+                this.logger.debug('httpServer request details', {
+                    headers: req.headers /*mapValues(req.headers, (value, key) => {
+                        if (value && key.toLowerCase() === 'authorization') {
+                            return Array.isArray(value) ? value.map(obfuscateAuthHeader) : obfuscateAuthHeader(value)
+                        }
+                        return value
+                    })*/,
+                    body: req.body
+                })
+
                 next()
             })
             // I think we can remove morgan ...
             .use(morgan((tokens, req, res) => {
                 this.logger.info('httpServer response', {
-                    serverRequestUuid: (req as HttpServerRequest).uuid,
+                    requestUid: (req as HttpServerRequest).uid,
                     aborted: (req as HttpServerRequest).abortSignal.aborted,
                     status: res.statusCode,
                     user: (req as HttpServerRequest).user?.username || null,
-                    method: req.method,
-                    url: tokens.url(req, res),
+                    //method: req.method,
+                    //url: tokens.url(req, res),
                     responseTime: parseFloat(tokens['response-time'](req, res) as string),
                     totalTime: parseFloat(tokens['total-time'](req, res) as string),
                 })
@@ -221,6 +244,8 @@ export class HttpServer {
         Object.keys(this.connections).forEach(key => this.connections[key].destroy())
 
         delete this.server
+
+        this.emit('stopped')
     }
 
     protected configureRoutes() {
@@ -444,8 +469,8 @@ export class HttpServer {
             this.app[method as 'all'](route.path,
                 createAuthMiddleware(routeAuthMiddlewareOpts),
                 async (req, res, next) => {
-                    const uuid = (req as any).uuid
-                    const logger = this.logger.child({ serverRequestUuid: uuid })
+                    const uid = (req as any).uid
+                    const logger = this.logger.child('request-'+uid)
                     ;(req as HttpServerRequest).logger = logger
 
                     try {
@@ -538,7 +563,7 @@ export class HttpServer {
                             }
                             return
                         }
-                        return
+                        return next(e)
                     }
 
                     if (!res.finished) {

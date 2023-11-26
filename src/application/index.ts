@@ -1,14 +1,17 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
-import { createLogger, Logger, LoggerOpts, ConsoleHandler, BreadCrumbHandler, LogLevel } from '@gallofeliz/logger'
+import { createLogger, Logger, LoggerOpts, ConsoleHandler, BreadCrumbHandler, LogLevel, createJsonFormatter, createLogfmtFormatter } from '@gallofeliz/logger'
 import EventEmitter from 'events'
-import { v4 as uuid } from 'uuid'
+//import { v4 as uuid } from 'uuid'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
+import { randomUUID } from 'crypto'
 
 export interface BaseConfig {
     /** @default {} */
     log: {
         /** @default info */
         level: LogLevel
+        /** @default json */
+        format: 'json' | 'logfmt'
     }
 }
 
@@ -47,7 +50,7 @@ export interface AppDefinition<Config extends BaseConfig> {
     name?: string
     version?: string
     consoleUse?: 'accepted' | 'to-log' | 'block&warn' | 'block'
-    config?: Omit<ConfigOpts<any, Config>, 'logger' | 'watchChanges'> & { watchChanges?: boolean }
+    config?: Omit<ConfigOpts<Config>, 'logger' | 'watchChanges'> & { watchChanges?: boolean }
     logger?: Omit<LoggerOpts, 'handlers' | 'errorHandler' | 'id'>
     services?: ServicesDefinition<Config>
     run: RunHandler<Config>
@@ -116,9 +119,19 @@ class App<Config extends BaseConfig> {
             this.abortController.abort()
         }, {signal: this.abortController.signal})
 
+        const runUid = randomUUID().split('-')[0]
+
         this.logger = createLogger({
             ...this.appDefinition.logger,
-            id: { name: 'app', uid: uuid() },
+            metadata: {
+                ...this.appDefinition.logger?.metadata || {},
+                application: {
+                    version: this.version,
+                    runUid
+                }
+            },
+            id: 'app',
+            //id: 'app_' + uuid().split('-')[0],  //{ name: 'app', uid: uuid() },
             handlers: [
                 new ConsoleHandler({
                     maxLevel: 'debug',
@@ -172,17 +185,17 @@ class App<Config extends BaseConfig> {
             signalsToHandle.forEach(signal => process.off(signal, onProcessSignal))
         })
 
-        const defaultConfigArgs: Pick<ConfigOpts<any, any>, 'userProvidedConfigSchema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
-            userProvidedConfigSchema: tsToJsSchema<BaseConfig>(),
+        const defaultConfigArgs: Pick<ConfigOpts<any>, 'schema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
+            schema: tsToJsSchema<BaseConfig>(),
             defaultFilename: '/etc/' + this.shortName + '/config.yaml',
             envFilename: this.shortName + '_CONFIG_PATH',
-            envPrefix: this.shortName
+            envPrefix: this.shortName,
         }
 
         const watchEventEmitter = new EventEmitter
 
         try {
-            this.config = await loadConfig<any, any>({
+            this.config = await loadConfig<Config>({
                 ...defaultConfigArgs,
                 ...this.appDefinition.config,
                 logger: this.logger,
@@ -190,13 +203,16 @@ class App<Config extends BaseConfig> {
                     ? {
                         abortSignal: this.abortController.signal,
                         eventEmitter: watchEventEmitter,
+                        onChange: ({patch}) => {
+                            this.logger!.info('Configuration change detected', { changes: patch })
+                        }
                     }
                     : undefined
             })
         } catch (error) {
             this.logger.fatal('Config load fails', {
                 error,
-                schema: this.appDefinition.config?.userProvidedConfigSchema
+                schema: this.appDefinition.config?.schema
             })
             process.exitCode = ExitCodes.invalidConfig
             this.abortController.abort()
@@ -210,25 +226,26 @@ class App<Config extends BaseConfig> {
             return
         }
 
-        const reconfigureLoggerHandler = (logLevel: LogLevel) => {
-            this.logger!.setHandlers([
-                new BreadCrumbHandler({
-                    handler: new ConsoleHandler({
-                        maxLevel: 'debug',
-                        minLevel: 'fatal'
-                    }),
-                    flushMaxLevel: 'warning',
-                    passthroughMaxLevel: logLevel
-                })
-            ])
-        }
-
-        reconfigureLoggerHandler(this.config!.log.level)
+        this.logger!.setHandlers([
+            new BreadCrumbHandler({
+                handler: new ConsoleHandler({
+                    maxLevel: 'debug',
+                    minLevel: 'fatal',
+                    formatter: this.config!.log.format === 'json'
+                        ? createJsonFormatter()
+                        : createLogfmtFormatter()
+                }),
+                flushMaxLevel: 'warning',
+                passthroughMaxLevel: this.config!.log.level
+            })
+        ])
 
         if (this.appDefinition.config?.watchChanges) {
             watchEventEmitter.on('change:log.level', ({value}) => {
                 //this.config!.log.level = value
-                reconfigureLoggerHandler(value)
+                this.logger!.info('Reconfigure logger level', {level: value})
+
+                ;(this.logger!.getHandlers()[0] as BreadCrumbHandler).setLevels({passthroughMaxLevel: value})
             })
         }
 
@@ -284,7 +301,7 @@ class App<Config extends BaseConfig> {
 
         if (this.appDefinition.config) {
             this.logger.info('Config schema', {
-                schema: this.appDefinition.config.userProvidedConfigSchema
+                schema: this.appDefinition.config.schema
             })
         }
 
@@ -292,11 +309,16 @@ class App<Config extends BaseConfig> {
             config: this.config,
             name: this.name,
             version: this.version,
-            logLevel: this.config!.log.level
+            runUid,
+            logLevel: this.config!.log.level,
+            logFormat: this.config!.log.format
         })
 
         try {
             await this.runFn(this.services!)
+            if (this.abortController.signal.aborted) {
+                throw this.abortController.signal.reason
+            }
             this.logger!.info('App ended')
             process.exitCode = 0
         } catch (error) {

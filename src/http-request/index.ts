@@ -6,7 +6,7 @@ import { validate, SchemaObject } from '@gallofeliz/validate'
 import { pipeline } from 'stream/promises'
 
 export interface HttpRequestConfig {
-   logger?: Pick<Logger, 'debug'>
+   logger?: Pick<Logger, 'debug' | 'info'>
    abortSignal?: AbortSignal
    url: string
    timeout: number | Options['timeout'] | null
@@ -67,16 +67,35 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
             beforeRedirect: [],
             beforeRetry: [],
             beforeRequest: [options  => {
-                logger?.debug('Calling http request', {
+                //const uriWithoutAuth = options.url.toString().replace(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi, '***')
+
+                logger?.info('Calling http request', {
+                    url: options.url,
+                    method: options.method
+                })
+
+                // function obfuscateAuthHeader(value: string) {
+                //     return value.split(' ')[0] + ' ***'
+                // }
+
+                logger?.debug('http request details', {
                     url: options.url,
                     method: options.method,
-                    headers: options.headers,
+                    headers: options.headers/* mapValues(options.headers, (value, key) => {
+                        if (value && key.toLowerCase() === 'authorization') {
+                            return Array.isArray(value) ? value.map(obfuscateAuthHeader) : obfuscateAuthHeader(value)
+                        }
+                        return value
+                    })*/,
                     body: options.body
                 })
             }],
             afterResponse: [response => {
-                logger?.debug('Http Request response', {
+                logger?.info('Http Request response', {
                     durations: response.timings.phases,
+                    statusCode: response.statusCode
+                })
+                logger?.debug('Http Request response details', {
                     statusCode: response.statusCode,
                     headers: response.headers,
                     body: request.responseStream ? undefined : response.body
@@ -84,8 +103,7 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
                 return response
             }],
             beforeError: [error => {
-                logger?.debug('Http Request returned error ' + error.message, {
-                    duration: error.timings?.phases,
+                logger?.info('Http Request returned error : ' + error.message, {
                     error
                 })
                 return error
@@ -120,7 +138,7 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
     const gotRequest = got(gotOpts) as CancelableRequest<Response<string>>
 
     const onSignalAbort = () => {
-        logger?.debug('Abort', {reason: abortSignal?.reason})
+        logger?.info('Abort', {reason: abortSignal?.reason})
         if (request.responseStream) {
             (gotRequest as any).destroy()
         } else {

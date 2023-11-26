@@ -14,7 +14,7 @@ interface CreateNativeDatesIteratorOpts {
 export type CreateMoreThanNativeDatesIteratorTime = Date | Interval | string
 
 export interface CreateMoreThanNativeDatesIteratorOpts {
-    times: Array<CreateMoreThanNativeDatesIteratorTime>
+    times: Array<CreateMoreThanNativeDatesIteratorTime> | CreateMoreThanNativeDatesIteratorTime
     startDate?: Date
     endDate?: Date
     limit?: number
@@ -58,7 +58,7 @@ function groupIteratorTypesToIterators(opts: CreateIteratorOpts & {group: Record
 
 // Build complex iterator from simple config
 export function createIterator(opts: CreateIteratorOpts): DatesIterator {
-    const timesGroups = groupByIteratorTypesForCreate(opts.times)
+    const timesGroups = groupByIteratorTypesForCreate(Array.isArray(opts.times) ? opts.times : [opts.times])
     const excludeTimesGroups = (opts as CreateMoreThanNativeDatesIteratorOpts).excludedTimes
         ? groupByIteratorTypesForCreate((opts as CreateMoreThanNativeDatesIteratorOpts).excludedTimes as any)
         : null

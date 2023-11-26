@@ -5,7 +5,7 @@ Simple logger:
 - Advanced childs (not only id and metadata but also own processors and handlers stack)
 - Default simple JSON console logging
 - logfmt formatter available
-- Secrets Obfuscation
+- X No more Secrets Obfuscation
 - BreadCrumb handler (like Monolog Fingers crossed handler) : keep some verbose logs in memory until an error-like log is logged. Kept verbose logs are flushed with it. Verbose logs are kept on a logger chain (parent/child) to flush only (as possible) relevant logs.
 
 ```typescript

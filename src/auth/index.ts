@@ -1,5 +1,5 @@
 import basicAuth from 'basic-auth'
-import { flatten, omitBy } from 'lodash'
+import { flatten, omitBy, mapValues } from 'lodash'
 import safeCompare from 'safe-compare'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
@@ -34,7 +34,7 @@ export function verifyHtpasswdPassword(inputPassword: string, passwordHash: stri
 export interface User {
     username: string
     password: string
-    autorisations: string[]
+    autorisations: string[] | string
 }
 
 export class AuthenticationError extends Error {
@@ -47,8 +47,8 @@ export class AuthorizationError extends Error {
 
 export interface AuthOpts {
     users?: User[]
-    anonymAutorisations?: string[]
-    authorizationsExtensions?: Record<string, string[]>
+    anonymAutorisations?: string[] | string
+    authorizationsExtensions?: Record<string, string[] | string>
 }
 
 export class Auth {
@@ -77,8 +77,11 @@ export class Auth {
     */
     public constructor({users = [], anonymAutorisations = [], authorizationsExtensions = {}}: AuthOpts) {
         this.usersDict = users.reduce((dict, user) => ({...dict, [user.username]: user}) , {})
-        this.anonymAutorisations = anonymAutorisations
-        this.authorizationsExtensions = omitBy(authorizationsExtensions, list => list.length === 0)
+        this.anonymAutorisations = Array.isArray(anonymAutorisations) ? anonymAutorisations : [anonymAutorisations]
+        this.authorizationsExtensions = mapValues(
+            omitBy(authorizationsExtensions, list => list.length === 0),
+            (authorisations) => Array.isArray(authorisations) ? authorisations : [authorisations]
+        )
     }
 
     public authenticate(username: string, password: string): User {
@@ -102,7 +105,11 @@ export class Auth {
             return true
         }
 
-        const userExtendedAuthorizations = this.extendAuthorizations(user?.autorisations || this.anonymAutorisations)
+        const userExtendedAuthorizations = this.extendAuthorizations(
+            user?.autorisations !== undefined
+                ? (Array.isArray(user.autorisations) ? user.autorisations : [user.autorisations])
+                : this.anonymAutorisations
+        )
 
         return matcher(authorization, userExtendedAuthorizations, { caseSensitive: true }).length === 1
     }
