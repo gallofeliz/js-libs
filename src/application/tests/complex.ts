@@ -52,6 +52,8 @@ runApp<Config>({
         watchChanges: true,
         schema: tsToJsSchema<Config>()
     },
+    name: 'memoryCollector',
+    version: '1.4.2',
     logger: {
         processors: [(log) => {
             if (log.config?.httpServer?.auth?.password) {
@@ -83,19 +85,19 @@ runApp<Config>({
             })
         },
         usedMemoryCollectSchedule({logger, usedMemoryService, usedMemoryHistory}) {
-            return new Schedule({
-                when: 'PT5S',
-                abortFnCallsOnAbort: true,
-                logger: logger.child('collect-schedule'),
-                fn: async ({abortSignal, logger}) => {
-                    logger!.info('Collecting memory')
-                    usedMemoryHistory.push({
-                        date: new Date,
-                        value: await usedMemoryService.collect(abortSignal, logger)
-                    })
-                },
-                onError: (error) => logger.warning('Memory collect failed', {error})
-            })
+            // return new Schedule({
+            //     when: 'PT5S',
+            //     abortFnCallsOnAbort: true,
+            //     logger: logger.child('collect-schedule'),
+            //     fn: async ({abortSignal, logger}) => {
+            //         logger!.info('Collecting memory')
+            //         usedMemoryHistory.push({
+            //             date: new Date,
+            //             value: await usedMemoryService.collect(abortSignal, logger)
+            //         })
+            //     },
+            //     onError: (error) => logger.warning('Memory collect failed', {error})
+            // })
         },
         apiToConsumeHistory({logger, appName, appVersion, config, usedMemoryHistory}) {
 
@@ -142,14 +144,14 @@ runApp<Config>({
         }
     },
     async run({logger, abortSignal, usedMemoryCollectSchedule, usedMemoryHistoryCleaner, apiToConsumeHistory}) {
- //       (usedMemoryCollectSchedule as Schedule).start(abortSignal)
-        ;(usedMemoryHistoryCleaner as Schedule).start(abortSignal)
-        ;(apiToConsumeHistory as HttpServer).start(abortSignal)
+        ;(usedMemoryCollectSchedule as Schedule).start(abortSignal)
+        //;(usedMemoryHistoryCleaner as Schedule).start(abortSignal)
+        //;(apiToConsumeHistory as HttpServer).start(abortSignal)
 
         await Promise.all([
             once(usedMemoryCollectSchedule, 'ended'),
             once(usedMemoryHistoryCleaner, 'ended'),
-            once(apiToConsumeHistory, 'stopped')
+            //once(apiToConsumeHistory, 'stopped')
         ])
     }
 })

@@ -8,7 +8,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@gallofeliz/logger": "^0.1.1",
     "@gallofeliz/super-yaml": "^0.1.1",
     "@gallofeliz/validate": "^0.1.1",
     "chokidar": "^3.5.3",

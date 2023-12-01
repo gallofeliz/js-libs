@@ -1,7 +1,6 @@
 import fs, { existsSync } from 'fs'
 import { mapKeys, pickBy, each, set, get, omit } from 'lodash'
 import { extname, resolve } from 'path'
-import { Logger } from '@gallofeliz/logger'
 import { validate, SchemaObject } from '@gallofeliz/validate'
 import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
 import { compare, Operation } from 'fast-json-patch'
@@ -25,20 +24,10 @@ export interface ConfigOpts<Config> {
     envFilename?: string
     envPrefix?: string
     envDelimiter?: string
-    logger?: Pick<Logger, 'warning'>
     watchChanges?: {
-        onError?: (e: Error) => void
         abortSignal?: AbortSignal
-    } & (
-        ({
-            onChange: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
-            eventEmitter?: WatchChangesEventEmitter<Config>
-        })
-        | ({
-            onChange?: ({patch, config, previousConfig}: {patch: ChangePatchOperation[], config: Config, previousConfig: Config}) => void
-            eventEmitter: WatchChangesEventEmitter<Config>
-        })
-    )
+        eventEmitter: WatchChangesEventEmitter<Config>
+    }
 }
 
 function unrefSchema(schema: Object) {
@@ -163,18 +152,7 @@ export async function loadConfig<Config extends object>(opts: ConfigOpts<Config>
     if (opts.watchChanges && filename) {
 
         const handleError = (error: Error, context: string) =>  {
-            if (opts.watchChanges!.onError || opts.watchChanges!.eventEmitter?.listenerCount('error')) {
-                if (opts.watchChanges!.onError) {
-                    opts.watchChanges!.onError(error)
-                }
-                if (opts.watchChanges!.eventEmitter?.listenerCount('error')) {
-                    opts.watchChanges!.eventEmitter.emit('error', error)
-                }
-            } else if (opts.logger) {
-                opts.logger.warning('Config ' + context + ' error', {error})
-            } else {
-                throw error
-            }
+            opts.watchChanges!.eventEmitter.emit('error', error)
         }
 
         const watcher = chokidar.watch(readFilenames.length > 0 ? readFilenames : filename)
@@ -210,36 +188,30 @@ export async function loadConfig<Config extends object>(opts: ConfigOpts<Config>
                 previousConfig
             }
 
-            if (opts.watchChanges!.onChange) {
-                opts.watchChanges!.onChange(changeArg)
-            }
+            const hasGlobalChangeListener = opts.watchChanges!.eventEmitter!.emit('change', changeArg)
+            patch.forEach(op => {
+                let pathHasListener = false
+                op.path.split('.').reduce((rootToLeafNodes: string[], node) => {
+                    rootToLeafNodes = rootToLeafNodes.concat(node)
+                    const nodeHasListener = opts.watchChanges!.eventEmitter!.emit('change:' + rootToLeafNodes.join('.') as 'change:xxx', {
+                        config,
+                        previousConfig,
+                        value: get(config, rootToLeafNodes),
+                        previousValue: get(previousConfig, rootToLeafNodes),
+                    })
 
-            if (opts.watchChanges!.eventEmitter) {
-                const hasGlobalChangeListener = opts.watchChanges!.eventEmitter!.emit('change', changeArg)
-                patch.forEach(op => {
-                    let pathHasListener = false
-                    op.path.split('.').reduce((rootToLeafNodes: string[], node) => {
-                        rootToLeafNodes = rootToLeafNodes.concat(node)
-                        const nodeHasListener = opts.watchChanges!.eventEmitter!.emit('change:' + rootToLeafNodes.join('.') as 'change:xxx', {
-                            config,
-                            previousConfig,
-                            value: get(config, rootToLeafNodes),
-                            previousValue: get(previousConfig, rootToLeafNodes),
-                        })
-
-                        if (nodeHasListener) {
-                            pathHasListener = true
-                        }
-
-                        return rootToLeafNodes
-                    }, [])
-
-                    if (!pathHasListener && !hasGlobalChangeListener) {
-                        handleError(new Error('Unhandled config watch change for ' + op.path), 'watchChanges')
+                    if (nodeHasListener) {
+                        pathHasListener = true
                     }
 
-                })
-            }
+                    return rootToLeafNodes
+                }, [])
+
+                if (!pathHasListener && !hasGlobalChangeListener) {
+                    handleError(new Error('Unhandled config watch change for ' + op.path), 'watchChanges')
+                }
+
+            })
         })
         .on('error', (error) => handleError(error as Error, 'watch'))
 

@@ -1,9 +1,10 @@
 import { loadConfig, ConfigOpts, WatchChangesEventEmitter } from '@gallofeliz/config'
 import { createLogger, Logger, LoggerOpts, ConsoleHandler, BreadCrumbHandler, LogLevel, createJsonFormatter, createLogfmtFormatter } from '@gallofeliz/logger'
 import EventEmitter from 'events'
-//import { v4 as uuid } from 'uuid'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
-import { randomUUID } from 'crypto'
+import shortUuid from 'short-uuid'
+
+export * from './utils'
 
 export interface BaseConfig {
     /** @default {} */
@@ -25,6 +26,8 @@ export enum ExitCodes {
     SIGINT=130
 }
 
+export type UidGenerator = () => string
+
 export type InjectedServices<Config extends BaseConfig> = {
     logger: Logger
     config: Config
@@ -34,6 +37,7 @@ export type InjectedServices<Config extends BaseConfig> = {
     configWatcher: WatchChangesEventEmitter<Config>
     abortController: AbortController
     abortSignal: AbortSignal
+    uidGenerator: UidGenerator
 }
 
 export type Services<Config extends BaseConfig> = Record<keyof ServicesDefinition<Config>, any> & InjectedServices<Config>
@@ -47,8 +51,8 @@ export type ServiceDefinition<T, Config extends BaseConfig> = (services: Service
 export type RunHandler<Config extends BaseConfig> = (services: Services<Config>) => void
 
 export interface AppDefinition<Config extends BaseConfig> {
-    name?: string
-    version?: string
+    name: string
+    version: string
     consoleUse?: 'accepted' | 'to-log' | 'block&warn' | 'block'
     config?: Omit<ConfigOpts<Config>, 'logger' | 'watchChanges'> & { watchChanges?: boolean }
     logger?: Omit<LoggerOpts, 'handlers' | 'errorHandler' | 'id'>
@@ -86,7 +90,6 @@ class App<Config extends BaseConfig> {
     //protected status: 'READY' | 'RUNNING' = 'READY'
     protected alreadyRun: boolean = false
     protected name: string
-    protected shortName: string
     protected version: string
     protected config?: Config
     protected logger?: Logger
@@ -96,9 +99,8 @@ class App<Config extends BaseConfig> {
     protected appDefinition: AppDefinition<Config>
 
     constructor(appDefinition: AppDefinition<Config>) {
-        this.name = appDefinition.name || require(process.cwd() + '/package.json').name
-        this.version = appDefinition.version  || require(process.cwd() + '/package.json').version
-        this.shortName = this.name.split('/').reverse()[0]
+        this.name = appDefinition.name
+        this.version = appDefinition.version
         this.runFn = appDefinition.run
         this.appDefinition = appDefinition
     }
@@ -115,33 +117,40 @@ class App<Config extends BaseConfig> {
         }
 
         abortSignal?.addEventListener('abort', (reason) => {
-            this.logger!.info('Abort requested by provided signal ; aborting', {reason})
+            fwtLogger.info('Abort requested by provided signal ; aborting', {reason})
             this.abortController.abort()
         }, {signal: this.abortController.signal})
 
-        const runUid = randomUUID().split('-')[0]
+        const uidGenerator = () => shortUuid.generate().substring(0, 10)
+        const runUid = uidGenerator()
+
+        const loggerHandler = new BreadCrumbHandler({
+            handler: new ConsoleHandler({
+                maxLevel: 'debug',
+                minLevel: 'fatal',
+                formatter: createJsonFormatter()
+            }),
+            flushMaxLevel: 'warning',
+            passthroughMaxLevel: 'debug'
+        })
 
         this.logger = createLogger({
             ...this.appDefinition.logger,
             metadata: {
                 ...this.appDefinition.logger?.metadata || {},
-                application: {
-                    version: this.version,
-                    runUid
-                }
+                [this.name + 'Version']: this.version,
+                [this.name + 'RunUid']: runUid,
+                appName: this.name,
             },
-            id: 'app',
+            id: this.name,
             //id: 'app_' + uuid().split('-')[0],  //{ name: 'app', uid: uuid() },
-            handlers: [
-                new ConsoleHandler({
-                    maxLevel: 'debug',
-                    minLevel: 'fatal'
-                })
-            ]
+            handlers: [loggerHandler]
         })
 
+        const fwtLogger = this.logger.child('fwt')
+
         const onWarning = async(warning: Error) => {
-            await this.logger!.warning(warning.message, {warning})
+            await fwtLogger.warning(warning.message, {warning})
         }
 
         // Hack because I don't know why, this event listener is registered again
@@ -154,13 +163,13 @@ class App<Config extends BaseConfig> {
 
             handledRejections.push(reason as Error)
 
-            await this.logger!.fatal('Unhandled Rejection ; dirty exiting', {reason})
+            await fwtLogger.fatal('Unhandled Rejection ; dirty exiting', {reason})
 
             process.exit(ExitCodes.unexpected)
         }
 
         const onUncaughtException = async(err: Error, origin: NodeJS.UncaughtExceptionOrigin) => {
-            await this.logger!.fatal('UncaughtException ; dirty exiting', {err, origin})
+            await fwtLogger.fatal('UncaughtException ; dirty exiting', {err, origin})
 
             process.exit(ExitCodes.unexpected)
         }
@@ -169,7 +178,7 @@ class App<Config extends BaseConfig> {
         let receivedSignal: 'SIGTERM' | 'SIGINT' | undefined
         const onProcessSignal = async (signal: 'SIGTERM' | 'SIGINT') => {
             receivedSignal = signal
-            this.logger!.info('Process receives signal ' + signal + ' ; aborting')
+            fwtLogger.info('Process receives signal ' + signal + ' ; aborting')
             this.abortController.abort()
         }
 
@@ -187,30 +196,35 @@ class App<Config extends BaseConfig> {
 
         const defaultConfigArgs: Pick<ConfigOpts<any>, 'schema' | 'defaultFilename' | 'envFilename' | 'envPrefix'> = {
             schema: tsToJsSchema<BaseConfig>(),
-            defaultFilename: '/etc/' + this.shortName + '/config.yaml',
-            envFilename: this.shortName + '_CONFIG_PATH',
-            envPrefix: this.shortName,
+            defaultFilename: '/etc/' + this.name + '/config.yaml',
+            envFilename: this.name + '_CONFIG_PATH',
+            envPrefix: this.name,
         }
 
         const watchEventEmitter = new EventEmitter
+
+        if (this.appDefinition.config?.watchChanges) {
+            watchEventEmitter.on('error', (error: Error) => {
+                fwtLogger.warning('Config watch error', {error})
+            })
+            watchEventEmitter.on('change', ({patch}) => {
+                fwtLogger.info('Configuration change detected', { changes: patch })
+            })
+        }
 
         try {
             this.config = await loadConfig<Config>({
                 ...defaultConfigArgs,
                 ...this.appDefinition.config,
-                logger: this.logger,
                 watchChanges: this.appDefinition.config?.watchChanges
                     ? {
                         abortSignal: this.abortController.signal,
-                        eventEmitter: watchEventEmitter,
-                        onChange: ({patch}) => {
-                            this.logger!.info('Configuration change detected', { changes: patch })
-                        }
+                        eventEmitter: watchEventEmitter
                     }
                     : undefined
             })
         } catch (error) {
-            this.logger.fatal('Config load fails', {
+            fwtLogger.fatal('Config load fails', {
                 error,
                 schema: this.appDefinition.config?.schema
             })
@@ -220,32 +234,23 @@ class App<Config extends BaseConfig> {
         }
 
         if (!this.config!.log?.level) {
-            this.logger.fatal('Unexpected not loaded BaseConfig (development problem)')
+            fwtLogger.fatal('Unexpected not loaded BaseConfig (development problem)')
             process.exitCode = ExitCodes.unexpected
             this.abortController.abort()
             return
         }
 
-        this.logger!.setHandlers([
-            new BreadCrumbHandler({
-                handler: new ConsoleHandler({
-                    maxLevel: 'debug',
-                    minLevel: 'fatal',
-                    formatter: this.config!.log.format === 'json'
-                        ? createJsonFormatter()
-                        : createLogfmtFormatter()
-                }),
-                flushMaxLevel: 'warning',
-                passthroughMaxLevel: this.config!.log.level
-            })
-        ])
+        loggerHandler.setLevels({passthroughMaxLevel: this.config!.log.level})
+        loggerHandler.setFormatter(this.config!.log.format === 'json'
+            ? createJsonFormatter()
+            : createLogfmtFormatter()
+        )
 
         if (this.appDefinition.config?.watchChanges) {
             watchEventEmitter.on('change:log.level', ({value}) => {
                 //this.config!.log.level = value
-                this.logger!.info('Reconfigure logger level', {level: value})
-
-                ;(this.logger!.getHandlers()[0] as BreadCrumbHandler).setLevels({passthroughMaxLevel: value})
+                fwtLogger.info('Reconfigure logger level', {level: value})
+                loggerHandler.setLevels({passthroughMaxLevel: value})
             })
         }
 
@@ -279,7 +284,7 @@ class App<Config extends BaseConfig> {
                 for (const method in console) {
                     // @ts-ignore
                     console[method] = (...args) => {
-                        this.logger!.warning('Used console.' + method + ', please fix it', {args})
+                        fwtLogger.warning('Used console.' + method + ', please fix it', {args})
                     }
                 }
         }
@@ -291,21 +296,22 @@ class App<Config extends BaseConfig> {
             appVersion: this.version,
             configWatcher: watchEventEmitter,
             abortController: new AbortController,
-            abortSignal: this.abortController.signal
+            abortSignal: this.abortController.signal,
+            uidGenerator
         }, this.appDefinition.services || {})
 
         this.services.abortController.signal.addEventListener('abort', (reason) => {
-            this.logger!.info('Abort requested by app ; aborting', {reason})
+            fwtLogger.info('Abort requested by app ; aborting', {reason})
             this.abortController.abort()
         }, {signal: this.abortController.signal})
 
         if (this.appDefinition.config) {
-            this.logger.info('Config schema', {
+            fwtLogger.info('Config schema', {
                 schema: this.appDefinition.config.schema
             })
         }
 
-        this.logger!.info('Running app', {
+        fwtLogger.info('Running app', {
             config: this.config,
             name: this.name,
             version: this.version,
@@ -319,12 +325,12 @@ class App<Config extends BaseConfig> {
             if (this.abortController.signal.aborted) {
                 throw this.abortController.signal.reason
             }
-            this.logger!.info('App ended')
+            fwtLogger.info('App ended')
             process.exitCode = 0
         } catch (error) {
             if (this.abortController.signal.aborted) {
 
-                this.logger!.info('App aborted')
+                fwtLogger.info('App aborted')
 
                 if (abortSignal?.aborted) {
                     process.exitCode = ExitCodes.providedSignalAbort
@@ -340,15 +346,14 @@ class App<Config extends BaseConfig> {
                 const isAboutAborting = error instanceof Error && (error as Error & {cause?:any}).cause === this.abortController.signal.reason
 
                 if (!(isAbortReason || isAboutAborting)) {
-                    this.logger!.warning('Error thrown while aborted', {error})
+                    fwtLogger.warning('Error thrown while aborted', {error})
                 }
 
                 return
             }
 
-            this.logger!.fatal('App exited with error', {error})
+            fwtLogger.fatal('App exited with error', {error})
             process.exitCode = ExitCodes.appError
-            return
         } finally {
             this.abortController.abort()
         }

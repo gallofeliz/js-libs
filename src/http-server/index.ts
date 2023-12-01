@@ -64,6 +64,7 @@ export interface HttpServerConfig {
         requiredAuthorization?: AuthMiddlewareOpts['requiredAuthorization']
     }
     logger: Logger
+    fnLoggerChilding?: boolean | ((req: HttpServerRequest) => Logger)
 }
 
 export interface ApiRoute {
@@ -470,8 +471,14 @@ export class HttpServer extends EventEmitter {
                 createAuthMiddleware(routeAuthMiddlewareOpts),
                 async (req, res, next) => {
                     const uid = (req as any).uid
-                    const logger = this.logger.child('request-'+uid)
-                    ;(req as HttpServerRequest).logger = logger
+
+                    ;(req as HttpServerRequest).logger = this.logger
+
+                    if (this.config.fnLoggerChilding !== false) {
+                        ;(req as HttpServerRequest).logger = typeof this.config.fnLoggerChilding === 'function'
+                            ? this.config.fnLoggerChilding(req as HttpServerRequest)
+                            : this.logger.child('httpInRequest-'+uid)
+                    }
 
                     try {
 

@@ -1,6 +1,4 @@
 import { CreateIteratorOpts, DatesIterator, createIterator, CreateMoreThanNativeDatesIteratorTime } from '@gallofeliz/dates-iterators'
-import { Logger } from '@gallofeliz/logger'
-import { randomUUID } from 'crypto'
 import EventEmitter from 'events'
 
 export interface ScheduleOpts {
@@ -9,14 +7,12 @@ export interface ScheduleOpts {
     when: CreateIteratorOpts | Array<CreateMoreThanNativeDatesIteratorTime> | string
     allowMultipleRuns?: boolean
     abortFnCallsOnAbort?: boolean
-    onError?: ({error, uid}: {error: Error, uid: string}) => void
-    logger?: Pick<Logger, 'debug' | 'info' | 'child'>
+    uidGenerator?: () => string
 }
 
 export interface ScheduleFnInfos {
     triggerDate: Date
     abortSignal?: AbortSignal
-    logger?: ScheduleOpts['logger']
     uid: string
     //countdown: number
     //callsCount: number
@@ -33,8 +29,7 @@ export class Schedule extends EventEmitter {
     protected abortFnCallsOnAbort?: boolean
     protected started: boolean = false
     protected nextRun?: {timeout: NodeJS.Timeout, date: Date, uid: string}
-    protected logger?: ScheduleOpts['logger']
-    protected onError?: ScheduleOpts['onError']
+    protected uidGenerator: () => string
 
     public constructor(opts: ScheduleOpts) {
         super()
@@ -46,18 +41,13 @@ export class Schedule extends EventEmitter {
                     : opts.when
         )
         this.fn = opts.fn
-        this.logger = opts.logger
         this.abortFnCallsOnAbort = opts.abortFnCallsOnAbort
         this.allowMultiple = opts.allowMultipleRuns ?? false
-        this.onError = opts.onError
+        this.uidGenerator = opts.uidGenerator || (() => Math.random().toString())
     }
 
     public isStarted() {
         return this.started
-    }
-
-    public hasErrorHandler() {
-        return !!this.onError
     }
 
     public getNextTriggerDate(): Date | null {
@@ -76,7 +66,6 @@ export class Schedule extends EventEmitter {
             return
         }
 
-        this.logger?.debug('Starting schedule')
         this.emit('start')
         this.started = true
 
@@ -95,7 +84,6 @@ export class Schedule extends EventEmitter {
 
     protected abort() {
         this.emit('stop')
-        this.logger?.debug('Stopping scheduler')
         clearTimeout(this.nextRun?.timeout)
         this.started = false
         delete this.nextRun
@@ -107,16 +95,14 @@ export class Schedule extends EventEmitter {
 
         if (next.done) {
             delete this.nextRun
-            this.logger?.debug('No more next Date')
             this.emit('over')
             this.stop()
             return
         }
 
         const nextDate = next.value
-        const nextUid = randomUUID().split('-')[0]
+        const nextUid = this.uidGenerator()
         this.emit('scheduled', {date: nextDate, uid: nextUid})
-        this.logger?.debug('Scheduling next', {date: nextDate, uid: nextUid})
 
         this.nextRun = {
             timeout: setTimeout(
@@ -135,24 +121,19 @@ export class Schedule extends EventEmitter {
 
         this.next(false)
 
+        const fnInfos = {
+            triggerDate,
+            abortSignal: this.abortFnCallsOnAbort ? this.abortController?.signal : undefined,
+            uid
+        }
+
         try {
             this.emit('fn.start', {uid})
-            this.logger?.debug('Starting', {uid})
-            await this.fn({
-                triggerDate,
-                abortSignal: this.abortFnCallsOnAbort ? this.abortController?.signal : undefined,
-                logger: this.logger!.child('schedule-' + uid),
-                uid
-            })
+            await this.fn(fnInfos)
             this.emit('fn.done', {uid})
-            this.logger?.debug('Done', {uid})
         } catch (error) {
-            this.logger?.debug('Error', {uid, error})
-            const hasErrListener = this.emit('fn.error', {error, uid})
-            this.onError && this.onError({uid, error: error as Error})
-
-            if (!this.onError && !hasErrListener) {
-                throw error
+            if (!this.emit('fn.error', {error, uid})) {
+                this.emit('error', new Error('Unhandled fn error on '+uid+' : ' + (error as Error).toString()))
             }
         }
     }
@@ -254,7 +235,7 @@ export class Scheduler extends EventEmitter {
 
             this.onError && this.on('schedule.error', ({error, id}) => this.onError!({error, id, uid}))
 
-            if (!hasGlobalErrListener && !hasByIdErrListener && !sched.hasErrorHandler() && !this.onError) {
+            if (!hasGlobalErrListener && !hasByIdErrListener && /*!sched.hasErrorHandler() &&*/ !this.onError) {
                 throw error
             }
         })
