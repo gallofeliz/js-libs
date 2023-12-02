@@ -50,7 +50,6 @@
     "src/run-process",
     "src/validate",
     "src/typescript-transform-to-json-schema",
-    "src/user-communicate",
     "src/http-request",
     "src/auth",
     "src/http-server",
