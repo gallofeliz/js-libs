@@ -48,7 +48,6 @@
     "src/persistant-object",
     "src/validate",
     "src/typescript-transform-to-json-schema",
-    "src/http-request",
     "src/auth",
     "src/http-server",
     "src/tasker",
