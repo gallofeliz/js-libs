@@ -4,7 +4,7 @@ import EventEmitter from 'events'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import shortUuid from 'short-uuid'
 
-export * from './utils'
+//export * from './utils'
 
 export interface BaseConfig {
     /** @default {} */

@@ -1,5 +1,4 @@
 import { ChildProcess, spawn } from 'child_process'
-import { Logger } from '@gallofeliz/logger'
 import { once, EventEmitter } from 'events'
 const { env: processEnv } = process
 import jsonata from 'jsonata'
@@ -8,7 +7,6 @@ import { pick } from 'lodash'
 import { validate, SchemaObject } from '@gallofeliz/validate'
 
 export type ProcessConfig = {
-    logger?: Pick<Logger, 'debug' | 'info'>
     command: string | string[]
     shell?: string | string[]
     strictShell?: boolean
@@ -44,13 +42,11 @@ export function createProcess<Result extends any>(config: ProcessConfig): Proces
  */
 export class Process<Result extends any> extends EventEmitter {
     protected config: ProcessConfig
-    protected logger?: Pick<Logger, 'debug' | 'info'>
     protected process?: ChildProcess
 
     constructor(config: ProcessConfig) {
         super()
         this.config = config // clone to avoid modify the original ?
-        this.logger = config.logger
 
         if (this.config.inputData instanceof Process) {
             if (this.config.inputData.config.outputType || this.config.inputData.config.outputStream) {
@@ -114,27 +110,26 @@ export class Process<Result extends any> extends EventEmitter {
         const passEnvKeys = ['PATH', 'USER', 'HOME', 'SHELL']
         const env = {...pick(processEnv, passEnvKeys), ...this.config.env || {}}
 
-        const startAt = new Date
-
-        this.logger?.info('Starting process', {
-            // Todo : add spawn informations
-            command: this.config.command,
+        const spawnOpts = {
+            killSignal: this.config.killSignal || 'SIGINT',
             env,
-            cwd: this.config.cwd
+            ...this.config.cwd && { cwd: this.config.cwd },
+            signal: abortSignal,
+            timeout: this.config.timeout,
+            uid: this.config.uid,
+            gid: this.config.gid
+        }
+
+        this.emit('spawn', {
+            cmd: spawnCmd,
+            args: spawnArgs,
+            opts: spawnOpts
         })
 
         const process = spawn(
             spawnCmd,
             spawnArgs,
-            {
-                killSignal: this.config.killSignal || 'SIGINT',
-                env,
-                ...this.config.cwd && { cwd: this.config.cwd },
-                signal: abortSignal,
-                timeout: this.config.timeout,
-                uid: this.config.uid,
-                gid: this.config.gid
-            }
+
         )
         this.process = process
 
@@ -151,7 +146,7 @@ export class Process<Result extends any> extends EventEmitter {
             if (!this.config.inputData.process!.stdout!.readable) {
                 throw new Error('Unable to redirecting outputStream from other process')
             }
-            this.logger?.debug('Redirecting inputStream from other process')
+            // this.logger?.debug('Redirecting inputStream from other process')
             this.config.inputData.process!.stdout!.pipe(process.stdin)
         } else if (this.config.inputData instanceof Readable) {
             this.config.inputData.pipe(process.stdin)
@@ -167,12 +162,12 @@ export class Process<Result extends any> extends EventEmitter {
         let stdout: string = ''
 
         if (this.config.outputStream) {
-            this.logger?.debug('Redirecting outputStream')
+            // this.logger?.debug('Redirecting outputStream')
             process.stdout.pipe(this.config.outputStream)
         } else {
-            process.stdout.on('data', (data) => {
+            process.stdout.on('stdout', (data) => {
                 const strData = data.toString()
-                this.logger?.debug('STDOUT', { data: strData })
+                this.emit('data', strData)
                 if (!this.config.outputStream && this.config.outputType) {
                     stdout += strData
                 }
@@ -184,7 +179,7 @@ export class Process<Result extends any> extends EventEmitter {
         let stderr: string = ''
         process.stderr.on('data', data => {
             const strData = data.toString()
-            this.logger?.debug('STDERR', { data: strData })
+            this.emit('stderr', strData)
             stderr += strData
 
             // todo emit
@@ -192,21 +187,17 @@ export class Process<Result extends any> extends EventEmitter {
 
         try {
             const [exitCode]: [number] = await once(process, 'exit') as [number]
-            this.logger?.info('Process exited successfully', { duration: (new Date).getTime() - startAt.getTime() })
             if (exitCode > 0) {
-                this.logger?.info('Process exited with error', { exitCode, duration: (new Date).getTime() - startAt.getTime() })
                 throw new Error('Process error : ' + stderr.trim())
             }
             if (inputDataProcessError) {
                 throw new Error('ProcessPipeError : ' + inputDataProcessError.message)
             }
             if (exitCode === null && process.killed) {
-                this.logger?.info('Process timeout', { duration: (new Date).getTime() - startAt.getTime() })
                 throw new Error('Timeout')
             }
         } catch (e) {
             if (e === abortSignal?.reason) {
-                this.logger?.debug('Abort requested, awaiting process ends')
                 await once(process, 'exit')
             }
             throw e

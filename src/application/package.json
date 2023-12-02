@@ -21,6 +21,6 @@
     "short-uuid": "^4.2.2"
   },
   "devDependencies": {
-    "@types/uuid": "^9.0.0"
+    "execa": "^5.1.1"
   }
 }

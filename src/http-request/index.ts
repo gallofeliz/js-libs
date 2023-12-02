@@ -1,12 +1,11 @@
-import { Logger } from '@gallofeliz/logger'
 import got, { CancelableRequest, Response, Method, Options } from 'got'
 import jsonata from 'jsonata'
 import querystring from 'querystring'
 import { validate, SchemaObject } from '@gallofeliz/validate'
 import { pipeline } from 'stream/promises'
+import EventEmitter from 'events'
 
 export interface HttpRequestConfig {
-   logger?: Pick<Logger, 'debug' | 'info'>
    abortSignal?: AbortSignal
    url: string
    timeout: number | Options['timeout'] | null
@@ -24,11 +23,11 @@ export interface HttpRequestConfig {
       password: string
    },
    resultSchema?: SchemaObject
+   eventEmitter?: EventEmitter
 }
 
-export async function httpRequest<Result extends any>({abortSignal, logger, ...request}: HttpRequestConfig): Promise<Result> {
+export async function httpRequest<Result extends any>({abortSignal, eventEmitter, ...request}: HttpRequestConfig): Promise<Result> {
     if (abortSignal?.aborted) {
-      logger?.debug('Aborted', {reason: abortSignal?.reason})
       throw abortSignal.reason
     }
 
@@ -67,43 +66,25 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
             beforeRedirect: [],
             beforeRetry: [],
             beforeRequest: [options  => {
-                //const uriWithoutAuth = options.url.toString().replace(/(?<=\/\/[^:]+:)[^@]+(?=@)/gi, '***')
-
-                logger?.info('Calling http request', {
-                    url: options.url,
-                    method: options.method
-                })
-
-                // function obfuscateAuthHeader(value: string) {
-                //     return value.split(' ')[0] + ' ***'
-                // }
-
-                logger?.debug('http request details', {
+                eventEmitter?.emit('http.request', {
                     url: options.url,
                     method: options.method,
-                    headers: options.headers/* mapValues(options.headers, (value, key) => {
-                        if (value && key.toLowerCase() === 'authorization') {
-                            return Array.isArray(value) ? value.map(obfuscateAuthHeader) : obfuscateAuthHeader(value)
-                        }
-                        return value
-                    })*/,
+                    headers: options.headers,
                     body: options.body
                 })
             }],
             afterResponse: [response => {
-                logger?.info('Http Request response', {
+                eventEmitter?.emit('http.response', {
                     durations: response.timings.phases,
-                    statusCode: response.statusCode
-                })
-                logger?.debug('Http Request response details', {
                     statusCode: response.statusCode,
                     headers: response.headers,
                     body: request.responseStream ? undefined : response.body
                 })
+
                 return response
             }],
             beforeError: [error => {
-                logger?.info('Http Request returned error : ' + error.message, {
+                eventEmitter?.emit('http.error', {
                     error
                 })
                 return error
@@ -138,7 +119,6 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
     const gotRequest = got(gotOpts) as CancelableRequest<Response<string>>
 
     const onSignalAbort = () => {
-        logger?.info('Abort', {reason: abortSignal?.reason})
         if (request.responseStream) {
             (gotRequest as any).destroy()
         } else {
@@ -149,7 +129,6 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
 
     try {
         if (request.responseStream) {
-            logger?.debug('Stream pipeline')
             await pipeline(gotRequest as any, request.responseStream)
             return undefined as Result
         }
@@ -157,15 +136,12 @@ export async function httpRequest<Result extends any>({abortSignal, logger, ...r
         const response = await gotRequest
 
         if (!request.responseType) {
-            logger?.debug('No response expected')
             return undefined as Result
         }
 
         const isJson = request.responseType === 'auto'
             ? (response.headers['content-type'] || '').includes('json')
             : request.responseType === 'json'
-
-        logger?.debug('Read response, transformations and validation')
 
         const output = (isJson ? await gotRequest.json() : await gotRequest.text())
         const result = (request.responseTransformation

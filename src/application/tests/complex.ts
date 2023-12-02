@@ -1,11 +1,11 @@
 import { runApp, BaseConfig } from '..'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
-import { runProcess } from '@gallofeliz/run-process'
 import { Schedule } from '@gallofeliz/scheduler'
 import { Logger } from '@gallofeliz/logger'
 import { once } from 'events'
 import { HttpServer } from '@gallofeliz/http-server'
 import { httpRequest } from '@gallofeliz/http-request'
+import execa from 'execa'
 
 interface Config extends BaseConfig {
     /** @default {} */
@@ -30,20 +30,16 @@ class UsedMemoryService {
     }
 
     public async collect(abortSignal: AbortSignal, logger: Logger) {
+        logger = logger.child('free-cmd')
+
+        logger.info('Running command')
+
         if (Math.floor(Math.random() * 5) % 4 === 0) {
-            await runProcess({
-                logger: logger.child('cmd-free'),
-                abortSignal,
-                command: "false",
-            })
+            await execa("false")
         }
 
-        return parseInt(await runProcess({
-            logger: logger.child('cmd-free'),
-            abortSignal,
-            command: "free -mt | tail -n 1 | awk '{print $3}'",
-            outputType: 'text'
-        }))
+        const {stdout} = await execa("free -mt | tail -n 1 | awk '{print $3}'", {shell: 'bash'})
+        return parseInt(stdout)
     }
 }
 
@@ -73,31 +69,39 @@ runApp<Config>({
         usedMemoryService({logger}) {
             return new UsedMemoryService(logger.child('usedMemoryService'))
         },
-        usedMemoryHistoryCleaner({usedMemoryHistory, logger}) {
-            return new Schedule({
-                when: 'PT10S',
-                logger: logger.child('clean-schedule'),
-                fn({logger}) {
-                    logger!.info('Cleaning usedMemoryHistory')
-                    const nbDeleted = (usedMemoryHistory as Array<any>).splice(5).length
-                    logger!.debug(nbDeleted + ' usedMemoryHistory removed')
-                }
+        usedMemoryHistoryCleaner({usedMemoryHistory, logger, uidGenerator}) {
+            const schedule = new Schedule('PT10S')
+
+            schedule.on('lap', () => {
+                const jobUid = uidGenerator()
+                const jobLogger = logger.child('clean-scheduled-job'/* + jobUid*/, {cleanScheduledJobUuid: jobUid})
+                jobLogger.info('Cleaning usedMemoryHistory')
+                const nbDeleted = (usedMemoryHistory as Array<any>).splice(5).length
+                jobLogger.debug(nbDeleted + ' usedMemoryHistory removed')
             })
+
+            return schedule
         },
-        usedMemoryCollectSchedule({logger, usedMemoryService, usedMemoryHistory}) {
-            // return new Schedule({
-            //     when: 'PT5S',
-            //     abortFnCallsOnAbort: true,
-            //     logger: logger.child('collect-schedule'),
-            //     fn: async ({abortSignal, logger}) => {
-            //         logger!.info('Collecting memory')
-            //         usedMemoryHistory.push({
-            //             date: new Date,
-            //             value: await usedMemoryService.collect(abortSignal, logger)
-            //         })
-            //     },
-            //     onError: (error) => logger.warning('Memory collect failed', {error})
-            // })
+        usedMemoryCollectSchedule({logger, usedMemoryService, usedMemoryHistory, uidGenerator}) {
+            const schedule = new Schedule('PT5S')
+
+            schedule.on('lap', async ({abortSignal}) => {
+                const jobUid = uidGenerator()
+                const jobLogger = logger.child('collect-scheduled-job'/* + jobUid*/, {collectScheduledJob: jobUid})
+
+                jobLogger.info('Collecting memory')
+                try {
+                    usedMemoryHistory.push({
+                        date: new Date,
+                        value: await usedMemoryService.collect(abortSignal, jobLogger)
+                    })
+                } catch (error) {
+                    jobLogger.error('Collect failed', {error})
+                }
+
+            })
+
+            return schedule
         },
         apiToConsumeHistory({logger, appName, appVersion, config, usedMemoryHistory}) {
 
@@ -124,7 +128,6 @@ runApp<Config>({
                     async handler({abortSignal, params, uid, logger}, {send}) {
                         const todos = await httpRequest({
                             url: 'https://jsonplaceholder.typicode.com/todos/' + params.todo,
-                            logger: logger.child('todo-http-req'),
                             abortSignal,
                             auth: {username: 'root', password: 'secret'},
                             timeout: 5000,
@@ -143,13 +146,13 @@ runApp<Config>({
             })
         }
     },
-    async run({logger, abortSignal, usedMemoryCollectSchedule, usedMemoryHistoryCleaner, apiToConsumeHistory}) {
+    async run({logger, abortSignal, usedMemoryCollectSchedule, usedMemoryHistoryCleaner}) {
         ;(usedMemoryCollectSchedule as Schedule).start(abortSignal)
-        //;(usedMemoryHistoryCleaner as Schedule).start(abortSignal)
+        ;(usedMemoryHistoryCleaner as Schedule).start(abortSignal)
         //;(apiToConsumeHistory as HttpServer).start(abortSignal)
 
         await Promise.all([
-            once(usedMemoryCollectSchedule, 'ended'),
+            //once(usedMemoryCollectSchedule, 'ended'),
             once(usedMemoryHistoryCleaner, 'ended'),
             //once(apiToConsumeHistory, 'stopped')
         ])
