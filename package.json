@@ -42,7 +42,6 @@
   },
   "workspaces": [
     "src/application",
-    "src/obfuscator",
     "src/super-yaml",
     "src/logger",
     "src/config",
