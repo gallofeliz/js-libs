@@ -47,7 +47,6 @@
     "src/logger",
     "src/config",
     "src/persistant-object",
-    "src/run-process",
     "src/validate",
     "src/typescript-transform-to-json-schema",
     "src/http-request",
