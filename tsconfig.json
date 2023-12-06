@@ -4,6 +4,7 @@
     "plugins": [
       { "transform": "@gallofeliz/typescript-transform-to-json-schema" }
     ],
+    "lib": ["es2022"],
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
     /* Projects */

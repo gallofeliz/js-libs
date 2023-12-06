@@ -26,3 +26,4 @@
 New guilelines :
 - Componants only logs with debug level, reserving others levels for application
 - Componants emit events to watch activity
+- Migrate to ESM ?

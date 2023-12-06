@@ -329,6 +329,13 @@ export class Restic {
             ...infos,
             objects
         }
+
+        /*
+            Todo
+
+            Return infos & objects as stream (objectMode) on option
+
+        */
     }
 
     public async check(opts: Partial<ResticOpts> = {}) {

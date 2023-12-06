@@ -4,8 +4,8 @@ import { Schedule } from '@gallofeliz/scheduler'
 import { Logger } from '@gallofeliz/logger'
 import { once } from 'events'
 import { HttpServer } from '@gallofeliz/http-server'
-import { httpRequest } from '@gallofeliz/http-request'
 import execa from 'execa'
+import got from 'got'
 
 interface Config extends BaseConfig {
     /** @default {} */
@@ -126,13 +126,15 @@ runApp<Config>({
                     requiredAuthorization: '*',
                     inputParamsSchema: tsToJsSchema<ParamsRequest>(),
                     async handler({abortSignal, params, uid, logger}, {send}) {
-                        const todos = await httpRequest({
+
+                        logger.debug('Calling todo http')
+
+                        const todos = await got({
                             url: 'https://jsonplaceholder.typicode.com/todos/' + params.todo,
-                            abortSignal,
-                            auth: {username: 'root', password: 'secret'},
-                            timeout: 5000,
-                            responseType: 'json'
-                        })
+                            username: 'root',
+                            password: 'secret',
+                            timeout: 5000
+                        }).json()
 
                         await send({usedMemoryHistory, todos})
                     }
@@ -146,15 +148,15 @@ runApp<Config>({
             })
         }
     },
-    async run({logger, abortSignal, usedMemoryCollectSchedule, usedMemoryHistoryCleaner}) {
+    async run({logger, abortSignal, usedMemoryCollectSchedule, usedMemoryHistoryCleaner, apiToConsumeHistory}) {
         ;(usedMemoryCollectSchedule as Schedule).start(abortSignal)
         ;(usedMemoryHistoryCleaner as Schedule).start(abortSignal)
-        //;(apiToConsumeHistory as HttpServer).start(abortSignal)
+        ;(apiToConsumeHistory as HttpServer).start(abortSignal)
 
         await Promise.all([
-            //once(usedMemoryCollectSchedule, 'ended'),
+            once(usedMemoryCollectSchedule, 'ended'),
             once(usedMemoryHistoryCleaner, 'ended'),
-            //once(apiToConsumeHistory, 'stopped')
+            once(apiToConsumeHistory, 'stopped')
         ])
     }
 })

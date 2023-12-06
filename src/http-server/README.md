@@ -13,6 +13,7 @@ Advanced Http Server:
 - [✓] Abortable
 - [-] Well tested :(
 - [ ] Route scope public/private for swagger ?
+- [ ] Migrate to fastify ?
 
 Examples
 

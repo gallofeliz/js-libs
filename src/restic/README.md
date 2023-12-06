@@ -4,7 +4,8 @@ Features
 - [X] Enought implementation to make backups, etc
 - [ ] Add for output methods events and stream type (ex snapshots, eventEmitter.on('snaphost', () => ...) and stream with snapshots)
 - [ ] Create output types (snapshots, diff, ls, find, etc)
-
+- [ ] Ability to get stream for big data (ls objects for example)
+- [ ] Remove logger and emit events to log some output (example the backup or forget)
 
 ```typescript
 

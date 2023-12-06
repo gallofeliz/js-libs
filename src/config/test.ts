@@ -1,5 +1,4 @@
 import {loadConfig, WatchChangesEventEmitter} from '.'
-import { createLogger, LogLevel } from '@gallofeliz/logger'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import { deepEqual } from 'assert'
 import EventEmitter from 'events'
@@ -8,7 +7,7 @@ import { setTimeout } from 'timers/promises'
 
 interface BaseConfig {
     log: {
-        level: LogLevel
+        level: string
     }
 }
 
@@ -44,12 +43,11 @@ describe('Config', () => {
         process.env.APP_LOG_LEVEL = 'warning'
 
         deepEqual(
-            await loadConfig<Config, Config>({
+            await loadConfig<Config>({
                 defaultFilename: __dirname + '/config.test.yml',
-                logger: createLogger(),
                 envFilename: 'config',
                 envPrefix: 'app',
-                userProvidedConfigSchema: tsToJsSchema<UserConfig>(),
+                schema: tsToJsSchema<UserConfig>(),
             }),
             {
                 log: {
@@ -101,18 +99,14 @@ describe('Config', () => {
         })
 
         deepEqual(
-            await loadConfig<Config, Config>({
+            await loadConfig<Config>({
                 defaultFilename: __dirname + '/config.test.yml',
-                logger: createLogger(),
                 envFilename: 'config',
                 envPrefix: 'app',
-                userProvidedConfigSchema: tsToJsSchema<Config>(),
+                schema: tsToJsSchema<Config>(),
                 watchChanges: {
                     abortSignal: abortController.signal,
-                    eventEmitter,
-                    onChange({config, patch}) {
-                        console.log('onChange', patch, config)
-                    }
+                    eventEmitter
                 }
             }),
             {
