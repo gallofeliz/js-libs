@@ -51,7 +51,7 @@ export interface LoggerOpts {
     metadata?: Object
     processors?: Processor[]
     handlers?: Handler[]
-    errorHandler?: (e: Error) => Promise<void>
+    onError?: (e: Error) => void
 }
 
 export interface Log {
@@ -66,7 +66,7 @@ export class Logger {
     protected processors: Processor[]
     protected handlers: Handler[]
     protected metadata: Object
-    protected errorHandler: (e: Error) => Promise<void>
+    protected onError?: (e: Error) => void
     protected parent?: Logger
     protected id?: LoggerId
     protected fullQualification?: { separator: string }
@@ -76,7 +76,7 @@ export class Logger {
         this.metadata = opts.metadata || {}
         this.processors = opts.processors || []
         this.handlers = opts.handlers || [new ConsoleHandler]
-        this.errorHandler = opts.errorHandler || ((e) => { throw e })
+        this.onError = opts.onError
         if (opts.useFullQualifiedIdInLogs !== false) {
             this.fullQualification = {
                 separator: opts.useFullQualifiedIdInLogs instanceof Object
@@ -111,7 +111,7 @@ export class Logger {
     }
 
     public async log(level: LogLevel, message: string, metadata?: Object): Promise<void> {
-        try {
+       try {
 
             let logger;
 
@@ -145,10 +145,26 @@ export class Logger {
                 }
             }
 
-            await Promise.all(this.handlers.map(handler => handler.handle(log, this))) // cloneDeep to protected others handlers ?
-        } catch (e) {
-            await this.errorHandler(e as Error)
-        }
+            // const errors = (
+            //     await Promise.allSettled(this.handlers.map(handler => handler.handle(log, this)))
+            // ).filter(r => r.status === 'rejected') as PromiseRejectedResult[] // cloneDeep to protected others handlers ?
+            //try {
+                await Promise.all(this.handlers.map(handler => handler.handle(log, this)))
+            //} catch (e) {
+                //Promise.reject(e)
+            //}
+
+            //await Promise.all(errors.map(p => this.errorHandler(p.reason)))
+         } catch (e) {
+             // Like an event, we notify error but will not fail the log() promise
+             // And if it's bad, don't go up to the caller but to the "process"
+             (async () => {
+                if (!this.onError) {
+                    throw e
+                }
+                this.onError(e as Error)
+             })()
+         }
     }
 
     public child(id?: LoggerId, metadata?: Object): Logger {
@@ -169,7 +185,7 @@ export class Logger {
             metadata,
             processors: [...this.processors],
             handlers: [...this.handlers],
-            errorHandler: this.errorHandler
+            onError: this.onError
         })
 
         logger.parent = parent

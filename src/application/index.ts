@@ -3,7 +3,7 @@ import { createLogger, Logger, LoggerOpts, ConsoleHandler, BreadCrumbHandler, Lo
 import EventEmitter from 'events'
 import { tsToJsSchema } from '@gallofeliz/typescript-transform-to-json-schema'
 import shortUuid from 'short-uuid'
-
+import { Metrics, createMetrics } from '@gallofeliz/metrics'
 //export * from './utils'
 
 export interface BaseConfig {
@@ -30,9 +30,10 @@ export type UidGenerator = () => string
 
 export type InjectedServices<Config extends BaseConfig> = {
     logger: Logger
+    metrics: Metrics
     config: Config
-    appName: string
-    appVersion: string
+    name: string
+    version: string
     container: Services<Config>
     configWatcher: WatchChangesEventEmitter<Config>
     abortController: AbortController
@@ -117,7 +118,7 @@ class App<Config extends BaseConfig> {
         }
 
         abortSignal?.addEventListener('abort', (reason) => {
-            fwtLogger.info('Abort requested by provided signal ; aborting', {reason})
+            fwkLogger.info('Abort requested by provided signal ; aborting', {reason})
             this.abortController.abort()
         }, {signal: this.abortController.signal})
 
@@ -144,13 +145,18 @@ class App<Config extends BaseConfig> {
             },
             id: this.name,
             //id: 'app_' + uuid().split('-')[0],  //{ name: 'app', uid: uuid() },
-            handlers: [loggerHandler]
+            handlers: [loggerHandler],
+            onError(error) {
+                fwkLogger.error('Logging error', {error})
+            }
         })
 
-        const fwtLogger = this.logger.child('fwt')
+        //const nodeLogger = this.logger.sibling('node')
+
+        const fwkLogger = this.logger.child('fwk')
 
         const onWarning = async(warning: Error) => {
-            await fwtLogger.warning(warning.message, {warning})
+            await /*nodeLogger*/fwkLogger.warning(warning.message, {warning})
         }
 
         // Hack because I don't know why, this event listener is registered again
@@ -163,22 +169,27 @@ class App<Config extends BaseConfig> {
 
             handledRejections.push(reason as Error)
 
-            await fwtLogger.fatal('Unhandled Rejection ; dirty exiting', {reason})
+            await /*nodeLogger*/fwkLogger.fatal(reason.message, {reason})
+            this.abortController.abort() // Maybe bad idea
 
-            process.exit(ExitCodes.unexpected)
+            process.exit(ExitCodes.unexpected) // Not mandatory, but how to know the impact of the rejection ?
         }
 
         const onUncaughtException = async(err: Error, origin: NodeJS.UncaughtExceptionOrigin) => {
-            await fwtLogger.fatal('UncaughtException ; dirty exiting', {err, origin})
-
+            await /*nodeLogger*/fwkLogger.fatal(err.message, {err, origin})
+            this.abortController.abort() // Maybe bad idea
             process.exit(ExitCodes.unexpected)
+        }
+
+        const onProcessExit = async (code: number) => {
+            await fwkLogger.fatal('Unexpected process exit', {code})
         }
 
         const signalsToHandle = ['SIGTERM', 'SIGINT']
         let receivedSignal: 'SIGTERM' | 'SIGINT' | undefined
         const onProcessSignal = async (signal: 'SIGTERM' | 'SIGINT') => {
             receivedSignal = signal
-            fwtLogger.info('Process receives signal ' + signal + ' ; aborting')
+            fwkLogger.info('Process receives signal ' + signal + ' ; aborting')
             this.abortController.abort()
         }
 
@@ -186,11 +197,13 @@ class App<Config extends BaseConfig> {
         process.on('warning', onWarning)
         process.on('unhandledRejection', onUnhandledRejection)
         process.on('uncaughtException', onUncaughtException)
+        process.on('exit', onProcessExit)
 
         this.abortController.signal.addEventListener('abort', () => {
             process.off('warning', onWarning)
             process.off('unhandledRejection', onUnhandledRejection)
             process.off('uncaughtException', onUncaughtException)
+            process.off('exit', onProcessExit)
             signalsToHandle.forEach(signal => process.off(signal, onProcessSignal))
         })
 
@@ -205,10 +218,10 @@ class App<Config extends BaseConfig> {
 
         if (this.appDefinition.config?.watchChanges) {
             watchEventEmitter.on('error', (error: Error) => {
-                fwtLogger.warning('Config watch error', {error})
+                fwkLogger.warning('Config watch error', {error})
             })
             watchEventEmitter.on('change', ({patch}) => {
-                fwtLogger.info('Configuration change detected', { changes: patch })
+                fwkLogger.info('Configuration change detected', { changes: patch })
             })
         }
 
@@ -224,7 +237,7 @@ class App<Config extends BaseConfig> {
                     : undefined
             })
         } catch (error) {
-            fwtLogger.fatal('Config load fails', {
+            fwkLogger.fatal('Config load fails', {
                 error,
                 schema: this.appDefinition.config?.schema
             })
@@ -234,7 +247,7 @@ class App<Config extends BaseConfig> {
         }
 
         if (!this.config!.log?.level) {
-            fwtLogger.fatal('Unexpected not loaded BaseConfig (development problem)')
+            fwkLogger.fatal('Unexpected not loaded BaseConfig (development problem)')
             process.exitCode = ExitCodes.unexpected
             this.abortController.abort()
             return
@@ -249,7 +262,7 @@ class App<Config extends BaseConfig> {
         if (this.appDefinition.config?.watchChanges) {
             watchEventEmitter.on('change:log.level', ({value}) => {
                 //this.config!.log.level = value
-                fwtLogger.info('Reconfigure logger level', {level: value})
+                fwkLogger.info('Reconfigure logger level', {level: value})
                 loggerHandler.setLevels({passthroughMaxLevel: value})
             })
         }
@@ -284,16 +297,33 @@ class App<Config extends BaseConfig> {
                 for (const method in console) {
                     // @ts-ignore
                     console[method] = (...args) => {
-                        fwtLogger.warning('Used console.' + method + ', please fix it', {args})
+                        fwkLogger.warning('Used console.' + method + ', please fix it', {args})
                     }
                 }
         }
 
+        const metrics = createMetrics({
+            handlers: [
+                (() => {
+                    const logger = this.logger.child('metrics')
+
+                    return {
+                        async increment(value, measurement, tags) {
+                            logger.info(measurement.join('.') + ' +' + value, {measurement, tags, type: 'counter', value})
+                        }
+                    }
+                })()
+            ],
+            measurementPrefix: [this.name],
+            measurementSeparator: '.'
+        })
+
         this.services = createDiContainer({
             config: this.config,
             logger: this.logger,
-            appName: this.name,
-            appVersion: this.version,
+            metrics,
+            name: this.name,
+            version: this.version,
             configWatcher: watchEventEmitter,
             abortController: new AbortController,
             abortSignal: this.abortController.signal,
@@ -301,17 +331,11 @@ class App<Config extends BaseConfig> {
         }, this.appDefinition.services || {})
 
         this.services.abortController.signal.addEventListener('abort', (reason) => {
-            fwtLogger.info('Abort requested by app ; aborting', {reason})
+            fwkLogger.info('Abort requested by app ; aborting', {reason})
             this.abortController.abort()
         }, {signal: this.abortController.signal})
 
-        if (this.appDefinition.config) {
-            fwtLogger.info('Config schema', {
-                schema: this.appDefinition.config.schema
-            })
-        }
-
-        fwtLogger.info('Running app', {
+        fwkLogger.info('Running app', {
             config: this.config,
             name: this.name,
             version: this.version,
@@ -325,12 +349,12 @@ class App<Config extends BaseConfig> {
             if (this.abortController.signal.aborted) {
                 throw this.abortController.signal.reason
             }
-            fwtLogger.info('App ended')
+            fwkLogger.info('App ended')
             process.exitCode = 0
         } catch (error) {
             if (this.abortController.signal.aborted) {
 
-                fwtLogger.info('App aborted')
+                fwkLogger.info('App aborted')
 
                 if (abortSignal?.aborted) {
                     process.exitCode = ExitCodes.providedSignalAbort
@@ -346,13 +370,13 @@ class App<Config extends BaseConfig> {
                 const isAboutAborting = error instanceof Error && (error as Error & {cause?:any}).cause === this.abortController.signal.reason
 
                 if (!(isAbortReason || isAboutAborting)) {
-                    fwtLogger.warning('Error thrown while aborted', {error})
+                    fwkLogger.warning('Error thrown while aborted', {error})
                 }
 
                 return
             }
 
-            fwtLogger.fatal('App exited with error', {error})
+            fwkLogger.fatal('App exited with error', {error})
             process.exitCode = ExitCodes.appError
         } finally {
             this.abortController.abort()

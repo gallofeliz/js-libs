@@ -82,7 +82,7 @@ runApp<Config>({
 
             return schedule
         },
-        usedMemoryCollectSchedule({logger, usedMemoryService, usedMemoryHistory, uidGenerator}) {
+        usedMemoryCollectSchedule({logger, usedMemoryService, usedMemoryHistory, uidGenerator, metrics}) {
             const schedule = new Schedule('PT5S')
 
             schedule.on('lap', async ({abortSignal}) => {
@@ -95,15 +95,17 @@ runApp<Config>({
                         date: new Date,
                         value: await usedMemoryService.collect(abortSignal, jobLogger)
                     })
+                    metrics.increment('usedMemory.collect.success')
                 } catch (error) {
                     jobLogger.error('Collect failed', {error})
+                    metrics.increment('usedMemory.collect.fail')
                 }
 
             })
 
             return schedule
         },
-        apiToConsumeHistory({logger, appName, appVersion, config, usedMemoryHistory}) {
+        apiToConsumeHistory({logger, name, version, config, usedMemoryHistory}) {
 
             interface EndpointResponse {
                 usedMemoryHistory: number[],
@@ -139,8 +141,8 @@ runApp<Config>({
                         await send({usedMemoryHistory, todos})
                     }
                 }],
-                name: appName,
-                version: appVersion,
+                name,
+                version,
                 swagger: {
                     apiPath: '/swag-api',
                     uiPath: '/'

@@ -2,12 +2,13 @@ type Tags = Record<string, string>
 type Measurement = string[] | string
 
 interface MetricsHandler {
-    increment(value: number, measurement: Measurement, tags?: Tags): Promise<void>
+    increment(value: number, measurement: string[], tags: Tags): Promise<void>
 }
 
 interface MetricsOpts {
     handlers: MetricsHandler[]
     measurementPrefix?: Measurement
+    measurementSeparator?: string
     tags?: Tags
 }
 
@@ -15,43 +16,84 @@ function resolveMeasurement(measurement: Measurement, separator: string) {
     return Array.isArray(measurement) ? measurement.map(m => m.replaceAll(separator, '')).join(separator) : measurement.replaceAll(separator, '')
 }
 
-class Metrics {
+export class Metrics {
     protected handlers: MetricsHandler[]
     protected measurementPrefix: Measurement
     protected tags: Tags
+    protected measurementSeparator?: string
 
     public constructor(opts: MetricsOpts) {
+        this.measurementSeparator = opts.measurementSeparator
         this.handlers = opts.handlers
         this.measurementPrefix = opts.measurementPrefix
             ? Array.isArray(opts.measurementPrefix) ? opts.measurementPrefix : [opts.measurementPrefix]
             : []
         this.tags = opts.tags || {}
+
+        if (this.measurementSeparator && typeof opts.measurementPrefix === 'string') {
+            this.measurementPrefix = opts.measurementPrefix.split(this.measurementSeparator)
+        }
     }
 
-    public async increment({value = 1, measurement, tags}: {value?: number, measurement?: Measurement, tags?: Tags} = {}) {
+    public increment(measurement: string | string[], value?: number, tags?: Tags): Promise<void>
+    public increment(value: number, tags?: Tags): Promise<void>
+    public increment(tags?: Tags): Promise<void>
+    //public increment(args?: {value?: number, measurement?: Measurement, tags?: Tags}): Promise<void>
+
+    public async increment(...args: any[]) {
+        let measurement: string | string[] = []
+        let value: number = 1
+        let tags: Tags = {}
+
+        if (args.length === 0) {
+        } else if (typeof args[0] === 'object' && !Array.isArray(args[0])) {
+            tags = args[0]
+        } else if (typeof args[0] === 'number') {
+            value = args[0]
+            if (args[1]) {
+                tags = args[1]
+            }
+        } else {
+            measurement = args[0]
+            if (args[1] !== undefined) {
+                value = args[1]
+            }
+            if (args[2]) {
+                tags = args[2]
+            }
+        }
+
         if (measurement) {
+            if (typeof measurement === 'string' && this.measurementSeparator) {
+                measurement = measurement.split(this.measurementSeparator)
+            }
             measurement = [...this.measurementPrefix, ...Array.isArray(measurement) ? measurement : [measurement]]
         } else {
             measurement = this.measurementPrefix
         }
         tags = {...this.tags, ...tags}
 
-        await Promise.all(this.handlers.map(handler => handler.increment(value, measurement as Measurement, tags)))
+        await Promise.all(this.handlers.map(handler => handler.increment(value, measurement as string[], tags as Tags)))
     }
 
     public child(subMeasurementPrefix: Measurement, tags?: Tags) {
+        if (typeof subMeasurementPrefix === 'string' && this.measurementSeparator) {
+            subMeasurementPrefix = subMeasurementPrefix.split(this.measurementSeparator)
+        }
+
         return new Metrics({
             handlers: this.handlers,
             measurementPrefix: [
                 ...this.measurementPrefix,
                 ...Array.isArray(subMeasurementPrefix) ? subMeasurementPrefix : [subMeasurementPrefix]
             ],
-            tags: {...this.tags, ...tags}
+            tags: {...this.tags, ...tags},
+            measurementSeparator: this.measurementSeparator
         })
     }
 }
 
-class StatsDHandler implements MetricsHandler {
+export class StatsDHandler implements MetricsHandler {
     protected tagSupport: boolean
 
     public constructor(opts: {tagSupport?: boolean} = {}) {
@@ -70,7 +112,7 @@ class StatsDHandler implements MetricsHandler {
     }
 }
 
-class InfluxDbHandler implements MetricsHandler {
+export class InfluxDbHandler implements MetricsHandler {
     public async increment(value: number, measurement: Measurement, tags?: Tags) {
         console.log('PUSH to influx', {
             measurement: resolveMeasurement(measurement, '_'),
@@ -80,14 +122,13 @@ class InfluxDbHandler implements MetricsHandler {
     }
 }
 
-
 interface PrometheusRegistry {
     counters: {
         [measurementWithTags: string]: number
     }
 }
 
-class PrometheusHandler implements MetricsHandler {
+export class PrometheusHandler implements MetricsHandler {
     protected registry: PrometheusRegistry = {
         counters: {}
     }
@@ -110,50 +151,6 @@ class PrometheusHandler implements MetricsHandler {
     }
 }
 
-let prometheusHandler: PrometheusHandler = new PrometheusHandler
-
-export function createMetrics() {
-    return new Metrics({
-        handlers: [
-            new StatsDHandler,
-            new StatsDHandler({tagSupport: true}),
-            new InfluxDbHandler,
-            prometheusHandler
-        ],
-        measurementPrefix: 'backuper'
-    })
+export function createMetrics(opts: MetricsOpts) {
+    return new Metrics(opts)
 }
-
-const metrics = createMetrics()
-
-metrics.increment({
-    measurement: ['backups', 'before'],
-    tags: {name: 'home', status: 'start'}
-})
-console.log('----------')
-metrics.increment({
-    measurement: 'backups',
-    tags: {name: 'home', status: 'success'}
-})
-console.log('----------')
-const httpMetrics = metrics.child('http')
-
-httpMetrics.increment({
-    measurement: 'incomingreq',
-    value: 2
-})
-console.log('----------')
-httpMetrics.increment({
-    measurement: 'accesslog',
-    tags: { statusCode: '200', path: '/my/home/index.php' }
-})
-
-const forgetMetrics = metrics.child(['operations', 'forget'], { repository: 'home', policy: 'home-policy' })
-console.log('----------')
-forgetMetrics.increment({
-    tags: { status: 'success' }
-})
-console.log('----------')
-console.log('PULL Prometheus')
-
-console.log(prometheusHandler.getMetrics())
