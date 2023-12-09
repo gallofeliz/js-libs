@@ -42,27 +42,20 @@
   },
   "workspaces": [
     "src/application",
-    "src/super-yaml",
     "src/logger",
     "src/config",
     "src/persistant-object",
-    "src/validate",
     "src/typescript-transform-to-json-schema",
     "src/auth",
-    "src/http-server",
-    "src/tasker",
     "src/documents-collection",
-    "src/timer",
     "src/scheduler",
     "src/docker-logs",
     "src/dates-iterators",
     "src/mysql-dump",
     "src/sqlite-dump",
     "src/restic",
-    "beewi-reader",
     "src/beewi-reader",
     "src/ecoforest-stove",
-    "src/logs-parser",
     "src/metrics"
   ]
 }

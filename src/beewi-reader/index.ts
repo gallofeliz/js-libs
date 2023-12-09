@@ -1,5 +1,4 @@
-import { runProcess } from '@gallofeliz/run-process'
-import { Logger } from '@gallofeliz/logger'
+import execa from 'execa'
 import pRetry from 'async-retry'
 
 export async function readBeewiDevice(opts: BeewiDeviceReaderOpts): Promise<BeewiReadResult> {
@@ -15,7 +14,6 @@ export interface BeewiReadResult {
 export interface BeewiDeviceReaderOpts {
     device: string
     hmac: string
-    logger?: Pick<Logger, 'debug'>
 }
 
 export class BeewiDeviceReader {
@@ -34,25 +32,32 @@ export class BeewiDeviceReader {
             ? abortSignalOrOpts
             : abortSignalOrOpts.abortSignal
 
-        const {logger, device, hmac} = {
+        const {device, hmac} = {
             ...this.opts,
             ...argIsAbortSignal ? {} : abortSignalOrOpts
         }
 
-        if (!logger || !device || !hmac) {
+        if (!device || !hmac) {
             throw new Error('Missing one of opts')
         }
 
-        const v: string = await pRetry(
-            () => runProcess({
-                logger,
-                command: ['gatttool', '-i', device, '-b', hmac, '--char-read', '--handle=0x003f'],
-                timeout: 10000,
-                outputType: 'text',
-                abortSignal
-            }),
-            { retries: 3, }
-        )
+        const v = await pRetry(
+            async (bail) => {
+                const proc = execa(
+                    'gatttool',
+                    ['-i', device, '-b', hmac, '--char-read', '--handle=0x003f'],
+                    { timeout: 10000 }
+                )
+
+                abortSignal?.addEventListener('abort', () => {
+                    bail(abortSignal.reason)
+                    proc.cancel()
+                })
+
+                return (await proc).stdout
+            },
+            { retries: 3 }
+        ) as string
 
         const octetList = v.split(':')[1].trim().split(' ')
 

@@ -1,11 +1,60 @@
 import fs, { existsSync } from 'fs'
-import { mapKeys, pickBy, each, set, get, omit } from 'lodash'
+import { mapKeys, pickBy, each, set, get, omit, clone } from 'lodash'
 import { extname, resolve } from 'path'
-import { validate, SchemaObject } from '@gallofeliz/validate'
-import { parseFile as parseYmlFile } from '@gallofeliz/super-yaml'
+import { parseFile as parseYmlFile } from './yaml'
 import { compare, Operation } from 'fast-json-patch'
 import chokidar from 'chokidar'
 import { EventEmitter } from 'events'
+import {SchemaObject, default as Ajv} from 'ajv'
+
+interface ValidateConfig {
+    schema: SchemaObject
+    removeAdditional?: boolean
+    contextErrorMsg?: string
+}
+
+function validate<Data extends any>(data:Data, config: ValidateConfig): Data {
+    const ajv = new Ajv({
+        coerceTypes: true,
+        removeAdditional: !!config.removeAdditional,
+        useDefaults: true,
+        strict: true
+    })
+    const wrapData = {data: clone(data)} // Don't modify caller data !
+
+    const wrapSchema = {
+        type: 'object',
+        properties: {
+            data: ((schema: SchemaObject) => {
+                if (schema.$ref) {
+                    const ref = schema.$ref.replace('#/definitions/', '')
+                    return schema.definitions[ref]
+                }
+
+                return schema
+            })(config.schema)
+        },
+        definitions: omit(config.schema.definitions, config.schema.$ref?.replace('#/definitions/', ''))
+    }
+
+    if (!ajv.validate(wrapSchema, wrapData)) {
+        const firstError = ajv.errors![0]
+        const message = (config.contextErrorMsg ? config.contextErrorMsg + ' ' : '')
+            + (firstError.instancePath ? firstError.instancePath.substring(1).replace('/', '.') + ' ' : '')
+            + firstError.message
+
+        throw new Error(message)
+    }
+
+    return wrapData.data
+}
+
+
+
+
+
+
+
 
 export type ChangePatchOperation = Operation
 

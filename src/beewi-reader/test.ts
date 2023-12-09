@@ -1,14 +1,10 @@
 import { readBeewiDevice, BeewiDeviceReader } from '.'
-import { createLogger } from '@gallofeliz/logger'
 import { setTimeout } from 'timers/promises'
 import assert from 'assert'
 
 describe('Beewi reader', () => {
-    const logger = createLogger()
-
     it('readBeewiDevice', async () => {
         console.log(await readBeewiDevice({
-            logger,
             device: 'hci0',
             hmac: '20:91:48:48:E5:96'
         }))
@@ -18,7 +14,6 @@ describe('Beewi reader', () => {
 
         it('Scoped to hmac', async () => {
             const reader = new BeewiDeviceReader({
-                logger,
                 device: 'hci0',
                 hmac: '20:91:48:48:E5:96'
             })
@@ -29,7 +24,6 @@ describe('Beewi reader', () => {
 
         it('Scoped to device', async () => {
             const reader = new BeewiDeviceReader({
-                logger,
                 device: 'hci0'
             })
 
@@ -39,22 +33,9 @@ describe('Beewi reader', () => {
 
         it('Just a reader', async () => {
             const reader = new BeewiDeviceReader({
-                logger
             })
 
             console.log(await reader.read({hmac: '20:91:48:48:E5:96', device: 'hci0'}))
-
-        }).timeout(10000)
-
-        it('Own logger', async () => {
-            const reader = new BeewiDeviceReader({
-                device: 'hci0',
-                hmac: '20:91:48:48:E5:96'
-            })
-
-            console.log(await reader.read({
-                logger: createLogger({metadata: {ownLogger: true}})
-            }))
 
         }).timeout(10000)
 
@@ -62,7 +43,6 @@ describe('Beewi reader', () => {
             const reader = new BeewiDeviceReader({
                 device: 'hci0',
                 hmac: '20:91:48:48:E5:96',
-                logger
             })
 
             const ac = new AbortController

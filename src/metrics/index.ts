@@ -35,6 +35,14 @@ export class Metrics {
         }
     }
 
+    public async gauge() {
+
+    }
+
+    public async histogram() {
+
+    }
+
     public increment(measurement: string | string[], value?: number, tags?: Tags): Promise<void>
     public increment(value: number, tags?: Tags): Promise<void>
     public increment(tags?: Tags): Promise<void>
