@@ -1,5 +1,4 @@
 import matcher from 'matcher'
-import { Logger } from '@gallofeliz/logger'
 import { ContainerRunInfo, DockerContainersRunStateWatcher } from './docker-containers-run-state-watcher'
 import { DockerContainerLogsListener, Log, Stream } from './docker-container-logs-listener'
 import { Readable } from 'stream'
@@ -57,12 +56,10 @@ export class DockerLogs {
     protected watchers: DockerLogWatchOpts[] = []
     protected started = false
     protected abortController?: AbortController
-    protected logger?: Pick<Logger, 'debug' | 'warning' | 'child'>
     protected runStateMatcher: DockerContainersRunStateWatcher
 
-    public constructor({logger}: {logger?: Pick<Logger, 'debug' | 'warning' | 'child'>} = {}) {
-        this.logger = logger
-        this.runStateMatcher = new DockerContainersRunStateWatcher(logger)
+    public constructor() {
+        this.runStateMatcher = new DockerContainersRunStateWatcher()
     }
 
     public watch(watch: Omit<DockerLogWatchOpts, 'onLog'>): Readable
@@ -77,7 +74,7 @@ export class DockerLogs {
         }
 
         this.watchers.push(watch as DockerLogWatchOpts)
-        this.logger?.debug('Subscriving new watcher', {watch})
+        //this.logger?.debug('Subscriving new watcher', {watch})
 
         if (!this.started) {
             this.start()
@@ -86,7 +83,7 @@ export class DockerLogs {
         }
 
         watch.abortSignal?.addEventListener('abort', () => {
-            this.logger?.debug('Unsubscriving watcher', {watch})
+            //this.logger?.debug('Unsubscriving watcher', {watch})
             this.watchers.splice(this.watchers.indexOf(watch as DockerLogWatchOpts), 1)
             this.computeListeners()
 
@@ -147,7 +144,7 @@ export class DockerLogs {
     }
 
     protected dispatchLog(log: DockerLog) {
-        this.logger?.debug('dispatching log', {log})
+        //this.logger?.debug('dispatching log', {log})
 
         this.watchers.forEach(watch => {
             if (watch.stream !== 'both' && watch.stream !== log.stream) {
@@ -179,7 +176,7 @@ export class DockerLogs {
 
             if (toWatchStdout && !containerState.listeners.stdout) {
                 containerState.listeners.stdout = new DockerContainerLogsListener({
-                    logger: this.logger?.child({containerId: containerState.id, stream: 'stdout'}),
+                    //logger: this.logger?.child({containerId: containerState.id, stream: 'stdout'}),
                     containerId: containerState.id,
                     stream: 'stdout',
                     cb: (log) => this.onContainerLog(log, containerState, 'stdout')
@@ -189,7 +186,7 @@ export class DockerLogs {
 
             if (toWatchStdErr && !containerState.listeners.stderr) {
                 containerState.listeners.stderr = new DockerContainerLogsListener({
-                    logger: this.logger?.child({containerId: containerState.id, stream: 'stderr'}),
+                    //logger: this.logger?.child({containerId: containerState.id, stream: 'stderr'}),
                     containerId: containerState.id,
                     stream: 'stderr',
                     cb: (log) => this.onContainerLog(log, containerState, 'stderr')
@@ -251,7 +248,7 @@ export class DockerLogs {
 
         this.started = true
 
-        this.logger?.debug('Starting the machine')
+        //this.logger?.debug('Starting the machine')
 
         this.abortController = new AbortController
 
@@ -261,7 +258,7 @@ export class DockerLogs {
         })
 
         this.abortController.signal.addEventListener('abort', () => {
-            this.logger?.debug('Stopping the machine');
+            //this.logger?.debug('Stopping the machine');
             [...this.containersState].forEach(containerState => {
                 //containerState.destroyed = true
                 containerState.running = false

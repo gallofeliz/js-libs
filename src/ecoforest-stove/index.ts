@@ -1,5 +1,4 @@
-import { httpRequest } from '@gallofeliz/http-request'
-import { createLogger } from '@gallofeliz/logger'
+import got from 'got'
 import pRetry from 'async-retry'
 
 // https://github.com/gallofeliz/ecoforest-api/blob/master/app.py
@@ -84,15 +83,13 @@ export class EcoforestStove {
 
     protected async callStove(operationId: number, params?: Record<string, number | string>): Promise<any> {
 
-        const data: string = await httpRequest({
-            logger: createLogger(),
+        const data: string = await got({
             method: 'POST',
             url: 'http://ecoforest/recepcion_datos_4.cgi',
-            bodyData: {'idOperacion': operationId, ...params},
-            bodyType: 'form',
-            responseType: 'text',
+            //body: ,
+            form: {'idOperacion': operationId, ...params},
             timeout: 10000
-        })
+        }).text()
 
         if (operationId === 1081) {
             return {}

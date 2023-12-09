@@ -1,5 +1,4 @@
-import { Logger } from '@gallofeliz/logger'
-import { runProcess } from '@gallofeliz/run-process'
+import execa from 'execa'
 import { createWriteStream } from 'fs'
 import { mkdir } from 'fs/promises'
 import { dirname } from 'path'
@@ -27,7 +26,6 @@ export interface MysqlDumpOpts {
     noCreateInfo?: boolean
     noData?: boolean
     output?: MysqlDumpOutputOpts
-    logger: Logger
     lockTables?: boolean
     extendedInsert?: boolean
     abortSignal?: AbortSignal
@@ -44,8 +42,7 @@ function boolToStr(bool: boolean): 'true' | 'false' {
 }
 
 export async function mysqlDump(opts: MysqlDumpOpts) {
-    const command = [
-        'mysqldump',
+    const args = [
         '-h', opts.host,
         opts.database,
         ...opts.table ? [opts.table] : [],
@@ -77,29 +74,24 @@ export async function mysqlDump(opts: MysqlDumpOpts) {
             : output.stream
         )
 
-    const logger = opts.logger.child()
-
-    logger.setProcessors([...logger.getProcessors(), (log) => {
-        if (log.env?.MYSQL_PWD) {
-            log.env.MYSQL_PWD = '***'
-        }
-        return log
-    }])
-
     if (output.type === 'file' && output.compress && stream) {
         const gzip = createGzip()
         gzip.pipe(stream)
         stream = gzip
     }
 
-    return await runProcess({ // MYSQL_PWD env alternative
-        command,
-        logger,
-        outputType: !stream ? 'text' : undefined,
-        outputStream: stream,
-        abortSignal: opts.abortSignal,
-        env: {
-            MYSQL_PWD: opts.password
+    const proc = execa( // MYSQL_PWD env alternative
+        'mysqldump',
+        args,
+        {
+            outputType: !stream ? 'text' : undefined,
+            outputStream: stream,
+            abortSignal: opts.abortSignal,
+            env: {
+                MYSQL_PWD: opts.password
+            }
         }
-    })
+    )
+
+    return (await proc).stdout
 }

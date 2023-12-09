@@ -1,15 +1,10 @@
 import { DockerLogs, DockerLog } from '.'
-import { createLogger, createConsoleHandler } from '@gallofeliz/logger'
 import chalk from 'chalk'
 import { Writable } from 'stream'
 
 const abortController = new AbortController;
 
-const dockerLogs = new DockerLogs({logger: createLogger({
-    handlers: [
-        createConsoleHandler({maxLevel: 'info'})
-    ]
-})})
+const dockerLogs = new DockerLogs()
 
 // dockerLogs.watch({
 //     namePattern: ['*', '!*special*'],

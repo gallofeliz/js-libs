@@ -1,4 +1,3 @@
-import { Logger } from '@gallofeliz/logger'
 import { runProcess } from '@gallofeliz/run-process'
 import { createWriteStream } from 'fs'
 import { mkdir } from 'fs/promises'
@@ -22,14 +21,12 @@ export interface SqliteDumpOpts {
     table?: string
     onlySchema?: boolean
     output?: SqliteDumpOutputOpts
-    logger: Logger
     abortSignal?: AbortSignal
 }
 
 export interface SqliteBackupOpts {
     filename: string
     outputFilename: string
-    logger: Logger
     abortSignal?: AbortSignal
 }
 
@@ -45,7 +42,6 @@ export async function sqliteBackup(opts: SqliteBackupOpts) {
 
     await runProcess({
         command,
-        logger: opts.logger,
         abortSignal: opts.abortSignal
     })
 }
@@ -79,9 +75,8 @@ export async function sqliteDump(opts: SqliteDumpOpts) {
         stream = gzip
     }
 
-    return await runProcess({ // MYSQL_PWD env alternative
+    return await runProcess({
         command,
-        logger: opts.logger,
         outputType: !stream ? 'text' : undefined,
         outputStream: stream,
         abortSignal: opts.abortSignal

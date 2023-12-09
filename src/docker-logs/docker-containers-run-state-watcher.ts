@@ -1,4 +1,3 @@
-import { Logger } from '@gallofeliz/logger'
 import Dockerode from 'dockerode'
 import { omit } from 'lodash'
 
@@ -27,12 +26,7 @@ export class DockerContainersRunStateWatcher {
     protected dockerode = new Dockerode
     protected containers: ContainerRunInfo[] = []
     protected abortController?: AbortController
-    protected logger?: Pick<Logger, 'debug' | 'warning'>
     protected watchers: Watcher[] = []
-
-    public constructor(logger?: Pick<Logger, 'debug' | 'warning'>) {
-        this.logger = logger
-    }
 
     public watch(watcher: Watcher) {
         if (watcher.abortSignal.aborted) {
@@ -93,7 +87,7 @@ export class DockerContainersRunStateWatcher {
             })
         } catch (e) {
             if (!abortSignal.aborted) {
-                this.logger?.warning('Unexpected error on getting events for containers', {e})
+                //this.logger?.warning('Unexpected error on getting events for containers', {e})
                 this.restart()
             }
 
@@ -104,10 +98,10 @@ export class DockerContainersRunStateWatcher {
 
         stream.once('close', () => {
             if (!abortSignal.aborted) {
-                this.logger?.warning('Unexpected closed stream for events')
+                //this.logger?.warning('Unexpected closed stream for events')
                 this.restart()
             } else {
-                this.logger?.debug('Closed stream for events')
+                //this.logger?.debug('Closed stream for events')
             }
         })
 
@@ -172,7 +166,7 @@ export class DockerContainersRunStateWatcher {
             dockerContainers = await this.dockerode.listContainers({all: true})
         } catch (e) {
             if (!abortSignal.aborted) {
-                this.logger?.warning('Unexpected error on listening containers', {e})
+                //this.logger?.warning('Unexpected error on listening containers', {e})
                 this.updateInfosFromScratch(abortSignal)
             }
 

@@ -11,7 +11,7 @@ describe('EcoforestStove', () => {
     it('configureConvectorSpeedModifier', async () => {
         const stove = new EcoforestStove
 
-        console.log(await stove.configureConvectorSpeedModifier(-15))
+        await stove.configureConvectorSpeedModifier(0)
 
     }).timeout(10000)
 

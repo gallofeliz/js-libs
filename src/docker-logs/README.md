@@ -13,6 +13,7 @@ Follow docker logs based on criteria :)
 - [ ] Multiline support
 - [X] watch as stream
 - [ ] Subscrive containers with dedicated stream(s)
+- [ ] Add events to replace logger
 
 ## Motivations
 
@@ -24,13 +25,10 @@ THIS IS NOT a tool to collect logs. I tested some tools like logspout, interesti
 
 ```typescript
 import { DockerLogs } from '@gallofeliz/docker-logs'
-import { createLogger } from '@gallofeliz/logger'
 
 const abortController = new AbortController
 
-const dockerLogs = new DockerLogs({
-    logger: createLogger({handlers: []})
-})
+const dockerLogs = new DockerLogs()
 
 dockerLogs.watch({
     containerMatches: { name: ['*', '!*special*'] },
