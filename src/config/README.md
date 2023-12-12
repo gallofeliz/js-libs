@@ -11,6 +11,7 @@ Advanced config:
 - [ ] include files into config from envs (ex: APP_DB_PASSWORD='!include /run/secrets/db_password')
 - [ ] Super Json (like Yaml, for example { db: { password: { $include: '/run/secrets/db_password' }, username: { $env: 'USER' } } })
 - [ ] Command line arguments as config param
+- [ ] Refacto, refacto, refacto
 
 Example:
 
@@ -27,7 +28,6 @@ watchEventEmitter.on('change:machin.truc', ({value/*, previousValue, config, pre
 deepEqual(
     await loadConfig<Config, Config>({
         defaultFilename: __dirname + '/config.test.yml',
-        logger: createLogger(),
         envFilename: 'config',
         envPrefix: 'app',
         userProvidedConfigSchema: tsToJsSchema<Config>(),

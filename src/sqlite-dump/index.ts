@@ -1,4 +1,4 @@
-import { runProcess } from '@gallofeliz/run-process'
+import execa from 'execa'
 import { createWriteStream } from 'fs'
 import { mkdir } from 'fs/promises'
 import { dirname } from 'path'

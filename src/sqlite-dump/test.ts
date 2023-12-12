@@ -1,10 +1,8 @@
-import { createLogger } from '@gallofeliz/logger'
 import { sqliteBackup, sqliteDump } from '.'
 
 describe('mysqlDump', () => {
     it('file test', async () => {
         await sqliteDump({
-            logger: createLogger(),
             filename: __dirname + '/test.db',
             output: {
                 filepath: '/tmp/bla/blo/test.db',
@@ -15,7 +13,6 @@ describe('mysqlDump', () => {
 
     it('file test gzip', async () => {
         await sqliteDump({
-            logger: createLogger(),
             filename: __dirname + '/test.db',
             output: {
                 filepath: '/tmp/bla/blo/test.dbz',
@@ -27,7 +24,6 @@ describe('mysqlDump', () => {
 
     it('output test', async () => {
         console.log(await sqliteDump({
-            logger: createLogger({handlers: []}),
             filename: __dirname + '/test.db',
             output: {
                 type: 'text'
@@ -37,7 +33,6 @@ describe('mysqlDump', () => {
 
     it('stream test', async () => {
         await sqliteDump({
-            logger: createLogger(),
             filename: __dirname + '/test.db',
             output: {
                 type: 'stream',
@@ -48,7 +43,6 @@ describe('mysqlDump', () => {
 
     it('backup test', async () => {
         await sqliteBackup({
-            logger: createLogger(),
             filename: __dirname + '/test.db',
             outputFilename: '/tmp/bla/blo/backup.db'
         })

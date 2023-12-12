@@ -4,10 +4,11 @@
       { "transform": "@gallofeliz/typescript-transform-to-json-schema" }
     ],
     "target": "es2022",                                  /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
-    "module": "commonjs",                                /* Specify what module code is generated. */
+    "module": "nodenext",                                /* Specify what module code is generated. */
     // "moduleResolution": "node",                       /* Specify how TypeScript looks up a file from a given module specifier. */
     "declaration": true,                                 /* Generate .d.ts files from TypeScript and JavaScript files in your project. */
-    "outDir": "dist",                                    /* Specify an output folder for all emitted files. */
+    "sourceMap": true,
+    "outDir": "../dist",                                    /* Specify an output folder for all emitted files. */
     "removeComments": true,                              /* Disable emitting comments. */
     "stripInternal": true,                               /* Disable emitting declarations that have `@internal` in their JSDoc comments. */
     "esModuleInterop": true,                             /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables `allowSyntheticDefaultImports` for type compatibility. */

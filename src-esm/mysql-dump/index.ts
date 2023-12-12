@@ -1,7 +1,8 @@
-import execa from 'execa'
+import { execa } from 'execa'
 import { createWriteStream } from 'fs'
 import { mkdir } from 'fs/promises'
 import { dirname } from 'path'
+import { Transform } from 'stream'
 import { createGzip } from 'zlib'
 
 type MysqlDumpOutputOpts =
@@ -9,7 +10,6 @@ type MysqlDumpOutputOpts =
         type: 'text'
     } | {
         type: 'stream'
-        stream: NodeJS.WritableStream
     } | {
         type: 'file'
         filepath: string
@@ -66,32 +66,54 @@ export async function mysqlDump(opts: MysqlDumpOpts) {
         await mkdir(dirname(output.filepath), {recursive: true})
     }
 
-    let stream = output.type === 'text'
-        ? undefined
-        : (
-            output.type === 'file'
-            ? createWriteStream(output.filepath, { flags: 'w', encoding: output.compress ? 'binary' : 'utf8' })
-            : output.stream
-        )
-
-    if (output.type === 'file' && output.compress && stream) {
-        const gzip = createGzip()
-        gzip.pipe(stream)
-        stream = gzip
-    }
-
     const proc = execa( // MYSQL_PWD env alternative
         'mysqldump',
         args,
         {
-            outputType: !stream ? 'text' : undefined,
-            outputStream: stream,
-            abortSignal: opts.abortSignal,
+            buffer: output.type === 'text',
             env: {
                 MYSQL_PWD: opts.password
-            }
+            },
+            signal: opts.abortSignal
         }
     )
 
-    return (await proc).stdout
+    if (output.type === 'text') {
+        return (await proc).stdout
+    }
+
+    if (output.type === 'stream') {
+
+        let lastStderr = ''
+
+        proc.stderr!.on('data', (chunk) => lastStderr = chunk.toString())
+
+        const stream = new Transform({
+            transform(chunk, encoding, callback) {
+                this.push(chunk, encoding)
+                callback()
+            },
+            flush(callback) {
+                proc
+                    .then(() => callback())
+                    .catch((e) => callback(new Error(lastStderr, {
+                        cause: e
+                    })))
+            }
+        })
+
+        proc.stdout!.pipe(stream)
+
+        return stream
+    }
+
+    // Need Execa up version to handle errors with pipe
+
+    const fsStream = createWriteStream(output.filepath, { flags: 'w', encoding: output.compress ? 'binary' : 'utf8' })
+
+    if (!output.compress) {
+        return await proc.pipeStdout!(fsStream)
+    }
+
+    await proc.pipeStdout!(createGzip()).pipeStdout!(fsStream)
 }

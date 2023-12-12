@@ -1,4 +1,3 @@
-import { createLogger } from '@gallofeliz/logger'
 import { Restic, ResticSnapshot, ResticRepositoryFs, ResticRepositoryS3 } from '.'
 import { rm, mkdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
@@ -10,8 +9,7 @@ describe('restic', () => {
         type: 'fs',
         path: repositoryLocation
     }
-    const logger = createLogger()
-    const restic = new Restic({logger, host: 'test-hostname', tags: ['global-tag'], password: 'test'})
+    const restic = new Restic({host: 'test-hostname', tags: ['global-tag'], password: 'test'})
     const fsRestic = restic.child({repository})
 
     before(async () => {

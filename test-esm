@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -e
+
+LIB="$1"
+
+test -n "$LIB"
+
+SRC=src-esm/$LIB
+DEST=dist/$LIB
+
+rm -R dist
+
+ttsc -p src-esm
+
+find "$SRC" -mindepth 1 -maxdepth 1 -not -name '*.ts' -exec cp -rt "$DEST" {} \;
+
+cd $DEST
+
+echo '{"all": true, "reporter": ["json-summary", "text"], "exclude": [".", "*test*"], "report-dir": "/tmp/nyc-tmp", "check-coverage": false, "report-dir": "/tmp/nyc-report"}' > /tmp/nyc.json
+
+npx c8 -c /tmp/nyc.json mocha '**/*test.js' --ignore 'node_modules/**'
