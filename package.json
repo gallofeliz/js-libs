@@ -16,13 +16,16 @@
   },
   "homepage": "https://github.com/gallofeliz/js-libs#readme",
   "dependencies": {
+    "@airbnb/node-memwatch": "^2.0.0",
     "@gallofeliz/htpasswd-verify": "^1.0.0",
+    "@types/lodash-es": "^4.17.12",
     "ajv": "^8.12.0",
     "basic-auth": "^2.0.1",
     "body-parser": "^1.20.1",
     "c8": "^8.0.1",
     "express": "^4.18.2",
     "jsdoc-to-markdown": "^8.0.0",
+    "lodash-es": "^4.17.21",
     "morgan": "^1.10.0",
     "swagger-ui-express": "^4.6.0"
   },

@@ -1,20 +1,5 @@
 import { execa } from 'execa'
-import { createWriteStream } from 'fs'
-import { mkdir } from 'fs/promises'
-import { dirname } from 'path'
 import { Transform } from 'stream'
-import { createGzip } from 'zlib'
-
-type MysqlDumpOutputOpts =
-    {
-        type: 'text'
-    } | {
-        type: 'stream'
-    } | {
-        type: 'file'
-        filepath: string
-        compress?: boolean
-    }
 
 export interface MysqlDumpOpts {
     host: string
@@ -25,7 +10,6 @@ export interface MysqlDumpOpts {
     where?: string
     noCreateInfo?: boolean
     noData?: boolean
-    output?: MysqlDumpOutputOpts
     lockTables?: boolean
     extendedInsert?: boolean
     abortSignal?: AbortSignal
@@ -35,13 +19,14 @@ export interface MysqlDumpOpts {
     noTablespaces?: boolean
     additionnalParams?: string[]
     columnStatistics?: boolean
+    binary?: string
 }
 
 function boolToStr(bool: boolean): 'true' | 'false' {
     return bool ? 'true' : 'false'
 }
 
-export async function mysqlDump(opts: MysqlDumpOpts) {
+export function mysqlDump(opts: MysqlDumpOpts) {
     const args = [
         '-h', opts.host,
         opts.database,
@@ -60,17 +45,11 @@ export async function mysqlDump(opts: MysqlDumpOpts) {
         ...opts.columnStatistics !== undefined ? ['--column-statistics=' + boolToStr(opts.columnStatistics)] : []
     ]
 
-    const output: MysqlDumpOutputOpts = opts.output || {type: 'text'}
-
-    if (output.type === 'file') {
-        await mkdir(dirname(output.filepath), {recursive: true})
-    }
-
-    const proc = execa( // MYSQL_PWD env alternative
-        'mysqldump',
+    const proc = execa(
+        opts.binary || 'mysqldump',
         args,
         {
-            buffer: output.type === 'text',
+            buffer: false,
             env: {
                 MYSQL_PWD: opts.password
             },
@@ -78,42 +57,30 @@ export async function mysqlDump(opts: MysqlDumpOpts) {
         }
     )
 
-    if (output.type === 'text') {
-        return (await proc).stdout
-    }
+    let lastStderr = ''
 
-    if (output.type === 'stream') {
+    proc.stderr!.on('data', (chunk) => lastStderr = chunk.toString())
 
-        let lastStderr = ''
+    const stream = new Transform({
+        transform(chunk, encoding, callback) {
+            this.push(chunk, encoding)
+            callback()
+        },
+        flush(callback) {
+            proc.then(() => callback())
+                // .catch((e) => callback(lastStderr ? new Error(lastStderr, {
+                //     cause: e
+                // }) : e))
+        }
+    })
 
-        proc.stderr!.on('data', (chunk) => lastStderr = chunk.toString())
+    proc.stdout!.pipe(stream)
 
-        const stream = new Transform({
-            transform(chunk, encoding, callback) {
-                this.push(chunk, encoding)
-                callback()
-            },
-            flush(callback) {
-                proc
-                    .then(() => callback())
-                    .catch((e) => callback(new Error(lastStderr, {
-                        cause: e
-                    })))
-            }
-        })
+    proc.catch((e) => stream.destroy(
+        lastStderr
+            ? new Error(lastStderr, {cause: e})
+            : e
+    ))
 
-        proc.stdout!.pipe(stream)
-
-        return stream
-    }
-
-    // Need Execa up version to handle errors with pipe
-
-    const fsStream = createWriteStream(output.filepath, { flags: 'w', encoding: output.compress ? 'binary' : 'utf8' })
-
-    if (!output.compress) {
-        return await proc.pipeStdout!(fsStream)
-    }
-
-    await proc.pipeStdout!(createGzip()).pipeStdout!(fsStream)
+    return stream
 }

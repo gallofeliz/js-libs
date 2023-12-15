@@ -9,7 +9,7 @@ test -n "$LIB"
 SRC=src-esm/$LIB
 DEST=dist/$LIB
 
-rm -R dist
+rm -Rf dist
 
 ttsc -p src-esm
 
@@ -19,4 +19,4 @@ cd $DEST
 
 echo '{"all": true, "reporter": ["json-summary", "text"], "exclude": [".", "*test*"], "report-dir": "/tmp/nyc-tmp", "check-coverage": false, "report-dir": "/tmp/nyc-report"}' > /tmp/nyc.json
 
-npx c8 -c /tmp/nyc.json mocha '**/*test.js' --ignore 'node_modules/**'
+NODE_OPTIONS="--enable-source-maps" npx c8 -c /tmp/nyc.json mocha '**/*test.js' -r ../../mocha.js --ignore 'node_modules/**'
