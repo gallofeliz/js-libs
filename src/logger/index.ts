@@ -21,7 +21,7 @@ export function createLogger(loggerOpts: LoggerOpts = {}) {
 }
 
 function ensureNotKeys(object: Object, keys: string[]): Object {
-    return mapKeys(object, (value, key) => {
+    return mapKeys(object, (_value, key) => {
         if (!keys.includes(key)) {
             return key
         }

@@ -1,12 +1,12 @@
 import * as ts from 'typescript';
 import * as tsjson from 'ts-json-schema-generator'
 
-export function tsToJsSchema<T extends any>(): Record<string, any> {
+export function tsToJsSchema<_T extends any>(): Record<string, any> {
     throw new Error('tsToJsSchema<>() not compiled. Do you use ttypescript and have you added in your tsconfig.json `"plugins": [ { "transform": "@gallofeliz/typescript-transform-to-json-schema" } ] ?`')
 }
 
 // @internal
-export default function(program: ts.Program, pluginOptions: {}) {
+export default function(program: ts.Program) {
     const typeChecker = program.getTypeChecker();
 
     return (ctx: ts.TransformationContext) => {
