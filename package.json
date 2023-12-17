@@ -45,20 +45,16 @@
     "typescript": "^4.9.5"
   },
   "workspaces": [
-    "src-esm/mysql-dump",
     "src-esm/restic",
+    "src-esm/logger",
+    "src-esm/config",
+    "src-esm/typescript-transform-to-json-schema",
     "src/application",
-    "src/logger",
-    "src/config",
-    "src/typescript-transform-to-json-schema",
     "src/auth",
     "src/documents-collection",
     "src/scheduler",
     "src/docker-logs",
     "src/dates-iterators",
-    "src/sqlite-dump",
-    "src/beewi-reader",
-    "src/ecoforest-stove",
     "src/metrics"
   ]
 }

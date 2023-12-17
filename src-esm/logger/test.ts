@@ -1,6 +1,6 @@
 import { setTimeout } from 'timers/promises'
-import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler, createLogfmtFormatter, BreadCrumbHandler} from '.'
-import {times} from 'lodash'
+import {createCallbackHandler, createLogger, ConsoleHandler, createJsonFormatter, createConsoleHandler, createLogfmtFormatter, BreadCrumbHandler} from './index.js'
+import {times} from 'lodash-es'
 
 const logger = createLogger()
 
@@ -54,7 +54,7 @@ describe('Logger', () => {
 
     child2.getHandlers().push(createCallbackHandler({
       maxLevel: 'info',
-      formatter: log => '[${log.level}] ${log.message}',
+      formatter: log => `[${log.level}] ${log.message}`,
       async cb(_, log) {
         console.log('child2 has log', log)
       }
@@ -80,7 +80,7 @@ describe('Logger', () => {
             formatter: createJsonFormatter({
                 indentation: 4,
                 customReplacements:[
-                    (k, value) => {
+                    (_, value) => {
                       return typeof value === 'symbol' ? value.toString() : value
                     }
                 ]

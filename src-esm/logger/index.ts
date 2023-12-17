@@ -1,8 +1,9 @@
-import { cloneDeep, mapKeys, chain } from 'lodash'
+import { cloneDeep, mapKeys, chain } from 'lodash-es'
 import stringify from 'safe-stable-stringify'
 import { EOL } from 'os'
 // @ts-ignore
-import {flatten as flattenObject} from 'flat'
+import flat from 'flat'
+const flattenObject = flat.flatten
 
 export type LogLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug' // | 'trace'
 const levels: LogLevel[] = ['fatal', 'error', 'warning', 'info', 'debug']
@@ -410,7 +411,7 @@ export class MemoryHandler extends BaseHandler {
         super({formatter: log => log, ...opts})
     }
 
-    protected async write(formatted: any, log: Log) {
+    protected async write(formatted: any) {
         this.writtenLogs.push(formatted)
     }
 
